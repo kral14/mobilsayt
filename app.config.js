@@ -28,7 +28,16 @@ module.exports = {
     web: {
       favicon: "./assets/favicon.png",
       bundler: "metro"
-    }
+    },
+    plugins: [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Kamera istifadəsi barkod skan etmək üçün lazımdır."
+        }
+      ]
+    ]
   }
 };
 

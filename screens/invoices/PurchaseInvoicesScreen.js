@@ -4,21 +4,36 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   Alert,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { purchaseService } from '../../services/purchaseService';
+import { logger } from '../../utils/logger';
 
 export default function PurchaseInvoicesScreen({ navigation }) {
   const [invoices, setInvoices] = useState([]);
+  const [filteredInvoices, setFilteredInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc');
 
   useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Səhifə fokuslandıqda qaimələri yenilə
+      loadInvoices();
+    });
+
     loadInvoices();
-  }, []);
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadInvoices = async () => {
     try {
@@ -26,12 +41,97 @@ export default function PurchaseInvoicesScreen({ navigation }) {
       const result = await purchaseService.getInvoices();
       if (result.success) {
         setInvoices(result.data);
+        setFilteredInvoices(result.data);
       }
     } catch (error) {
+      logger.error('loadInvoices: Exception', error);
       Alert.alert('Xəta', 'Qaimələr yüklənərkən xəta baş verdi');
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    // Axtarış və sort tətbiq et
+    let filtered = invoices;
+
+    // Axtarış
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(invoice => 
+        invoice.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        invoice.supplier_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Sort
+    if (sortColumn) {
+      filtered = [...filtered].sort((a, b) => {
+        let aVal = a[sortColumn];
+        let bVal = b[sortColumn];
+
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = (bVal || '').toLowerCase();
+          if (sortDirection === 'asc') {
+            return aVal.localeCompare(bVal);
+          } else {
+            return bVal.localeCompare(aVal);
+          }
+        } else {
+          aVal = parseFloat(aVal || 0);
+          bVal = parseFloat(bVal || 0);
+          if (sortDirection === 'asc') {
+            return aVal - bVal;
+          } else {
+            return bVal - aVal;
+          }
+        }
+      });
+    }
+
+    setFilteredInvoices(filtered);
+  }, [searchQuery, invoices, sortColumn, sortDirection]);
+
+  const handleEdit = () => {
+    if (!selectedInvoice) return;
+    logger.debug('handleEdit: Başladı', { invoiceId: selectedInvoice.id });
+    navigation.navigate('ProductPurchase', { 
+      invoiceId: selectedInvoice.id,
+      isEdit: true 
+    });
+    setSelectedInvoice(null);
+  };
+
+  const handleDelete = () => {
+    if (!selectedInvoice) return;
+    logger.debug('handleDelete: Başladı', { invoiceId: selectedInvoice.id });
+    Alert.alert(
+      'Qaiməni Sil',
+      `"${selectedInvoice.invoice_number}" qaiməsini silmək istədiyinizə əminsiniz?`,
+      [
+        { text: 'Ləğv et', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await purchaseService.deleteInvoice(selectedInvoice.id);
+              if (result.success) {
+                logger.success('handleDelete: Qaimə silindi', { invoiceId: selectedInvoice.id });
+                Alert.alert('Uğurlu', 'Qaimə uğurla silindi');
+                loadInvoices();
+                setSelectedInvoice(null);
+              } else {
+                Alert.alert('Xəta', result.error || 'Qaimə silinə bilmədi');
+              }
+            } catch (error) {
+              logger.error('handleDelete: Exception', error);
+              Alert.alert('Xəta', 'Xəta baş verdi');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const formatDate = (dateString) => {
@@ -43,29 +143,40 @@ export default function PurchaseInvoicesScreen({ navigation }) {
     });
   };
 
-  const renderInvoice = ({ item }) => (
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (column) => {
+    if (sortColumn !== column) {
+      return 'swap-vertical-outline';
+    }
+    return sortDirection === 'asc' ? 'arrow-up' : 'arrow-down';
+  };
+
+  const renderTableRow = (item, index) => (
     <TouchableOpacity
-      style={styles.invoiceCard}
-      onPress={() => navigation.navigate('PurchaseInvoiceDetail', { invoiceId: item.id })}
+      key={item.id || index}
+      style={[
+        styles.tableRow,
+        selectedInvoice?.id === item.id && styles.tableRowSelected
+      ]}
+      onPress={() => setSelectedInvoice(selectedInvoice?.id === item.id ? null : item)}
+      onLongPress={() => navigation.navigate('PurchaseInvoiceDetail', { invoiceId: item.id })}
     >
-      <View style={styles.invoiceHeader}>
-        <View>
-          <Text style={styles.invoiceNumber}>{item.invoice_number}</Text>
-          <Text style={styles.invoiceDate}>{formatDate(item.invoice_date)}</Text>
-        </View>
-        <View style={styles.amountContainer}>
-          <Text style={styles.amount}>{parseFloat(item.total_amount || 0).toFixed(2)} AZN</Text>
-        </View>
-      </View>
-      {item.supplier_name && (
-        <View style={styles.supplierInfo}>
-          <Ionicons name="storefront-outline" size={16} color="#666" />
-          <Text style={styles.supplierName}>{item.supplier_name}</Text>
-        </View>
-      )}
-      <View style={styles.arrowContainer}>
-        <Ionicons name="chevron-forward" size={20} color="#666" />
-      </View>
+      <Text style={[styles.tableCell, styles.cellInvoiceNumber]}>{item.invoice_number || '-'}</Text>
+      <Text style={[styles.tableCell, styles.cellDate]}>{formatDate(item.invoice_date)}</Text>
+      <Text style={[styles.tableCell, styles.cellSupplier]} numberOfLines={1}>
+        {item.supplier_name || '-'}
+      </Text>
+      <Text style={[styles.tableCell, styles.cellAmount]}>
+        {parseFloat(item.total_amount || 0).toFixed(2)} AZN
+      </Text>
     </TouchableOpacity>
   );
 
@@ -79,42 +190,153 @@ export default function PurchaseInvoicesScreen({ navigation }) {
     );
   }
 
-  const totalAmount = invoices.reduce((sum, invoice) => sum + parseFloat(invoice.total_amount || 0), 0);
+  const totalAmount = filteredInvoices.reduce((sum, invoice) => sum + parseFloat(invoice.total_amount || 0), 0);
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
+      {/* Header with Toolbar */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Alış Qaimələri</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[styles.headerButton, { marginRight: 8 }]}
+            onPress={() => navigation.navigate('ProductPurchase', { isEdit: false })}
+          >
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerButton, { marginRight: 8 }]}
+            onPress={() => setShowSearch(!showSearch)}
+          >
+            <Ionicons name="search" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerButton, { marginRight: 8 }]}
+            onPress={() => {
+              Alert.alert('Filtr', 'Filtr funksionallığı tezliklə əlavə ediləcək');
+            }}
+          >
+            <Ionicons name="filter" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerButton, { marginRight: 8 }]}
+            onPress={() => {
+              Alert.alert('Ayarlar', 'Ayarlar funksionallığı tezliklə əlavə ediləcək');
+            }}
+          >
+            <Ionicons name="settings-outline" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerButton, { marginRight: 8 }, !selectedInvoice && styles.headerButtonDisabled]}
+            onPress={handleEdit}
+            disabled={!selectedInvoice}
+          >
+            <Ionicons 
+              name="create-outline" 
+              size={24} 
+              color={selectedInvoice ? "#fff" : "rgba(255, 255, 255, 0.5)"} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerButton, !selectedInvoice && styles.headerButtonDisabled]}
+            onPress={handleDelete}
+            disabled={!selectedInvoice}
+          >
+            <Ionicons 
+              name="trash-outline" 
+              size={24} 
+              color={selectedInvoice ? "#fff" : "rgba(255, 255, 255, 0.5)"} 
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryCard}>
-          <Ionicons name="receipt-outline" size={24} color="#fff" />
-          <Text style={styles.summaryValue}>{invoices.length}</Text>
-          <Text style={styles.summaryLabel}>Qaimə Sayı</Text>
+      {/* Search Bar */}
+      {showSearch && (
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Axtarış (qaimə nömrəsi, satıcı)..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={24} color="#666" />
+            </TouchableOpacity>
+          )}
         </View>
-        <View style={styles.summaryCard}>
-          <Ionicons name="cash-outline" size={24} color="#fff" />
-          <Text style={styles.summaryValue}>{totalAmount.toFixed(2)}</Text>
-          <Text style={styles.summaryLabel}>Ümumi Məbləğ</Text>
-        </View>
-      </View>
-
-      {invoices.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="receipt-outline" size={64} color="#fff" />
-          <Text style={styles.emptyText}>Alış qaiməsi yoxdur</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={invoices}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderInvoice}
-          contentContainerStyle={styles.list}
-          refreshing={loading}
-          onRefresh={loadInvoices}
-        />
       )}
+
+      {/* Main Content - Table */}
+      <View style={styles.tableContainer}>
+        {filteredInvoices.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="receipt-outline" size={64} color="#fff" />
+            <Text style={styles.emptyText}>
+              {searchQuery ? 'Axtarış nəticəsi tapılmadı' : 'Alış qaiməsi yoxdur'}
+            </Text>
+          </View>
+        ) : (
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tableScrollContent}
+          >
+            <View style={styles.tableWrapper}>
+              {/* Table Header */}
+              <View style={styles.tableHeader}>
+                <TouchableOpacity 
+                  style={[styles.tableHeaderCell, styles.cellInvoiceNumber]}
+                  onPress={() => handleSort('invoice_number')}
+                >
+                  <Text style={styles.tableHeaderText}>Qaimə Nömrəsi</Text>
+                  <Ionicons 
+                    name={getSortIcon('invoice_number')} 
+                    size={16} 
+                    color={sortColumn === 'invoice_number' ? '#667eea' : '#999'} 
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.tableHeaderCell, styles.cellDate]}
+                  onPress={() => handleSort('invoice_date')}
+                >
+                  <Text style={styles.tableHeaderText}>Tarix</Text>
+                  <Ionicons 
+                    name={getSortIcon('invoice_date')} 
+                    size={16} 
+                    color={sortColumn === 'invoice_date' ? '#667eea' : '#999'} 
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.tableHeaderCell, styles.cellSupplier]}
+                  onPress={() => handleSort('supplier_name')}
+                >
+                  <Text style={styles.tableHeaderText}>Satıcı</Text>
+                  <Ionicons 
+                    name={getSortIcon('supplier_name')} 
+                    size={16} 
+                    color={sortColumn === 'supplier_name' ? '#667eea' : '#999'} 
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.tableHeaderCell, styles.cellAmount]}
+                  onPress={() => handleSort('total_amount')}
+                >
+                  <Text style={styles.tableHeaderText}>Məbləğ</Text>
+                  <Ionicons 
+                    name={getSortIcon('total_amount')} 
+                    size={16} 
+                    color={sortColumn === 'total_amount' ? '#667eea' : '#999'} 
+                  />
+                </TouchableOpacity>
+              </View>
+              {/* Table Rows */}
+              {filteredInvoices.map((item, index) => renderTableRow(item, index))}
+            </View>
+          </ScrollView>
+        )}
+      </View>
     </LinearGradient>
   );
 }
@@ -129,94 +351,99 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   header: {
-    padding: 20,
-    paddingTop: 60,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  summaryContainer: {
+    padding: 10,
+    paddingTop: 50,
     flexDirection: 'row',
-    padding: 15,
-    paddingTop: 0,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    padding: 15,
-    marginHorizontal: 5,
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 8,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#fff',
-    marginTop: 4,
-    opacity: 0.9,
-  },
-  list: {
-    padding: 15,
-  },
-  invoiceCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  invoiceHeader: {
+  headerButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
   },
-  invoiceNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  invoiceDate: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
-  amount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#3F51B5',
-  },
-  supplierInfo: {
-    flexDirection: 'row',
+  headerButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
-  },
-  supplierName: {
-    fontSize: 14,
-    color: '#666',
     marginLeft: 8,
   },
-  arrowContainer: {
-    position: 'absolute',
-    right: 15,
-    top: 15,
+  headerButtonDisabled: {
+    opacity: 0.5,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    marginRight: 10,
+  },
+  tableContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    overflow: 'hidden',
+  },
+  tableScrollContent: {
+    paddingLeft: 10,
+    paddingRight: 10,
+  },
+  tableWrapper: {
+    minWidth: '100%',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f5f5f5',
+    borderBottomWidth: 2,
+    borderBottomColor: '#ddd',
+    paddingVertical: 12,
+  },
+  tableHeaderCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+  },
+  tableHeaderText: {
+    fontWeight: 'bold',
+    color: '#333',
+    fontSize: 14,
+    marginRight: 4,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingVertical: 12,
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  tableRowSelected: {
+    backgroundColor: '#E3F2FD',
+  },
+  tableCell: {
+    fontSize: 14,
+    color: '#333',
+    paddingHorizontal: 10,
+  },
+  cellInvoiceNumber: {
+    width: 120,
+  },
+  cellDate: {
+    width: 100,
+  },
+  cellSupplier: {
+    flex: 2,
+  },
+  cellAmount: {
+    width: 100,
+    textAlign: 'right',
   },
   emptyContainer: {
     flex: 1,

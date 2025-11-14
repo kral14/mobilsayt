@@ -63,6 +63,66 @@ export const purchaseService = {
     }
   },
 
+  async getInvoice(invoiceId) {
+    try {
+      logger.debug('getInvoice (purchase): Başladı', { invoiceId });
+      const token = await this.getToken();
+      
+      const response = await fetch(`${API_URL}/purchases/invoices/${invoiceId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      logger.debug('getInvoice (purchase): Response status', response.status);
+      const data = await response.json();
+      logger.debug('getInvoice (purchase): Response data', data);
+
+      if (response.ok) {
+        logger.success('getInvoice (purchase): Uğurlu', { invoiceId });
+        return { success: true, data: data };
+      } else {
+        logger.error('getInvoice (purchase): Xəta', data.message);
+        return { success: false, error: data.message || 'Qaimə tapılmadı' };
+      }
+    } catch (error) {
+      logger.error('getInvoice (purchase): Exception', error);
+      return { success: false, error: 'Bağlantı xətası' };
+    }
+  },
+
+  async deleteInvoice(invoiceId) {
+    try {
+      logger.debug('deleteInvoice (purchase): Başladı', { invoiceId });
+      const token = await this.getToken();
+      
+      const response = await fetch(`${API_URL}/purchases/invoices/${invoiceId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      logger.debug('deleteInvoice (purchase): Response status', response.status);
+      const data = await response.json();
+      logger.debug('deleteInvoice (purchase): Response data', data);
+
+      if (response.ok) {
+        logger.success('deleteInvoice (purchase): Uğurlu', { invoiceId });
+        return { success: true, data: data };
+      } else {
+        logger.error('deleteInvoice (purchase): Xəta', data.message);
+        return { success: false, error: data.message || 'Qaimə silinə bilmədi' };
+      }
+    } catch (error) {
+      logger.error('deleteInvoice (purchase): Exception', error);
+      return { success: false, error: 'Bağlantı xətası' };
+    }
+  },
+
   async getToken() {
     try {
       const { authService } = await import('./authService');

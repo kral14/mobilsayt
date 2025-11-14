@@ -13,24 +13,43 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { productService } from '../../services/productService';
 import { logger } from '../../utils/logger';
+import BarcodeScanner from '../../components/BarcodeScanner';
 
-export default function ProductRegistrationScreen({ navigation }) {
+export default function ProductRegistrationScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const isEdit = route?.params?.isEdit || false;
+  const productData = route?.params?.product || null;
+  
   const [formData, setFormData] = useState({
-    name: '',
-    barcode: '',
-    description: '',
-    unit: 'ədəd',
-    purchase_price: '',
-    sale_price: '',
+    name: productData?.name || '',
+    barcode: productData?.barcode || '',
+    description: productData?.description || '',
+    unit: productData?.unit || 'ədəd',
+    purchase_price: productData?.purchase_price?.toString() || '',
+    sale_price: productData?.sale_price?.toString() || '',
   });
 
   useEffect(() => {
-    logger.info('ProductRegistrationScreen: Komponent mount olundu');
+    logger.info('ProductRegistrationScreen: Komponent mount olundu', { isEdit, hasProduct: !!productData });
     return () => {
       logger.info('ProductRegistrationScreen: Komponent unmount olundu');
     };
   }, []);
+
+  useEffect(() => {
+    // Route params dəyişdikdə form-u yenilə
+    if (productData) {
+      setFormData({
+        name: productData.name || '',
+        barcode: productData.barcode || '',
+        description: productData.description || '',
+        unit: productData.unit || 'ədəd',
+        purchase_price: productData.purchase_price?.toString() || '',
+        sale_price: productData.sale_price?.toString() || '',
+      });
+    }
+  }, [productData]);
 
   const handleSubmit = async () => {
     logger.debug('handleSubmit: Başladı', { productName: formData.name });
@@ -42,25 +61,28 @@ export default function ProductRegistrationScreen({ navigation }) {
     }
 
     setLoading(true);
-    logger.debug('handleSubmit: Loading başladı');
+    logger.debug('handleSubmit: Loading başladı', { isEdit });
     
     try {
-      const result = await productService.createProduct(formData);
-      logger.debug('handleSubmit: Nəticə', { success: result.success });
+      let result;
+      if (isEdit && productData?.id) {
+        // Redaktə rejimi
+        result = await productService.updateProduct(productData.id, formData);
+        logger.debug('handleSubmit: Update nəticəsi', { success: result.success });
+      } else {
+        // Yeni məhsul
+        result = await productService.createProduct(formData);
+        logger.debug('handleSubmit: Create nəticəsi', { success: result.success });
+      }
       
       if (result.success) {
-        logger.success('handleSubmit: Məhsul uğurla yaradıldı', { productName: formData.name });
-        Alert.alert('Uğurlu', 'Məhsul uğurla qeydiyyata alındı', [
+        const message = isEdit ? 'Məhsul uğurla yeniləndi' : 'Məhsul uğurla qeydiyyata alındı';
+        logger.success('handleSubmit: Uğurlu', { productName: formData.name, isEdit });
+        Alert.alert('Uğurlu', message, [
           { text: 'Tamam', onPress: () => {
-            logger.debug('handleSubmit: Form təmizlənir');
-            setFormData({
-              name: '',
-              barcode: '',
-              description: '',
-              unit: 'ədəd',
-              purchase_price: '',
-              sale_price: '',
-            });
+            logger.debug('handleSubmit: Anbar səhifəsinə qayıdılır');
+            // Anbar səhifəsinə qayıt
+            navigation.navigate('WarehouseScreen');
           }}
         ]);
       } else {
@@ -92,13 +114,21 @@ export default function ProductRegistrationScreen({ navigation }) {
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Barkod</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Barkod"
-              value={formData.barcode}
-              onChangeText={(text) => setFormData({ ...formData, barcode: text })}
-              keyboardType="numeric"
-            />
+            <View style={styles.barcodeContainer}>
+              <TextInput
+                style={[styles.input, styles.barcodeInput]}
+                placeholder="Barkod"
+                value={formData.barcode}
+                onChangeText={(text) => setFormData({ ...formData, barcode: text })}
+                keyboardType="numeric"
+              />
+              <TouchableOpacity
+                style={styles.scanButton}
+                onPress={() => setShowScanner(true)}
+              >
+                <Ionicons name="camera" size={24} color="#667eea" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.inputContainer}>
@@ -155,12 +185,25 @@ export default function ProductRegistrationScreen({ navigation }) {
             ) : (
               <>
                 <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                <Text style={styles.submitButtonText}>Qeydiyyata Al</Text>
+                <Text style={styles.submitButtonText}>
+                  {isEdit ? 'Yenilə' : 'Qeydiyyata Al'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Barkod Scanner Modal */}
+      <BarcodeScanner
+        visible={showScanner}
+        onScan={(barcode) => {
+          logger.debug('Barcode scanned:', barcode);
+          setFormData({ ...formData, barcode: barcode });
+          setShowScanner(false);
+        }}
+        onClose={() => setShowScanner(false)}
+      />
     </LinearGradient>
   );
 }
@@ -218,6 +261,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 8,
+  },
+  barcodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  barcodeInput: {
+    flex: 1,
+    marginRight: 10,
+  },
+  scanButton: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
 });
 

@@ -206,6 +206,21 @@ app.post('/api/auth/register', async (req, res) => {
 app.get('/api/products', authenticateToken, async (req, res) => {
   try {
     logger.debug('GET /api/products: Başladı');
+    
+    // Barkod ilə axtarış
+    const { barcode } = req.query;
+    if (barcode) {
+      logger.debug('GET /api/products: Barkod ilə axtarış', { barcode });
+      const result = await pool.query(
+        'SELECT * FROM products WHERE barcode = $1 ORDER BY created_at DESC',
+        [barcode]
+      );
+      logger.success('GET /api/products: Barkod ilə axtarış uğurlu', { count: result.rows.length });
+      res.json(result.rows);
+      return;
+    }
+    
+    // Bütün məhsullar
     const result = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
     logger.success('GET /api/products: Uğurlu', { count: result.rows.length });
     res.json(result.rows);
@@ -225,10 +240,31 @@ app.post('/api/products', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Məhsul adı tələb olunur' });
     }
 
+    // Barkod unikal yoxlaması
+    if (barcode) {
+      logger.debug('POST /api/products: Barkod unikal yoxlanılır', { barcode });
+      const existingProduct = await pool.query(
+        'SELECT id FROM products WHERE barcode = $1',
+        [barcode]
+      );
+      
+      if (existingProduct.rows.length > 0) {
+        logger.warn('POST /api/products: Bu barkod artıq mövcuddur', { barcode });
+        return res.status(400).json({ message: 'Bu barkod artıq qeydiyyatdan keçib. Zəhmət olmasa başqa barkod istifadə edin.' });
+      }
+    }
+
+    // Kodlanma: Barkodun axır 6 rəqəmi
+    let code = null;
+    if (barcode && barcode.length >= 6) {
+      code = barcode.slice(-6);
+      logger.debug('POST /api/products: Kodlanma yaradıldı', { code, barcode });
+    }
+
     const result = await pool.query(
-      `INSERT INTO products (name, barcode, description, unit, purchase_price, sale_price) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [name, barcode || null, description || null, unit || 'ədəd', purchase_price || 0, sale_price || 0]
+      `INSERT INTO products (name, barcode, code, description, unit, purchase_price, sale_price) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [name, barcode || null, code, description || null, unit || 'ədəd', purchase_price || 0, sale_price || 0]
     );
 
     // Initialize warehouse entry
@@ -241,6 +277,106 @@ app.post('/api/products', authenticateToken, async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     logger.error('POST /api/products: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
+// Update product endpoint
+app.put('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('PUT /api/products/:id: Başladı', { id: req.params.id, body: req.body });
+    const { id } = req.params;
+    const { name, barcode, description, unit, purchase_price, sale_price } = req.body;
+
+    if (!name) {
+      logger.warn('PUT /api/products/:id: Məhsul adı boşdur');
+      return res.status(400).json({ message: 'Məhsul adı tələb olunur' });
+    }
+
+    // Barkod unikal yoxlaması (özü istisna olmaqla)
+    if (barcode) {
+      logger.debug('PUT /api/products/:id: Barkod unikal yoxlanılır', { barcode, id });
+      const existingProduct = await pool.query(
+        'SELECT id FROM products WHERE barcode = $1 AND id != $2',
+        [barcode, id]
+      );
+      
+      if (existingProduct.rows.length > 0) {
+        logger.warn('PUT /api/products/:id: Bu barkod artıq mövcuddur', { barcode });
+        return res.status(400).json({ message: 'Bu barkod artıq başqa məhsulda istifadə olunur. Zəhmət olmasa başqa barkod istifadə edin.' });
+      }
+    }
+
+    // Kodlanma: Barkodun axır 6 rəqəmi
+    let code = null;
+    if (barcode && barcode.length >= 6) {
+      code = barcode.slice(-6);
+      logger.debug('PUT /api/products/:id: Kodlanma yeniləndi', { code, barcode });
+    }
+
+    const result = await pool.query(
+      `UPDATE products 
+       SET name = $1, barcode = $2, code = $3, description = $4, unit = $5, purchase_price = $6, sale_price = $7, updated_at = NOW()
+       WHERE id = $8 
+       RETURNING *`,
+      [name, barcode || null, code, description || null, unit || 'ədəd', purchase_price || 0, sale_price || 0, id]
+    );
+
+    if (result.rows.length === 0) {
+      logger.warn('PUT /api/products/:id: Məhsul tapılmadı', { id });
+      return res.status(404).json({ message: 'Məhsul tapılmadı' });
+    }
+
+    logger.success('PUT /api/products/:id: Uğurlu', { productId: id });
+    res.json(result.rows[0]);
+  } catch (error) {
+    logger.error('PUT /api/products/:id: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
+// Delete product endpoint
+app.delete('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('DELETE /api/products/:id: Başladı', { id: req.params.id });
+    const { id } = req.params;
+
+    // Öncə warehouse-dən sil
+    await pool.query('DELETE FROM warehouse WHERE product_id = $1', [id]);
+
+    // Sonra product-u sil
+    const result = await pool.query('DELETE FROM products WHERE id = $1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      logger.warn('DELETE /api/products/:id: Məhsul tapılmadı', { id });
+      return res.status(404).json({ message: 'Məhsul tapılmadı' });
+    }
+
+    logger.success('DELETE /api/products/:id: Uğurlu', { productId: id });
+    res.json({ success: true, message: 'Məhsul uğurla silindi' });
+  } catch (error) {
+    logger.error('DELETE /api/products/:id: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
+// Get single product endpoint
+app.get('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('GET /api/products/:id: Başladı', { id: req.params.id });
+    const { id } = req.params;
+
+    const result = await pool.query('SELECT * FROM products WHERE id = $1', [id]);
+
+    if (result.rows.length === 0) {
+      logger.warn('GET /api/products/:id: Məhsul tapılmadı', { id });
+      return res.status(404).json({ message: 'Məhsul tapılmadı' });
+    }
+
+    logger.success('GET /api/products/:id: Uğurlu', { productId: id });
+    res.json(result.rows[0]);
+  } catch (error) {
+    logger.error('GET /api/products/:id: Exception', error);
     res.status(500).json({ message: 'Server xətası' });
   }
 });
@@ -401,6 +537,97 @@ app.get('/api/purchases/invoices', authenticateToken, async (req, res) => {
   }
 });
 
+// Get single purchase invoice with items
+app.get('/api/purchases/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('GET /api/purchases/invoices/:id: Başladı', { id: req.params.id });
+    const { id } = req.params;
+
+    // Get invoice
+    const invoiceResult = await pool.query(
+      `SELECT pi.*, s.name as supplier_name 
+       FROM purchase_invoices pi 
+       LEFT JOIN suppliers s ON pi.supplier_id = s.id 
+       WHERE pi.id = $1`,
+      [id]
+    );
+
+    if (invoiceResult.rows.length === 0) {
+      logger.warn('GET /api/purchases/invoices/:id: Qaimə tapılmadı', { id });
+      return res.status(404).json({ message: 'Qaimə tapılmadı' });
+    }
+
+    // Get items
+    const itemsResult = await pool.query(
+      `SELECT pii.*, p.name as product_name 
+       FROM purchase_invoice_items pii 
+       LEFT JOIN products p ON pii.product_id = p.id 
+       WHERE pii.invoice_id = $1`,
+      [id]
+    );
+
+    const invoice = invoiceResult.rows[0];
+    invoice.items = itemsResult.rows;
+
+    logger.success('GET /api/purchases/invoices/:id: Uğurlu', { invoiceId: id });
+    res.json(invoice);
+  } catch (error) {
+    logger.error('GET /api/purchases/invoices/:id: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
+// Delete purchase invoice
+app.delete('/api/purchases/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('DELETE /api/purchases/invoices/:id: Başladı', { id: req.params.id });
+    const { id } = req.params;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get items to reverse warehouse changes
+      const itemsResult = await client.query(
+        'SELECT product_id, quantity FROM purchase_invoice_items WHERE invoice_id = $1',
+        [id]
+      );
+
+      // Reverse warehouse changes
+      for (const item of itemsResult.rows) {
+        await client.query(
+          'UPDATE warehouse SET quantity = quantity - $1, updated_at = CURRENT_TIMESTAMP WHERE product_id = $2',
+          [item.quantity, item.product_id]
+        );
+      }
+
+      // Delete items
+      await client.query('DELETE FROM purchase_invoice_items WHERE invoice_id = $1', [id]);
+
+      // Delete invoice
+      const result = await client.query('DELETE FROM purchase_invoices WHERE id = $1 RETURNING *', [id]);
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        logger.warn('DELETE /api/purchases/invoices/:id: Qaimə tapılmadı', { id });
+        return res.status(404).json({ message: 'Qaimə tapılmadı' });
+      }
+
+      await client.query('COMMIT');
+      logger.success('DELETE /api/purchases/invoices/:id: Uğurlu', { invoiceId: id });
+      res.json({ success: true, message: 'Qaimə uğurla silindi' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('DELETE /api/purchases/invoices/:id: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
 // Sales endpoints
 app.post('/api/sales', authenticateToken, async (req, res) => {
   try {
@@ -483,12 +710,129 @@ app.get('/api/sales/invoices', authenticateToken, async (req, res) => {
   }
 });
 
+// Get single sale invoice with items
+app.get('/api/sales/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('GET /api/sales/invoices/:id: Başladı', { id: req.params.id });
+    const { id } = req.params;
+
+    // Get invoice
+    const invoiceResult = await pool.query(
+      `SELECT si.*, c.name as customer_name 
+       FROM sale_invoices si 
+       LEFT JOIN customers c ON si.customer_id = c.id 
+       WHERE si.id = $1`,
+      [id]
+    );
+
+    if (invoiceResult.rows.length === 0) {
+      logger.warn('GET /api/sales/invoices/:id: Qaimə tapılmadı', { id });
+      return res.status(404).json({ message: 'Qaimə tapılmadı' });
+    }
+
+    // Get items
+    const itemsResult = await pool.query(
+      `SELECT sii.*, p.name as product_name 
+       FROM sale_invoice_items sii 
+       LEFT JOIN products p ON sii.product_id = p.id 
+       WHERE sii.invoice_id = $1`,
+      [id]
+    );
+
+    const invoice = invoiceResult.rows[0];
+    invoice.items = itemsResult.rows;
+
+    logger.success('GET /api/sales/invoices/:id: Uğurlu', { invoiceId: id });
+    res.json(invoice);
+  } catch (error) {
+    logger.error('GET /api/sales/invoices/:id: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
+// Delete sale invoice
+app.delete('/api/sales/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    logger.debug('DELETE /api/sales/invoices/:id: Başladı', { id: req.params.id });
+    const { id } = req.params;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get items to reverse warehouse changes
+      const itemsResult = await client.query(
+        'SELECT product_id, quantity FROM sale_invoice_items WHERE invoice_id = $1',
+        [id]
+      );
+
+      // Reverse warehouse changes (add back to warehouse)
+      for (const item of itemsResult.rows) {
+        await client.query(
+          'UPDATE warehouse SET quantity = quantity + $1, updated_at = CURRENT_TIMESTAMP WHERE product_id = $2',
+          [item.quantity, item.product_id]
+        );
+      }
+
+      // Delete items
+      await client.query('DELETE FROM sale_invoice_items WHERE invoice_id = $1', [id]);
+
+      // Delete invoice
+      const result = await client.query('DELETE FROM sale_invoices WHERE id = $1 RETURNING *', [id]);
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        logger.warn('DELETE /api/sales/invoices/:id: Qaimə tapılmadı', { id });
+        return res.status(404).json({ message: 'Qaimə tapılmadı' });
+      }
+
+      await client.query('COMMIT');
+      logger.success('DELETE /api/sales/invoices/:id: Uğurlu', { invoiceId: id });
+      res.json({ success: true, message: 'Qaimə uğurla silindi' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('DELETE /api/sales/invoices/:id: Exception', error);
+    res.status(500).json({ message: 'Server xətası' });
+  }
+});
+
 // Warehouse endpoint
 app.get('/api/warehouse', authenticateToken, async (req, res) => {
   try {
     logger.debug('GET /api/warehouse: Başladı');
     const result = await pool.query(
-      `SELECT w.*, p.name as product_name, p.unit 
+      `SELECT 
+        w.*, 
+        p.name as product_name, 
+        p.unit,
+        p.barcode,
+        p.code,
+        p.purchase_price,
+        p.sale_price,
+        COALESCE(
+          (SELECT s.name 
+           FROM purchase_invoice_items pii
+           JOIN purchase_invoices pi ON pii.invoice_id = pi.id
+           JOIN suppliers s ON pi.supplier_id = s.id
+           WHERE pii.product_id = p.id
+           ORDER BY pi.invoice_date DESC
+           LIMIT 1),
+          'Məlumat yoxdur'
+        ) as last_supplier_name,
+        COALESCE(
+          (SELECT pii.unit_price
+           FROM purchase_invoice_items pii
+           JOIN purchase_invoices pi ON pii.invoice_id = pi.id
+           WHERE pii.product_id = p.id
+           ORDER BY pi.invoice_date DESC
+           LIMIT 1),
+          p.purchase_price
+        ) as last_purchase_price
        FROM warehouse w 
        LEFT JOIN products p ON w.product_id = p.id 
        ORDER BY p.name`

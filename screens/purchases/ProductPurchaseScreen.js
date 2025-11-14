@@ -15,19 +15,73 @@ import { Ionicons } from '@expo/vector-icons';
 import { purchaseService } from '../../services/purchaseService';
 import { productService } from '../../services/productService';
 import { supplierService } from '../../services/supplierService';
+import BarcodeScanner from '../../components/BarcodeScanner';
+import { logger } from '../../utils/logger';
 
-export default function ProductPurchaseScreen({ navigation }) {
+export default function ProductPurchaseScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  
+  // Satıcı axtarışı
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
+  const [filteredSuppliers, setFilteredSuppliers] = useState([]);
+  const [showSupplierList, setShowSupplierList] = useState(false);
+  
+  // Məhsul axtarışı
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [showProductList, setShowProductList] = useState(false);
 
   useEffect(() => {
     loadData();
     generateInvoiceNumber();
   }, []);
+  
+  useEffect(() => {
+    // Route params-dan seçilmiş satıcı və məhsul gələ bilər
+    if (route?.params?.selectedSupplier) {
+      setSelectedSupplier(route.params.selectedSupplier);
+      setSupplierSearchQuery(route.params.selectedSupplier.name);
+    }
+    if (route?.params?.selectedProduct) {
+      addToCart(route.params.selectedProduct);
+    }
+  }, [route?.params]);
+  
+  useEffect(() => {
+    // Satıcı axtarışı
+    if (supplierSearchQuery.trim()) {
+      const filtered = suppliers.filter(supplier => 
+        supplier.name?.toLowerCase().includes(supplierSearchQuery.toLowerCase())
+      );
+      setFilteredSuppliers(filtered);
+      setShowSupplierList(true);
+    } else {
+      setFilteredSuppliers([]);
+      setShowSupplierList(false);
+    }
+  }, [supplierSearchQuery, suppliers]);
+  
+  useEffect(() => {
+    // Məhsul axtarışı
+    if (productSearchQuery.trim()) {
+      const filtered = products.filter(product => 
+        product.name?.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+        product.code?.includes(productSearchQuery) ||
+        product.barcode?.includes(productSearchQuery)
+      );
+      setFilteredProducts(filtered);
+      setShowProductList(true);
+    } else {
+      setFilteredProducts([]);
+      setShowProductList(false);
+    }
+  }, [productSearchQuery, products]);
 
   const loadData = async () => {
     try {
@@ -35,11 +89,28 @@ export default function ProductPurchaseScreen({ navigation }) {
         productService.getProducts(),
         supplierService.getSuppliers(),
       ]);
-      if (productsRes.success) setProducts(productsRes.data);
-      if (suppliersRes.success) setSuppliers(suppliersRes.data);
+      if (productsRes.success) {
+        setProducts(productsRes.data);
+      }
+      if (suppliersRes.success) {
+        setSuppliers(suppliersRes.data);
+      }
     } catch (error) {
+      logger.error('loadData: Exception', error);
       console.error('Error loading data:', error);
     }
+  };
+  
+  const handleSupplierSelect = (supplier) => {
+    setSelectedSupplier(supplier);
+    setSupplierSearchQuery(supplier.name);
+    setShowSupplierList(false);
+  };
+  
+  const handleProductSelect = (product) => {
+    addToCart(product);
+    setProductSearchQuery('');
+    setShowProductList(false);
   };
 
   const generateInvoiceNumber = () => {
@@ -51,18 +122,25 @@ export default function ProductPurchaseScreen({ navigation }) {
   const addToCart = (product) => {
     const existingItem = cartItems.find(item => item.product_id === product.id);
     if (existingItem) {
-      setCartItems(cartItems.map(item =>
-        item.product_id === product.id
-          ? { ...item, quantity: parseFloat(item.quantity) + 1 }
-          : item
-      ));
+      setCartItems(cartItems.map(item => {
+        if (item.product_id === product.id) {
+          const newQuantity = parseFloat(item.quantity || 0) + 1;
+          return {
+            ...item,
+            quantity: newQuantity,
+            total_price: newQuantity * parseFloat(item.unit_price || 0),
+          };
+        }
+        return item;
+      }));
     } else {
+      const unitPrice = parseFloat(product.purchase_price || 0);
       setCartItems([...cartItems, {
         product_id: product.id,
         product_name: product.name,
         quantity: 1,
-        unit_price: product.purchase_price || 0,
-        total_price: product.purchase_price || 0,
+        unit_price: unitPrice,
+        total_price: unitPrice,
       }]);
     }
   };
@@ -110,9 +188,8 @@ export default function ProductPurchaseScreen({ navigation }) {
       if (result.success) {
         Alert.alert('Uğurlu', 'Alış qaiməsi yaradıldı', [
           { text: 'Tamam', onPress: () => {
-            setCartItems([]);
-            setSelectedSupplier(null);
-            generateInvoiceNumber();
+            // Alış qaimələri səhifəsinə qayıt
+            navigation.navigate('PurchaseInvoices');
           }}
         ]);
       } else {
@@ -141,39 +218,136 @@ export default function ProductPurchaseScreen({ navigation }) {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Satıcı Seçin</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {suppliers.map((supplier) => (
-                <TouchableOpacity
-                  key={supplier.id}
-                  style={[
-                    styles.supplierCard,
-                    selectedSupplier?.id === supplier.id && styles.supplierCardSelected
-                  ]}
-                  onPress={() => setSelectedSupplier(supplier)}
-                >
-                  <Text style={styles.supplierName}>{supplier.name}</Text>
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Satıcı adı yazın..."
+                placeholderTextColor="#999"
+                value={supplierSearchQuery}
+                onChangeText={setSupplierSearchQuery}
+                onFocus={() => {
+                  if (supplierSearchQuery.trim()) {
+                    setShowSupplierList(true);
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={styles.folderButton}
+                onPress={() => {
+                  navigation.navigate('SupplierScreen', {
+                    onSelect: (supplier) => {
+                      handleSupplierSelect(supplier);
+                      navigation.goBack();
+                    }
+                  });
+                }}
+              >
+                <Ionicons name="folder-outline" size={24} color="#667eea" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Satıcı listi */}
+            {showSupplierList && filteredSuppliers.length > 0 && (
+              <View style={styles.dropdownList}>
+                {filteredSuppliers.map((supplier) => (
+                  <TouchableOpacity
+                    key={supplier.id}
+                    style={[
+                      styles.dropdownItem,
+                      selectedSupplier?.id === supplier.id && styles.dropdownItemSelected
+                    ]}
+                    onPress={() => handleSupplierSelect(supplier)}
+                  >
+                    <Text style={styles.dropdownItemText}>{supplier.name}</Text>
+                    {selectedSupplier?.id === supplier.id && (
+                      <Ionicons name="checkmark" size={20} color="#667eea" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            
+            {selectedSupplier && (
+              <View style={styles.selectedItem}>
+                <Text style={styles.selectedItemText}>Seçilmiş: {selectedSupplier.name}</Text>
+                <TouchableOpacity onPress={() => {
+                  setSelectedSupplier(null);
+                  setSupplierSearchQuery('');
+                }}>
+                  <Ionicons name="close-circle" size={20} color="#666" />
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            )}
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Məhsul Seçin</Text>
-            <FlatList
-              data={products}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.productCard}
-                  onPress={() => addToCart(item)}
-                >
-                  <Text style={styles.productName}>{item.name}</Text>
-                  <Text style={styles.productPrice}>{item.purchase_price || 0} AZN</Text>
-                  <Ionicons name="add-circle" size={24} color="#2196F3" />
-                </TouchableOpacity>
-              )}
-              scrollEnabled={false}
-            />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Məhsul Seçin</Text>
+              <TouchableOpacity
+                style={styles.scanButton}
+                onPress={() => setShowScanner(true)}
+              >
+                <Ionicons name="camera" size={24} color="#2196F3" />
+                <Text style={styles.scanButtonText}>Barkod Skan</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Məhsul adı, kodu və ya barkodu yazın..."
+                placeholderTextColor="#999"
+                value={productSearchQuery}
+                onChangeText={setProductSearchQuery}
+                onFocus={() => {
+                  if (productSearchQuery.trim()) {
+                    setShowProductList(true);
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={styles.folderButton}
+                onPress={() => {
+                  navigation.navigate('WarehouseMain', {
+                    onSelect: (product) => {
+                      handleProductSelect(product);
+                      navigation.goBack();
+                    }
+                  });
+                }}
+              >
+                <Ionicons name="folder-outline" size={24} color="#667eea" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Məhsul listi */}
+            {showProductList && filteredProducts.length > 0 && (
+              <View style={styles.dropdownList}>
+                {filteredProducts.map((product) => (
+                  <TouchableOpacity
+                    key={product.id}
+                    style={styles.dropdownItem}
+                    onPress={() => handleProductSelect(product)}
+                  >
+                    <View style={styles.productDropdownInfo}>
+                      <Text style={styles.productDropdownName}>{product.name}</Text>
+                      <View style={styles.productDropdownMeta}>
+                        {product.code && (
+                          <Text style={styles.productDropdownMetaText}>Kod: {product.code}</Text>
+                        )}
+                        {product.barcode && (
+                          <Text style={styles.productDropdownMetaText}>Barkod: {product.barcode}</Text>
+                        )}
+                        <Text style={styles.productDropdownPrice}>
+                          {parseFloat(product.purchase_price || 0).toFixed(2)} AZN
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons name="add-circle" size={24} color="#2196F3" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
 
           <View style={styles.section}>
@@ -196,7 +370,7 @@ export default function ProductPurchaseScreen({ navigation }) {
                       onChangeText={(text) => updateCartItem(item.product_id, 'unit_price', text)}
                       keyboardType="decimal-pad"
                     />
-                    <Text style={styles.cartItemTotal}>{item.total_price.toFixed(2)} AZN</Text>
+                    <Text style={styles.cartItemTotal}>{(item.total_price || 0).toFixed(2)} AZN</Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={() => removeFromCart(item.product_id)}>
@@ -227,6 +401,25 @@ export default function ProductPurchaseScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Barkod Scanner Modal */}
+      <BarcodeScanner
+        visible={showScanner}
+        onScan={async (barcode) => {
+          logger.debug('Barcode scanned in Purchase:', barcode);
+          setShowScanner(false);
+          
+          // Barkod ilə məhsul tap
+          const result = await productService.getProductByBarcode(barcode);
+          if (result.success && result.data) {
+            addToCart(result.data);
+            Alert.alert('Uğurlu', `Məhsul tapıldı: ${result.data.name}`);
+          } else {
+            Alert.alert('Xəta', result.error || 'Bu barkod ilə məhsul tapılmadı');
+          }
+        }}
+        onClose={() => setShowScanner(false)}
+      />
     </LinearGradient>
   );
 }
@@ -247,11 +440,30 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 10,
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  scanButtonText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: '#2196F3',
+    fontWeight: '600',
   },
   input: {
     borderWidth: 1,
@@ -261,20 +473,90 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#f9f9f9',
   },
-  supplierCard: {
-    backgroundColor: '#f0f0f0',
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
+    fontSize: 16,
+    backgroundColor: '#f9f9f9',
     marginRight: 10,
-    minWidth: 100,
   },
-  supplierCardSelected: {
-    backgroundColor: '#2196F3',
+  folderButton: {
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
-  supplierName: {
-    fontSize: 14,
+  dropdownList: {
+    marginTop: 10,
+    maxHeight: 200,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#E3F2FD',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+  },
+  selectedItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2196F3',
+  },
+  productDropdownInfo: {
+    flex: 1,
+  },
+  productDropdownName: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
+    marginBottom: 4,
+  },
+  productDropdownMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  productDropdownMetaText: {
+    fontSize: 12,
+    color: '#666',
+    marginRight: 10,
+  },
+  productDropdownPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginLeft: 'auto',
   },
   productCard: {
     flexDirection: 'row',

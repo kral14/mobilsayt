@@ -43,12 +43,15 @@ const getApiUrl = () => {
     return 'http://localhost:3000/api';
   }
   
+  // Development zamanı local backend istifadə et (tunnel mode-da işləyir)
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    // Development zamanı Expo host istifadə et
-    return getExpoHost();
+    // Tunnel mode-da local backend istifadə etmək üçün ngrok və ya local IP lazımdır
+    // Amma ən asan yol: Render API istifadə et (ilk request zamanı cold start olacaq)
+    // Və ya local backend işə salın və IP ünvanını daxil edin
+    return PRODUCTION_API_URL;
   }
   
-  // Production üçün Render URL
+  // Production üçün Render API
   return PRODUCTION_API_URL;
 };
 

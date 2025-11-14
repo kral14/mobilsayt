@@ -52,15 +52,12 @@ export default function HomeScreen({ navigation }) {
   };
 
   const menuItems = [
-    { id: 1, title: 'Mal Qeydiyyatı', icon: 'cube-outline', screen: 'ProductRegistration', color: '#4CAF50' },
-    { id: 2, title: 'Mal Alışı', icon: 'cart-outline', screen: 'ProductPurchase', color: '#2196F3' },
-    { id: 3, title: 'Müştəri Qeydiyyatı', icon: 'person-add-outline', screen: 'CustomerRegistration', color: '#FF9800' },
-    { id: 4, title: 'Mal Satışı', icon: 'cash-outline', screen: 'ProductSale', color: '#9C27B0' },
-    { id: 5, title: 'Müştəri Səhifəsi', icon: 'people-outline', screen: 'CustomerScreen', color: '#00BCD4' },
-    { id: 6, title: 'Satıcı Səhifəsi', icon: 'storefront-outline', screen: 'SupplierScreen', color: '#F44336' },
-    { id: 7, title: 'Anbar Səhifəsi', icon: 'archive-outline', screen: 'WarehouseScreen', color: '#795548' },
-    { id: 8, title: 'Alış Qaimələri', icon: 'receipt-outline', screen: 'PurchaseInvoices', color: '#3F51B5' },
-    { id: 9, title: 'Satış Qaimələri', icon: 'document-text-outline', screen: 'SaleInvoices', color: '#E91E63' },
+    { id: 1, title: 'Anbar Səhifəsi', icon: 'archive-outline', screen: 'WarehouseScreen', color: '#795548' },
+    { id: 2, title: 'Müştəri Qeydiyyatı', icon: 'person-add-outline', screen: 'CustomerRegistration', color: '#FF9800' },
+    { id: 3, title: 'Müştəri Səhifəsi', icon: 'people-outline', screen: 'CustomerScreen', color: '#00BCD4' },
+    { id: 4, title: 'Satıcı Səhifəsi', icon: 'storefront-outline', screen: 'SupplierScreen', color: '#F44336' },
+    { id: 5, title: 'Alış Qaimələri', icon: 'receipt-outline', screen: 'PurchaseInvoices', color: '#3F51B5' },
+    { id: 6, title: 'Satış Qaimələri', icon: 'document-text-outline', screen: 'SaleInvoices', color: '#E91E63' },
   ];
 
   return (

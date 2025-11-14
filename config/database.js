@@ -52,6 +52,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         barcode VARCHAR(100),
+        code VARCHAR(20),
         description TEXT,
         unit VARCHAR(50) DEFAULT 'ədəd',
         purchase_price DECIMAL(10, 2) DEFAULT 0,
@@ -59,6 +60,17 @@ const initializeDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // Add code column if it doesn't exist (for existing databases)
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name='products' AND column_name='code') THEN
+          ALTER TABLE products ADD COLUMN code VARCHAR(20);
+        END IF;
+      END $$;
     `);
 
     // Customers (Müştərilər)

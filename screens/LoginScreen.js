@@ -11,20 +11,43 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/authService';
 import { logger } from '../utils/logger';
+import * as SecureStore from 'expo-secure-store';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   useEffect(() => {
     logger.info('LoginScreen: Komponent mount olundu');
+    
+    // Saxlanılmış email və remember me statusunu yüklə
+    loadSavedCredentials();
+    
     return () => {
       logger.info('LoginScreen: Komponent unmount olundu');
     };
   }, []);
+
+  const loadSavedCredentials = async () => {
+    try {
+      logger.debug('loadSavedCredentials: Başladı');
+      const savedEmail = await SecureStore.getItemAsync('savedEmail');
+      const rememberMeStatus = await SecureStore.getItemAsync('rememberMe');
+      
+      if (savedEmail && rememberMeStatus === 'true') {
+        setEmail(savedEmail);
+        setRememberMe(true);
+        logger.debug('loadSavedCredentials: Saxlanılmış məlumatlar yükləndi', { email: savedEmail });
+      }
+    } catch (error) {
+      logger.error('loadSavedCredentials: Exception', error);
+    }
+  };
 
   const handleLogin = async () => {
     logger.debug('handleLogin: Başladı', { email: email.substring(0, 3) + '***' });
@@ -58,6 +81,18 @@ export default function LoginScreen({ navigation }) {
       logger.debug('handleLogin: Login nəticəsi', { success: result.success });
 
       if (result.success) {
+        // Remember me seçildisə, email-i saxla
+        if (rememberMe) {
+          await SecureStore.setItemAsync('savedEmail', email);
+          await SecureStore.setItemAsync('rememberMe', 'true');
+          logger.debug('handleLogin: Email saxlanıldı (Remember Me)');
+        } else {
+          // Remember me seçilməyibsə, saxlanılmış məlumatları sil
+          await SecureStore.deleteItemAsync('savedEmail');
+          await SecureStore.deleteItemAsync('rememberMe');
+          logger.debug('handleLogin: Saxlanılmış məlumatlar silindi');
+        }
+        
         logger.success('handleLogin: Giriş uğurlu, Home səhifəsinə keçilir');
         navigation.replace('Home');
       } else {
@@ -114,12 +149,26 @@ export default function LoginScreen({ navigation }) {
               />
             </View>
 
-            <TouchableOpacity
-              style={styles.forgotPasswordButton}
-              onPress={() => navigation.navigate('ForgotPassword')}
-            >
-              <Text style={styles.forgotPasswordText}>Şifrəni unutdum?</Text>
-            </TouchableOpacity>
+            <View style={styles.rememberMeContainer}>
+              <TouchableOpacity
+                style={styles.rememberMeCheckbox}
+                onPress={() => setRememberMe(!rememberMe)}
+              >
+                <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                  {rememberMe && (
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                  )}
+                </View>
+                <Text style={styles.rememberMeText}>Məni xatırla</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={() => navigation.navigate('ForgotPassword')}
+              >
+                <Text style={styles.forgotPasswordText}>Şifrəni unutdum?</Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -131,6 +180,15 @@ export default function LoginScreen({ navigation }) {
               ) : (
                 <Text style={styles.loginButtonText}>Daxil Ol</Text>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.registerLink}
+              onPress={() => navigation.navigate('Register')}
+            >
+              <Text style={styles.registerLinkText}>
+                Hesabınız yoxdur? <Text style={styles.registerLinkBold}>Qeydiyyatdan Keçin</Text>
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -184,9 +242,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  rememberMeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  rememberMeCheckbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#fff',
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  checkboxChecked: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  rememberMeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   forgotPasswordButton: {
     alignSelf: 'flex-end',
-    marginBottom: 30,
   },
   forgotPasswordText: {
     color: '#fff',
@@ -215,6 +302,18 @@ const styles = StyleSheet.create({
     color: '#667eea',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  registerLink: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  registerLinkText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  registerLinkBold: {
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
   },
 });
 
