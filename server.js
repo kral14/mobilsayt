@@ -855,6 +855,177 @@ app.use('/.well-known', (req, res) => {
   res.status(204).end(); // No Content - Chrome extension request-ləri üçün
 });
 
+// QR kod səhifəsi
+app.get('/qr', (req, res) => {
+  // Expo tunnel URL-ini query parameter-dan al və ya default istifadə et
+  const expoUrl = req.query.url || process.env.EXPO_URL || 'exp://192.168.1.1:8081';
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="az">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Expo Go QR Kod</title>
+      <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 20px;
+        }
+        .container {
+          background: white;
+          border-radius: 20px;
+          padding: 40px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          text-align: center;
+          max-width: 500px;
+          width: 100%;
+        }
+        h1 {
+          color: #333;
+          margin-bottom: 10px;
+          font-size: 28px;
+        }
+        .subtitle {
+          color: #666;
+          margin-bottom: 30px;
+          font-size: 16px;
+        }
+        #qrcode {
+          display: inline-block;
+          padding: 20px;
+          background: white;
+          border-radius: 10px;
+          margin: 20px 0;
+        }
+        .url-display {
+          background: #f5f5f5;
+          padding: 15px;
+          border-radius: 10px;
+          margin: 20px 0;
+          word-break: break-all;
+          font-family: monospace;
+          font-size: 14px;
+          color: #333;
+        }
+        .instructions {
+          margin-top: 30px;
+          text-align: left;
+          color: #666;
+        }
+        .instructions h3 {
+          color: #333;
+          margin-bottom: 10px;
+        }
+        .instructions ol {
+          margin-left: 20px;
+          line-height: 1.8;
+        }
+        .refresh-btn {
+          background: #667eea;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          border-radius: 8px;
+          font-size: 16px;
+          cursor: pointer;
+          margin-top: 20px;
+          transition: background 0.3s;
+        }
+        .refresh-btn:hover {
+          background: #5568d3;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>📱 Expo Go QR Kod</h1>
+        <p class="subtitle">Telefonunuzla QR kodu skan edin</p>
+        <div id="qrcode"></div>
+        <div class="url-display" id="urlDisplay">${expoUrl}</div>
+        <div style="margin: 20px 0;">
+          <input type="text" id="urlInput" placeholder="Expo URL daxil edin (exp://...)" 
+                 style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;"
+                 value="${expoUrl}">
+          <button class="refresh-btn" onclick="updateQR()" style="margin-top: 10px; width: 100%;">QR Kodu Yenilə</button>
+        </div>
+        <button class="refresh-btn" onclick="location.reload()">🔄 Səhifəni Yenilə</button>
+        <div class="instructions">
+          <h3>📋 Təlimatlar:</h3>
+          <ol>
+            <li>Telefonunuzda Expo Go tətbiqini açın</li>
+            <li>QR kodu skan edin</li>
+            <li>Tətbiq avtomatik yüklənəcək</li>
+          </ol>
+        </div>
+      </div>
+      <script>
+        let currentExpoUrl = '${expoUrl}';
+        
+        function generateQR(url) {
+          const qrContainer = document.getElementById('qrcode');
+          qrContainer.innerHTML = ''; // Təmizlə
+          
+          QRCode.toCanvas(qrContainer, url, {
+            width: 300,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          }, function (error) {
+            if (error) {
+              console.error(error);
+              qrContainer.innerHTML = '<p style="color: red;">QR kod yaradıla bilmədi</p>';
+            } else {
+              document.getElementById('urlDisplay').textContent = url;
+              currentExpoUrl = url;
+            }
+          });
+        }
+        
+        function updateQR() {
+          const urlInput = document.getElementById('urlInput');
+          const newUrl = urlInput.value.trim();
+          if (newUrl) {
+            generateQR(newUrl);
+            // URL-i query parameter kimi yenilə
+            window.history.replaceState({}, '', '/qr?url=' + encodeURIComponent(newUrl));
+          }
+        }
+        
+        // İlk QR kod yarat
+        generateQR(currentExpoUrl);
+        
+        // Enter düyməsi ilə QR yenilə
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            updateQR();
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// Expo URL endpoint (Expo server-dən URL alır)
+app.get('/api/expo-url', (req, res) => {
+  // Expo tunnel URL-ini al (environment variable-dan və ya default)
+  const expoUrl = process.env.EXPO_URL || `exp://${LOCAL_IP || '192.168.1.1'}:8081`;
+  res.json({ url: expoUrl });
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -867,7 +1038,8 @@ app.get('/', (req, res) => {
       suppliers: '/api/suppliers',
       purchases: '/api/purchases',
       sales: '/api/sales',
-      warehouse: '/api/warehouse'
+      warehouse: '/api/warehouse',
+      qr: '/qr - QR kod səhifəsi'
     },
     docs: 'Backend API server is running. Use the endpoints above.'
   });

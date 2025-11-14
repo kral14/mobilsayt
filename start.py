@@ -242,22 +242,22 @@ def start_backend():
         return None
 
 def start_mobile():
-    """Mobil tətbiqi işə sal"""
+    """Mobil tətbiqi işə sal (tunnel mode)"""
     print_colored("\n" + "="*60, Colors.GREEN)
-    print_colored("📱 MOBİL TƏTBİQİ İŞƏ SALINIR...", Colors.BOLD + Colors.GREEN)
+    print_colored("📱 MOBİL TƏTBİQİ İŞƏ SALINIR (TUNNEL MODE)...", Colors.BOLD + Colors.GREEN)
     print_colored("="*60, Colors.GREEN)
     
     try:
         # Windows və digər OS üçün
         if sys.platform == 'win32':
-            # Ayrı pəncərədə aç
+            # Tunnel mode-da aç
             process = subprocess.Popen(
-                ['cmd', '/c', 'start', 'cmd', '/k', 'npm', 'start'],
+                ['cmd', '/c', 'start', 'cmd', '/k', 'npm', 'run', 'start:tunnel'],
                 shell=False
             )
         else:
             process = subprocess.Popen(
-                ['npm', 'start'],
+                ['npm', 'run', 'start:tunnel'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -265,8 +265,9 @@ def start_mobile():
                 universal_newlines=True
             )
         
-        print_colored("Mobil tətbiq başladılır...", Colors.YELLOW)
+        print_colored("Mobil tətbiq tunnel mode-da başladılır...", Colors.YELLOW)
         print_colored("  (Ayrı pəncərədə açılacaq)", Colors.YELLOW)
+        print_colored("  📱 QR kod üçün: http://localhost:3000/qr", Colors.BLUE)
         return process
     except Exception as e:
         print_colored(f"✗ Mobil tətbiq işə salınarkən xəta: {e}", Colors.RED)
@@ -335,7 +336,8 @@ def main():
     print_colored("="*60, Colors.BOLD)
     print_colored("\n📝 Məlumat:", Colors.YELLOW)
     print_colored("  • Backend Server: http://localhost:3000", Colors.BLUE)
-    print_colored("  • Mobil Tətbiq: Expo DevTools açılacaq", Colors.BLUE)
+    print_colored("  • QR Kod Səhifəsi: http://localhost:3000/qr", Colors.BLUE)
+    print_colored("  • Mobil Tətbiq: Expo tunnel mode-da açılacaq", Colors.BLUE)
     print_colored("\n⚠️  QEYD:", Colors.YELLOW)
     print_colored("  • Prosesləri dayandırmaq üçün Ctrl+C basın", Colors.YELLOW)
     print_colored("  • Hər proses ayrı pəncərədə açılacaq (Windows)", Colors.YELLOW)
