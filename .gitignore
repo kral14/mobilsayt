@@ -1,0 +1,57 @@
+node_modules/
+.expo/
+.expo-shared/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+dist/
+.env
+.env.local
+
+# Təhlükəsizlik faylları
+email_config.json
+connection_settings.json
+*.pem
+*.pfx
+
+# Veritaban faylları
+*.db
+*.sqlite
+*.sqlite3
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Logs
+*.log
+logs/
+debug_logs/
+
+# OS
+Thumbs.db
+
+# Build faylları
+build/
+*.spec
+*.egg-info/

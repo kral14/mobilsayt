@@ -1,0 +1,10 @@
+// Manual API URL konfiqurasiyası
+// Bu faylı apiConfig.js kimi istifadə edin, əgər avtomatik IP tapma işləmirsə
+
+// IP ünvanınızı buraya daxil edin (ipconfig ilə tapın)
+const MANUAL_IP = '172.16.1.63'; // Sizin IP ünvanınızı daxil edin
+
+export const API_URL = `http://${MANUAL_IP}:3000/api`;
+
+console.log('[API Config] Manual IP istifadə olunur:', API_URL);
+
