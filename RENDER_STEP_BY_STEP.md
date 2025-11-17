@@ -36,7 +36,7 @@ postgresql://neondb_owner:npg_NVL31qxTnQrC@ep-wild-queen-adh4tc1u-pooler.c-2.us-
    - **Region**: İstədiyiniz region (məsələn: Frankfurt)
    - **Branch**: `main`
    - **Root Directory**: (boş buraxın)
-   - **Build Command**: `cd backend && npm install && npx prisma generate && npm run build`
+   - **Build Command**: `cd backend && npm install --include=dev && npx prisma generate && npm run build`
    - **Start Command**: `cd backend && npm start`
    - **Plan**: Free
 5. **"Advanced"** bölməsinə keçin:
