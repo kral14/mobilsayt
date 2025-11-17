@@ -1,0 +1,41 @@
+services:
+  # Backend API Service
+  - type: web
+    name: mobilsayt-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install && npx prisma generate && npm run build
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        sync: false  # Bu environment variable-ı Render dashboard-dan təyin etməlisiniz
+      - key: JWT_SECRET
+        sync: false  # Bu environment variable-ı Render dashboard-dan təyin etməlisiniz
+    healthCheckPath: /api/health
+
+  # Web Frontend (PC versiyası)
+  - type: web
+    name: mobilsayt-web
+    env: static
+    buildCommand: cd web && npm install && npm run build
+    staticPublishPath: web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # Mobil Frontend
+  - type: web
+    name: mobilsayt-mobil
+    env: static
+    buildCommand: cd mobil && npm install && npm run build
+    staticPublishPath: mobil/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
