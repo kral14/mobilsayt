@@ -36,16 +36,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const sidebarRef = useRef<HTMLDivElement>(null)
   const [isDesktop, setIsDesktop] = useState(false)
   
-  // Navbar gesture ayarları (yalnız oxumaq üçün)
-  const [topNavbarGestureEnabled] = useState(() => {
-    const saved = localStorage.getItem('topNavbarGestureEnabled')
-    return saved === 'true'
-  })
-  const [bottomNavbarGestureEnabled] = useState(() => {
-    const saved = localStorage.getItem('bottomNavbarGestureEnabled')
-    return saved === 'true'
-  })
-  
   // Navbar görünürlüyü (localStorage-dan oxu)
   const [topNavbarVisible, setTopNavbarVisible] = useState(() => {
     const saved = localStorage.getItem('topNavbarVisible')

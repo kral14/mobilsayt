@@ -63,7 +63,7 @@ export default function Alicilar() {
     return saved === 'true' ? true : false
   }) // Papka ağacının görünürlüyü
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; folderId: number | null } | null>(null) // Kontekst menyu
-  const [debugMode, setDebugMode] = useState(false) // Debug mode - border və ölçüləri göstərmək üçün
+  const [debugMode] = useState(false) // Debug mode - border və ölçüləri göstərmək üçün
   const [isMobile, setIsMobile] = useState(false) // Mobil cihaz yoxlaması
   
   // Navbar gesture ayarları
@@ -106,8 +106,8 @@ export default function Alicilar() {
   })
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
   const [resizingColumn, setResizingColumn] = useState<string | null>(null)
-  const [touchStartX, setTouchStartX] = useState<number | null>(null)
-  const [touchStartColumn, setTouchStartColumn] = useState<string | null>(null)
+  const [_touchStartX, setTouchStartX] = useState<number | null>(null)
+  const [_touchStartColumn, setTouchStartColumn] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const thRefs = useRef<Map<string, HTMLTableCellElement>>(new Map())
 
@@ -986,8 +986,8 @@ export default function Alicilar() {
         <>
           {folderTree.map(folder => {
             const folderCustomers = customers.filter(c => c.folder_id === folder.id)
-            const hasCustomers = folderCustomers.length > 0
-            const hasChildren = folder.children && folder.children.length > 0
+            // const hasCustomers = folderCustomers.length > 0
+            // const hasChildren = folder.children && folder.children.length > 0
 
             return (
               <div key={folder.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
@@ -2381,8 +2381,8 @@ export default function Alicilar() {
                   <>
                     {folderTree.map(folder => {
                       const folderCustomers = customers.filter(c => c.folder_id === folder.id)
-                      const hasCustomers = folderCustomers.length > 0
-                      const hasChildren = folder.children && folder.children.length > 0
+                      // const hasCustomers = folderCustomers.length > 0
+                      // const hasChildren = folder.children && folder.children.length > 0
 
                       return (
                         <div key={folder.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
