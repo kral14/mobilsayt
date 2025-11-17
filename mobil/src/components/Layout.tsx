@@ -63,7 +63,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   // Ekran ölçüsünü yoxla
   useEffect(() => {
     const checkScreenSize = () => {
-      setIsDesktop(window.innerWidth >= 768) // Tablet və PC üçün
+      setIsDesktop(window.innerWidth >= 1024) // PC üçün (1024px və yuxarı)
       // PC-də menu avtomatik açıq olsun
       if (window.innerWidth >= 1024 && isAuthenticated) {
         setMenuOpen(true)

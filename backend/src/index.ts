@@ -33,7 +33,17 @@ if (process.env.NODE_ENV === 'production') {
 const app = express()
 const PORT = Number(process.env.PORT) || 5000
 
-app.use(cors())
+// CORS konfiqurasiyası
+app.use(cors({
+  origin: true, // Bütün origin-lərə icazə ver
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}))
+
+// Preflight request-ləri handle et
+app.options('*', cors())
+
 app.use(express.json())
 
 // Health check
