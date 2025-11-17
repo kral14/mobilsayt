@@ -985,7 +985,7 @@ export default function Alicilar() {
       return (
         <>
           {folderTree.map(folder => {
-            const folderCustomers = customers.filter(c => c.folder_id === folder.id)
+            // const folderCustomers = customers.filter(c => c.folder_id === folder.id)
             // const hasCustomers = folderCustomers.length > 0
             // const hasChildren = folder.children && folder.children.length > 0
 
@@ -2380,7 +2380,7 @@ export default function Alicilar() {
                   // Root - bütün root papkaları və müştəriləri göstər
                   <>
                     {folderTree.map(folder => {
-                      const folderCustomers = customers.filter(c => c.folder_id === folder.id)
+                      // const folderCustomers = customers.filter(c => c.folder_id === folder.id)
                       // const hasCustomers = folderCustomers.length > 0
                       // const hasChildren = folder.children && folder.children.length > 0
 
