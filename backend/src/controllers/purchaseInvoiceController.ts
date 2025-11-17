@@ -134,7 +134,7 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
         await prisma.warehouse.update({
           where: { id: warehouse.id },
           data: {
-            quantity: (warehouse.quantity || 0) + parseFloat(item.quantity),
+            quantity: Number(warehouse.quantity || 0) + parseFloat(item.quantity),
           },
         })
       } else {
