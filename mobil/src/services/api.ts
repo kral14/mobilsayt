@@ -1,24 +1,23 @@
 import axios from 'axios'
 import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier } from '../../../shared/types'
 
-// Telefon üçün proxy-dən istifadə et, PC üçün isə birbaşa API
+// API URL-i müəyyən et
 const getApiBaseUrl = () => {
-  // Əgər environment variable varsa, onu istifadə et
+  // Əgər environment variable varsa, onu istifadə et (Render üçün)
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
   
-  // Telefon üçün (başqa host-dan gəlir) - Vite proxy-dən istifadə et
-  // PC üçün (localhost) - birbaşa API
-  const isMobile = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+  // Development üçün: localhost və ya proxy
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   
-  if (isMobile) {
-    // Vite proxy-dən keçir (/api -> http://localhost:5000/api)
-    return '/api'
+  if (isLocalhost) {
+    // Development: birbaşa API
+    return 'http://localhost:5000/api'
   }
   
-  // PC üçün birbaşa API
-  return 'http://localhost:5000/api'
+  // Production: eyni domain-dən API (proxy ilə)
+  return '/api'
 }
 
 const API_BASE_URL = getApiBaseUrl()

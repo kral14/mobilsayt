@@ -5,7 +5,7 @@ services:
     env: node
     plan: free
     buildCommand: cd backend && npm install && npx prisma generate && npm run build
-    startCommand: cd backend && npm start
+    startCommand: cd backend && npm run start:prod
     envVars:
       - key: NODE_ENV
         value: production
@@ -23,6 +23,13 @@ services:
     env: static
     buildCommand: cd web && npm install && npm run build
     staticPublishPath: web/dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: mobilsayt-backend
+          property: url
+        suffix: /api
     routes:
       - type: rewrite
         source: /*
@@ -34,6 +41,13 @@ services:
     env: static
     buildCommand: cd mobil && npm install && npm run build
     staticPublishPath: mobil/dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: mobilsayt-backend
+          property: url
+        suffix: /api
     routes:
       - type: rewrite
         source: /*

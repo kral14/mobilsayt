@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import { execSync } from 'child_process'
 import authRoutes from './routes/authRoutes'
 import productRoutes from './routes/productRoutes'
 import orderRoutes from './routes/orderRoutes'
@@ -13,6 +14,21 @@ import purchaseInvoiceRoutes from './routes/purchaseInvoiceRoutes'
 import testRoutes from './routes/testRoutes'
 
 dotenv.config()
+
+// Production-də Prisma migration-ları avtomatik işə sal
+if (process.env.NODE_ENV === 'production') {
+  try {
+    console.log('🔄 [PRISMA] Database schema sinxronizasiya edilir...')
+    execSync('npx prisma db push --accept-data-loss', { 
+      stdio: 'inherit',
+      cwd: __dirname + '/..'
+    })
+    console.log('✅ [PRISMA] Database schema sinxronizasiya olundu')
+  } catch (error) {
+    console.error('⚠️  [PRISMA] Database sinxronizasiya xətası:', error)
+    // Xəta olsa belə serveri başlat (migration-lar sonra manual işə salına bilər)
+  }
+}
 
 const app = express()
 const PORT = process.env.PORT || 5000

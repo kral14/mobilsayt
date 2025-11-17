@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "postinstall": "npx prisma generate",
     "prisma:push": "npx prisma db push --accept-data-loss",
-    "prisma:migrate": "npx prisma migrate deploy"
+    "prisma:migrate": "npx prisma migrate deploy",
+    "start:prod": "npx prisma db push --accept-data-loss && node dist/index.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

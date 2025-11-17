@@ -54,11 +54,7 @@ git push -u origin main
 
 6. "Create Web Service" düyməsinə basın
 
-7. Backend deploy olduqdan sonra, **Shell** bölməsinə keçin və Prisma migration-ları işə salın:
-```bash
-cd backend
-npx prisma db push --accept-data-loss
-```
+7. **Qeyd**: Prisma migration-ları avtomatik olaraq backend start zamanı işə salınacaq (Shell lazım deyil, free plan-də Shell mövcud deyil)
 
 ### C. Web Frontend (PC versiyası) Yaradın
 
@@ -71,8 +67,9 @@ npx prisma db push --accept-data-loss
    - **Build Command**: `cd web && npm install && npm run build`
    - **Publish Directory**: `web/dist`
 
-4. **Environment Variables** əlavə edin:
+4. **Environment Variables** əlavə edin (vacib deyil, `render.yaml` avtomatik təyin edir):
    - `VITE_API_URL`: Backend service URL (məsələn: `https://mobilsayt-backend.onrender.com/api`)
+   - **Qeyd**: `render.yaml` faylında `fromService` istifadə olunursa, bu avtomatik təyin olunacaq
 
 5. "Create Static Site" düyməsinə basın
 
@@ -87,16 +84,23 @@ npx prisma db push --accept-data-loss
    - **Build Command**: `cd mobil && npm install && npm run build`
    - **Publish Directory**: `mobil/dist`
 
-4. **Environment Variables** əlavə edin:
+4. **Environment Variables** əlavə edin (vacib deyil, `render.yaml` avtomatik təyin edir):
    - `VITE_API_URL`: Backend service URL (məsələn: `https://mobilsayt-backend.onrender.com/api`)
+   - **Qeyd**: `render.yaml` faylında `fromService` istifadə olunursa, bu avtomatik təyin olunacaq
 
 5. "Create Static Site" düyməsinə basın
 
-## 3. Frontend API URL-ləri Düzəltmək
+## 3. Frontend API URL-ləri
 
-Frontend-lərdə API URL-ləri environment variable-dan oxunur. Render-də `VITE_API_URL` təyin etdikdən sonra, frontend build zamanı bu URL istifadə olunacaq.
+Frontend-lərdə API URL-ləri environment variable-dan oxunur. `render.yaml` faylında `fromService` istifadə olunur, bu səbəbdən `VITE_API_URL` avtomatik təyin olunacaq.
 
-Əgər environment variable təyin etməmisinizsə, frontend-lərdə `api.ts` fayllarında `getApiBaseUrl()` funksiyası Render URL-lərini avtomatik aşkar edəcək.
+Əgər manual təyin etmək istəsəniz:
+- `VITE_API_URL`: Backend service URL + `/api` (məsələn: `https://mobilsayt-backend.onrender.com/api`)
+
+Frontend-lərdə `api.ts` fayllarında `getApiBaseUrl()` funksiyası:
+1. Əvvəlcə `VITE_API_URL` environment variable-ını yoxlayır
+2. Yoxdursa, localhost üçün `http://localhost:5000/api` istifadə edir
+3. Production-da `/api` istifadə edir (proxy ilə)
 
 ## 4. CORS Konfiqurasiyası
 
