@@ -18,19 +18,25 @@ git branch -M main
 git push -u origin main
 ```
 
-## 2. Render Dashboard-da Service-lər Yaradın
+## 2. Neon Database URL-ini Hazırlayın
 
-### A. PostgreSQL Database Yaradın
+1. Neon dashboard-da (https://neon.tech) database-inizə daxil olun
+2. **Connection Details** bölməsinə keçin
+3. **Connection String**-i kopyalayın
 
-1. Render dashboard-da "New +" → "PostgreSQL" seçin
-2. Database yaradın:
-   - **Name**: `mobilsayt-db`
-   - **Database**: `mobilsayt` (və ya istədiyiniz ad)
-   - **User**: Render avtomatik yaradır
-   - **Plan**: Free
-3. Database yaradıldıqdan sonra **Internal Database URL**-i kopyalayın (məsələn: `postgresql://user:password@host:5432/dbname`)
+**Nümunə Connection String:**
+```
+postgresql://neondb_owner:npg_NVL31qxTnQrC@ep-wild-queen-adh4tc1u-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+```
 
-### B. Backend Service Yaradın
+**Qeydlər:**
+- Bu URL-i sonra backend service-də `DATABASE_URL` kimi istifadə edəcəksiniz
+- `?sslmode=require` və `&channel_binding=require` parametrləri Neon üçün vacibdir
+- Əgər bu parametrlər yoxdursa, əlavə edin
+
+## 3. Render Dashboard-da Service-lər Yaradın
+
+### A. Backend Service Yaradın
 
 1. Render dashboard-da "New +" → "Web Service" seçin
 2. GitHub repository-ni bağlayın: `kral14/mobilsayt`
@@ -45,7 +51,7 @@ git push -u origin main
    - **Plan**: Free
 
 4. **Environment Variables** əlavə edin:
-   - `DATABASE_URL`: PostgreSQL database URL (yuxarıda kopyaladığınız)
+   - `DATABASE_URL`: Neon database URL (yuxarıda kopyaladığınız, məsələn: `postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require`)
    - `JWT_SECRET`: Təsadüfi string (məsələn: `openssl rand -hex 32` ilə yaradın)
    - `NODE_ENV`: `production`
    - `PORT`: `5000` (Render avtomatik təyin edir, amma təyin edə bilərsiniz)
@@ -87,11 +93,11 @@ Frontend-lərdə `api.ts` fayllarında `getApiBaseUrl()` funksiyası:
 2. Yoxdursa, localhost üçün `http://localhost:5000/api` istifadə edir
 3. Production-da `/api` istifadə edir (proxy ilə)
 
-## 4. CORS Konfiqurasiyası
+## 5. CORS Konfiqurasiyası
 
 Backend-də CORS artıq aktivdir (`app.use(cors())`), buna görə frontend-lər backend-ə sorğu göndərə biləcək.
 
-## 5. Test
+## 6. Test
 
 1. Backend health check: `https://mobilsayt-backend.onrender.com/api/health`
 2. Frontend: `https://mobilsayt-frontend.onrender.com` (mobil və PC üçün avtomatik)

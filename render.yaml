@@ -12,7 +12,7 @@ services:
       - key: PORT
         value: 5000
       - key: DATABASE_URL
-        sync: false  # Bu environment variable-ı Render dashboard-dan təyin etməlisiniz
+        sync: false  # Neon database URL-ini buraya təyin edin (məsələn: postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname)
       - key: JWT_SECRET
         sync: false  # Bu environment variable-ı Render dashboard-dan təyin etməlisiniz
     healthCheckPath: /api/health

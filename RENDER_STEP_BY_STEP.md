@@ -5,21 +5,21 @@
 1. https://dashboard.render.com/ saytına daxil olun
 2. GitHub hesabınızla login olun (əgər yoxdursa, qeydiyyatdan keçin)
 
-## 2. PostgreSQL Database Yaradın
+## 2. Neon Database URL-ini Hazırlayın
 
-1. Render dashboard-da **"New +"** düyməsinə basın (yuxarı sağ küncdə)
-2. **"PostgreSQL"** seçin
-3. Aşağıdakı məlumatları doldurun:
-   - **Name**: `mobilsayt-db`
-   - **Database**: `mobilsayt` (və ya istədiyiniz ad)
-   - **User**: Render avtomatik yaradır
-   - **Region**: İstədiyiniz region (məsələn: Frankfurt)
-   - **PostgreSQL Version**: Son versiya
-   - **Plan**: Free
-4. **"Create Database"** düyməsinə basın
-5. Database yaradıldıqdan sonra, **"Connections"** bölməsinə keçin
-6. **"Internal Database URL"**-i kopyalayın (məsələn: `postgresql://user:password@host:5432/dbname`)
-   - Bu URL-i sonra backend service-də `DATABASE_URL` kimi istifadə edəcəksiniz
+1. Neon dashboard-da (https://neon.tech) database-inizə daxil olun
+2. **Connection Details** bölməsinə keçin
+3. **Connection String**-i kopyalayın
+
+**Nümunə Connection String:**
+```
+postgresql://neondb_owner:npg_NVL31qxTnQrC@ep-wild-queen-adh4tc1u-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+```
+
+**Qeydlər:**
+- Bu URL-i sonra backend service-də `DATABASE_URL` kimi istifadə edəcəksiniz
+- `?sslmode=require` və `&channel_binding=require` parametrləri Neon üçün vacibdir
+- Əgər bu parametrlər yoxdursa, əlavə edin
 
 ## 3. Backend Service Yaradın
 
@@ -43,7 +43,7 @@
    - **Health Check Path**: `/api/health`
 6. **"Environment"** bölməsinə keçin və aşağıdakı environment variable-ları əlavə edin:
    - **Key**: `DATABASE_URL`
-     - **Value**: PostgreSQL database URL (yuxarıda kopyaladığınız)
+     - **Value**: Neon database URL (yuxarıda kopyaladığınız, məsələn: `postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require`)
    - **Key**: `JWT_SECRET`
      - **Value**: Təsadüfi string (məsələn: `7ef0d06a5ef89aab6cf50d149f4afb5a953beb6fd711d3b0a8547c442e7a6c3c`)
    - **Key**: `NODE_ENV`
