@@ -54,7 +54,7 @@
 8. Backend deploy olana qədər gözləyin (5-10 dəqiqə)
 9. **Qeyd**: Prisma migration-ları avtomatik olaraq backend start zamanı işə salınacaq (Shell lazım deyil)
 
-## 4. Web Frontend (PC versiyası) Yaradın
+## 4. Frontend (Responsive - Mobil və PC üçün) Yaradın
 
 1. Render dashboard-da **"New +"** düyməsinə basın
 2. **"Static Site"** seçin (Web Service deyil!)
@@ -62,27 +62,7 @@
    - `kral14/mobilsayt` repository-sini seçin
    - **"Connect"** düyməsinə basın
 4. Aşağıdakı məlumatları doldurun:
-   - **Name**: `mobilsayt-web`
-   - **Branch**: `main`
-   - **Root Directory**: (boş buraxın)
-   - **Build Command**: `cd web && npm install && npm run build`
-   - **Publish Directory**: `web/dist`
-5. **"Environment"** bölməsinə keçin və aşağıdakı environment variable-ı əlavə edin:
-   - **Key**: `VITE_API_URL`
-     - **Value**: `https://mobilsayt-backend.onrender.com/api`
-     - **Qeyd**: Backend service-in adı fərqli ola bilər, Render dashboard-da backend service-in URL-ini yoxlayın
-6. **"Create Static Site"** düyməsinə basın
-7. Deploy olana qədər gözləyin (3-5 dəqiqə)
-
-## 5. Mobil Frontend Yaradın
-
-1. Render dashboard-da **"New +"** düyməsinə basın
-2. **"Static Site"** seçin (Web Service deyil!)
-3. GitHub repository-ni bağlayın:
-   - `kral14/mobilsayt` repository-sini seçin
-   - **"Connect"** düyməsinə basın
-4. Aşağıdakı məlumatları doldurun:
-   - **Name**: `mobilsayt-mobil`
+   - **Name**: `mobilsayt-frontend`
    - **Branch**: `main`
    - **Root Directory**: (boş buraxın)
    - **Build Command**: `cd mobil && npm install && npm run build`
@@ -94,13 +74,14 @@
 6. **"Create Static Site"** düyməsinə basın
 7. Deploy olana qədər gözləyin (3-5 dəqiqə)
 
-## 6. Service URL-lərini Yoxlayın
+**Qeyd**: Bu frontend avtomatik olaraq ekran ölçüsünə görə mobil və ya PC UI göstərir. Responsive dizayn sayəsində həm mobil, həm də desktop cihazlarda işləyir.
 
-Deploy olduqdan sonra, hər service-in URL-i Render dashboard-da görünəcək:
+## 5. Service URL-lərini Yoxlayın
+
+Deploy olduqdan sonra, service URL-ləri Render dashboard-da görünəcək:
 
 - **Backend**: `https://mobilsayt-backend.onrender.com`
-- **Web Frontend**: `https://mobilsayt-web.onrender.com`
-- **Mobil Frontend**: `https://mobilsayt-mobil.onrender.com`
+- **Frontend**: `https://mobilsayt-frontend.onrender.com` (mobil və PC üçün)
 
 ## Qeydlər
 

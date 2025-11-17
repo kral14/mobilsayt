@@ -56,31 +56,14 @@ git push -u origin main
 
 7. **Qeyd**: Prisma migration-ları avtomatik olaraq backend start zamanı işə salınacaq (Shell lazım deyil, free plan-də Shell mövcud deyil)
 
-### C. Web Frontend (PC versiyası) Yaradın
+### C. Frontend (Responsive - Mobil və PC üçün avtomatik) Yaradın
 
 1. Render dashboard-da "New +" → "Static Site" seçin
 2. GitHub repository-ni bağlayın: `kral14/mobilsayt`
 3. Konfiqurasiya:
-   - **Name**: `mobilsayt-web`
+   - **Name**: `mobilsayt-frontend`
    - **Branch**: `main`
-   - **Root Directory**: `web` (boş buraxın)
-   - **Build Command**: `cd web && npm install && npm run build`
-   - **Publish Directory**: `web/dist`
-
-4. **Environment Variables** əlavə edin (vacib deyil, `render.yaml` avtomatik təyin edir):
-   - `VITE_API_URL`: Backend service URL (məsələn: `https://mobilsayt-backend.onrender.com/api`)
-   - **Qeyd**: `render.yaml` faylında `fromService` istifadə olunursa, bu avtomatik təyin olunacaq
-
-5. "Create Static Site" düyməsinə basın
-
-### D. Mobil Frontend Yaradın
-
-1. Render dashboard-da "New +" → "Static Site" seçin
-2. GitHub repository-ni bağlayın: `kral14/mobilsayt`
-3. Konfiqurasiya:
-   - **Name**: `mobilsayt-mobil`
-   - **Branch**: `main`
-   - **Root Directory**: `mobil` (boş buraxın)
+   - **Root Directory**: (boş buraxın)
    - **Build Command**: `cd mobil && npm install && npm run build`
    - **Publish Directory**: `mobil/dist`
 
@@ -89,6 +72,8 @@ git push -u origin main
    - **Qeyd**: `render.yaml` faylında `fromService` istifadə olunursa, bu avtomatik təyin olunacaq
 
 5. "Create Static Site" düyməsinə basın
+
+**Qeyd**: Bu frontend avtomatik olaraq ekran ölçüsünə görə mobil və ya PC UI göstərir. Responsive dizayn sayəsində həm mobil, həm də desktop cihazlarda işləyir.
 
 ## 3. Frontend API URL-ləri
 
@@ -109,8 +94,7 @@ Backend-də CORS artıq aktivdir (`app.use(cors())`), buna görə frontend-lər 
 ## 5. Test
 
 1. Backend health check: `https://mobilsayt-backend.onrender.com/api/health`
-2. Web frontend: `https://mobilsayt-web.onrender.com`
-3. Mobil frontend: `https://mobilsayt-mobil.onrender.com`
+2. Frontend: `https://mobilsayt-frontend.onrender.com` (mobil və PC üçün avtomatik)
 
 ## Qeydlər
 

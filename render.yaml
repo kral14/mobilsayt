@@ -17,27 +17,9 @@ services:
         sync: false  # Bu environment variable-ı Render dashboard-dan təyin etməlisiniz
     healthCheckPath: /api/health
 
-  # Web Frontend (PC versiyası)
+  # Frontend (Responsive - Mobil və PC üçün avtomatik)
   - type: web
-    name: mobilsayt-web
-    env: static
-    buildCommand: cd web && npm install && npm run build
-    staticPublishPath: web/dist
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: mobilsayt-backend
-          property: url
-        suffix: /api
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-
-  # Mobil Frontend
-  - type: web
-    name: mobilsayt-mobil
+    name: mobilsayt-frontend
     env: static
     buildCommand: cd mobil && npm install && npm run build
     staticPublishPath: mobil/dist
