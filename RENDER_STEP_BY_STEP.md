@@ -87,8 +87,10 @@ Deploy olduqdan sonra, service URL-ləri Render dashboard-da görünəcək:
 
 - **Free plan**-də service-lər 15 dəqiqə aktivlik olmadıqda "sleep" rejiminə keçir. İlk sorğu 30-60 saniyə çəkə bilər.
 - Backend deploy olduqdan sonra, Prisma migration-ları manual olaraq işə salmalısınız (Shell-dən).
-- Frontend service-lərdə `VITE_API_URL` environment variable-ı backend URL-ini göstərməlidir.
+- Frontend service-lərdə `VITE_API_URL` environment variable-ı backend URL-ini göstərməlidir (məsələn: `https://<backend>.onrender.com/api`).
 - Əgər backend service-in adı fərqlidirsə, frontend-lərdə `VITE_API_URL`-i dəyişdirin.
+- Yeni fallback sistemi Render domenini tanıyıb avtomatik olaraq `*-backend.onrender.com` ünvanını sınayır, amma uzunmüddətli həll kimi yenə də `VITE_API_URL` təyin etməyiniz tövsiyə olunur.
+- Zərurət yarandıqda URL-ə `?apiBase=...` parametri əlavə etməklə və ya brauzer konsolunda `window.mobilsaytApi.setBaseUrl('https://backend/api')` yazmaqla API ünvanını runtime-da dəyişə bilərsiniz. `window.mobilsaytApi.clearBaseUrl()` override-i silir.
 
 ## Problemlər
 
@@ -101,6 +103,7 @@ Deploy olduqdan sonra, service URL-ləri Render dashboard-da görünəcək:
 - `VITE_API_URL` environment variable-ı təyin olunubmu yoxlayın
 - Backend service-in URL-i düzgündürmü yoxlayın
 - Browser console-da xətaları yoxlayın
+- `window.mobilsaytApi.getBaseUrl()` komandası ilə hazırda istifadə olunan ünvanı yoxlayın, lazım gələrsə `setBaseUrl` ilə yeniləyin
 
 ### Database connection xətası
 - `DATABASE_URL` düzgündürmü yoxlayın

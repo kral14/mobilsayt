@@ -83,15 +83,19 @@ postgresql://neondb_owner:npg_NVL31qxTnQrC@ep-wild-queen-adh4tc1u-pooler.c-2.us-
 
 ## 3. Frontend API URL-ləri
 
-Frontend-lərdə API URL-ləri environment variable-dan oxunur. `render.yaml` faylında `fromService` istifadə olunur, bu səbəbdən `VITE_API_URL` avtomatik təyin olunacaq.
+Frontend-lər API ünvanını aşağıdakı ardıcıllıqla müəyyən edir:
+1. Build zamanı `VITE_API_URL` təyin edilibsə birbaşa ondan istifadə edir (`render.yaml` bunu avtomatik konfiqurasiya edə bilər)
+2. Brauzerdə `window.MOBILSAYT_API_URL` və ya `localStorage`-da saxlanmış override (`mobilsayt:apiBaseUrl`) varsa onu götürür
+3. Domain `.onrender.com` ilə bitirsə backend servis adını təxmin edir (`*-backend.onrender.com`)
+4. Əks halda cari origin üzərindən `/api` endpoint-i sınayır
 
-Əgər manual təyin etmək istəsəniz:
-- `VITE_API_URL`: Backend service URL + `/api` (məsələn: `https://mobilsayt-backend.onrender.com/api`)
+Stabil deploy üçün yenə də `VITE_API_URL = https://<sizin-backend>.onrender.com/api` dəyişənini təyin etməyiniz tövsiyə olunur.
 
-Frontend-lərdə `api.ts` fayllarında `getApiBaseUrl()` funksiyası:
-1. Əvvəlcə `VITE_API_URL` environment variable-ını yoxlayır
-2. Yoxdursa, localhost üçün `http://localhost:5000/api` istifadə edir
-3. Production-da `/api` istifadə edir (proxy ilə)
+Şəbəkə ünvanını manual dəyişmək üçün:
+- Brauzer konsolunda `window.mobilsaytApi.setBaseUrl('https://backend-url/api')` yazın
+- Və ya URL-ə `?apiBase=https://backend-url/api` parametri əlavə edin (bir dəfə daxil etmək kifayətdir)
+
+Override-i silmək üçün `window.mobilsaytApi.clearBaseUrl()` və ya `localStorage` dəyərini təmizləmək kifayətdir.
 
 ## 5. CORS Konfiqurasiyası
 

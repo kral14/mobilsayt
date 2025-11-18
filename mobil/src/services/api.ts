@@ -1,26 +1,19 @@
 import axios from 'axios'
-import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier } from '../../../shared/types'
+import type {
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  Product,
+  SaleInvoice,
+  CreateOrderRequest,
+  User,
+  Customer,
+  PurchaseInvoice,
+  Supplier,
+} from '@shared/types'
+import { getApiBaseUrl as resolveApiBaseUrl } from '@shared/utils/apiBase'
 
-// API URL-i müəyyən et
-const getApiBaseUrl = () => {
-  // Əgər environment variable varsa, onu istifadə et (Render üçün)
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
-  }
-  
-  // Development üçün: localhost və ya proxy
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  
-  if (isLocalhost) {
-    // Development: birbaşa API
-    return 'http://localhost:5000/api'
-  }
-  
-  // Production: eyni domain-dən API (proxy ilə)
-  return '/api'
-}
-
-const API_BASE_URL = getApiBaseUrl()
+const API_BASE_URL = resolveApiBaseUrl()
 
 const api = axios.create({
   baseURL: API_BASE_URL,
