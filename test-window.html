@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="az">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pəncərə Test - 3 Hissəli Sistem</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* 1. NAVBAR - Üst hissə */
+        #navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(to bottom, #4a90e2, #357abd);
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        #navbar h1 {
+            font-size: 20px;
+            margin-right: 30px;
+        }
+
+        #navbar button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            margin-right: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        #navbar button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 2. İŞÇİ MASASI - Orta hissə (pəncərələr burada açılır) */
+        #workspace {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            bottom: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+
+        /* 3. TASKBAR - Alt hissə */
+        #taskbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: linear-gradient(to bottom, #2c3e50, #1a252f);
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+        }
+
+        .taskbar-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            margin-right: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+
+        .taskbar-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .taskbar-item.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .taskbar-item .close-btn {
+            background: rgba(255, 0, 0, 0.6);
+            border: none;
+            color: white;
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .taskbar-item .close-btn:hover {
+            background: rgba(255, 0, 0, 0.8);
+        }
+
+        /* PƏNCƏRƏ STİLLƏRİ */
+        .window {
+            position: absolute;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            min-width: 300px;
+            min-height: 200px;
+        }
+
+        .window.maximized {
+            border-radius: 0 !important;
+        }
+
+        .window-header {
+            background: linear-gradient(to bottom, #f5f5f5, #e0e0e0);
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            user-select: none;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .window-header.active {
+            background: linear-gradient(to bottom, #4a90e2, #357abd);
+            color: white;
+        }
+
+        .window-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .window-controls button {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .btn-minimize {
+            background: #ffd700;
+        }
+
+        .btn-minimize:hover {
+            background: #ffed4e;
+        }
+
+        .btn-maximize {
+            background: #4caf50;
+        }
+
+        .btn-maximize:hover {
+            background: #66bb6a;
+        }
+
+        .btn-close {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-close:hover {
+            background: #e53935;
+        }
+
+        .window-content {
+            padding: 20px;
+            overflow: auto;
+            height: calc(100% - 50px);
+        }
+
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 15px;
+            height: 15px;
+            cursor: nwse-resize;
+            background: linear-gradient(135deg, transparent 50%, #999 50%);
+        }
+
+        /* Rəng kodları */
+        .color-box {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        .navbar-color {
+            background: linear-gradient(to bottom, #4a90e2, #357abd);
+        }
+
+        .workspace-color {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .taskbar-color {
+            background: linear-gradient(to bottom, #2c3e50, #1a252f);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 1. NAVBAR -->
+    <div id="navbar">
+        <h1>🖥️ Pəncərə Test Sistemi</h1>
+        <button onclick="createWindow()">➕ Yeni Pəncərə</button>
+        <button onclick="createWindow('Qaimə')">📄 Qaimə Aç</button>
+        <button onclick="createWindow('Cədvəl')">📊 Cədvəl Aç</button>
+    </div>
+
+    <!-- 2. İŞÇİ MASASI (Workspace) -->
+    <div id="workspace">
+        <!-- Pəncərələr buraya əlavə olunacaq -->
+    </div>
+
+    <!-- 3. TASKBAR -->
+    <div id="taskbar">
+        <div style="margin-right: auto; font-weight: bold;">📋 Açıq Pəncərələr:</div>
+        <!-- Taskbar items buraya əlavə olunacaq -->
+    </div>
+
+    <script>
+        let windowCounter = 0;
+        let activeWindow = null;
+        let windows = new Map();
+        let zIndexCounter = 100;
+
+        // Pəncərə yarat
+        function createWindow(type = 'Pəncərə') {
+            windowCounter++;
+            const id = `window-${windowCounter}`;
+
+            // Pəncərə elementi
+            const windowEl = document.createElement('div');
+            windowEl.className = 'window';
+            windowEl.id = id;
+            windowEl.style.width = '500px';
+            windowEl.style.height = '400px';
+            windowEl.style.left = `${50 + (windowCounter * 30)}px`;
+            windowEl.style.top = `${50 + (windowCounter * 30)}px`;
+            windowEl.style.zIndex = ++zIndexCounter;
+
+            // Pəncərəyə klikləndikdə aktiv et
+            windowEl.onclick = function (e) {
+                // Event bubbling-i dayandır ki, workspace click handler işləməsin
+                e.stopPropagation();
+                activateWindow(id);
+            };
+
+            windowEl.innerHTML = `
+                <div class="window-header" onmousedown="startDrag(event, '${id}')">
+                    <div class="window-title">${type} #${windowCounter}</div>
+                    <div class="window-controls">
+                        <button class="btn-minimize" onclick="minimizeWindow('${id}')">−</button>
+                        <button class="btn-maximize" onclick="maximizeWindow('${id}')">□</button>
+                        <button class="btn-close" onclick="closeWindow('${id}')">×</button>
+                    </div>
+                </div>
+                <div class="window-content">
+                    <h3>${type} Məzmunu</h3>
+                    <p>Bu ${windowCounter} nömrəli pəncərədir.</p>
+                    <p>Pəncərəni sürükləyə, ölçüsünü dəyişə və idarə edə bilərsiniz.</p>
+                    
+                    <h4 style="margin-top: 20px;">Sistem Hissələri:</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin: 10px 0;">
+                            <span class="color-box navbar-color"></span>
+                            <strong>1. Navbar</strong> - Üst menyu (z-index: 1000)
+                        </li>
+                        <li style="margin: 10px 0;">
+                            <span class="color-box workspace-color"></span>
+                            <strong>2. İşçi Masası</strong> - Pəncərələr burada açılır
+                        </li>
+                        <li style="margin: 10px 0;">
+                            <span class="color-box taskbar-color"></span>
+                            <strong>3. Taskbar</strong> - Alt panel (z-index: 10000)
+                        </li>
+                    </ul>
+                    
+                    <p style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+                        <strong>Test:</strong> Pəncərəni hər yerə sürükləyin. 
+                        Navbar və Taskbar-ın üstünə çıxmamalıdır!
+                    </p>
+                </div>
+                <div class="resize-handle" onmousedown="startResize(event, '${id}')"></div>
+            `;
+
+            document.getElementById('workspace').appendChild(windowEl);
+
+            // Taskbar item əlavə et
+            addTaskbarItem(id, `${type} #${windowCounter}`);
+
+            // Window data saxla
+            windows.set(id, {
+                element: windowEl,
+                isMaximized: false,
+                normalState: null
+            });
+
+            // Aktiv et
+            activateWindow(id);
+        }
+
+        // Taskbar item əlavə et
+        function addTaskbarItem(id, title) {
+            const taskbar = document.getElementById('taskbar');
+            const item = document.createElement('div');
+            item.className = 'taskbar-item';
+            item.id = `taskbar-${id}`;
+            item.innerHTML = `
+                <span>${title}</span>
+                <button class="close-btn" onclick="closeWindow('${id}'); event.stopPropagation();">×</button>
+            `;
+            item.onclick = () => restoreWindow(id);
+            taskbar.appendChild(item);
+        }
+
+        // Pəncərəni aktiv et
+        function activateWindow(id) {
+            // Əvvəlki aktiv pəncərəni deaktiv et
+            if (activeWindow) {
+                const prevWindow = document.getElementById(activeWindow);
+                if (prevWindow) {
+                    prevWindow.querySelector('.window-header').classList.remove('active');
+                }
+                const prevTaskbarItem = document.getElementById(`taskbar-${activeWindow}`);
+                if (prevTaskbarItem) {
+                    prevTaskbarItem.classList.remove('active');
+                }
+            }
+
+            // Yeni pəncərəni aktiv et
+            activeWindow = id;
+            const windowEl = document.getElementById(id);
+            if (windowEl) {
+                windowEl.style.zIndex = ++zIndexCounter;
+                windowEl.querySelector('.window-header').classList.add('active');
+            }
+
+            const taskbarItem = document.getElementById(`taskbar-${id}`);
+            if (taskbarItem) {
+                taskbarItem.classList.add('active');
+            }
+        }
+
+        // Pəncərəni minimize et
+        function minimizeWindow(id) {
+            const windowEl = document.getElementById(id);
+            if (windowEl) {
+                windowEl.style.display = 'none';
+            }
+        }
+
+        // Pəncərəni restore et
+        function restoreWindow(id) {
+            const windowEl = document.getElementById(id);
+            if (windowEl) {
+                windowEl.style.display = 'block';
+                activateWindow(id);
+            }
+        }
+
+        // Pəncərəni maximize et
+        function maximizeWindow(id) {
+            const windowData = windows.get(id);
+            if (!windowData) return;
+
+            const windowEl = windowData.element;
+
+            if (!windowData.isMaximized) {
+                // Normal vəziyyəti saxla
+                windowData.normalState = {
+                    left: windowEl.style.left,
+                    top: windowEl.style.top,
+                    width: windowEl.style.width,
+                    height: windowEl.style.height
+                };
+
+                // Maximize et - workspace-in tam ölçüsündə
+                windowEl.style.left = '0';
+                windowEl.style.top = '0';
+                windowEl.style.width = '100%';
+                windowEl.style.height = '100%';
+                windowEl.classList.add('maximized');
+                windowData.isMaximized = true;
+            } else {
+                // Restore et
+                if (windowData.normalState) {
+                    windowEl.style.left = windowData.normalState.left;
+                    windowEl.style.top = windowData.normalState.top;
+                    windowEl.style.width = windowData.normalState.width;
+                    windowEl.style.height = windowData.normalState.height;
+                }
+                windowEl.classList.remove('maximized');
+                windowData.isMaximized = false;
+            }
+        }
+
+        // Pəncərəni bağla
+        function closeWindow(id) {
+            const windowEl = document.getElementById(id);
+            const taskbarItem = document.getElementById(`taskbar-${id}`);
+
+            if (windowEl) windowEl.remove();
+            if (taskbarItem) taskbarItem.remove();
+
+            windows.delete(id);
+
+            if (activeWindow === id) {
+                activeWindow = null;
+            }
+        }
+
+        // Drag funksiyası
+        let dragData = null;
+
+        function startDrag(e, id) {
+            const windowEl = document.getElementById(id);
+            const windowData = windows.get(id);
+
+            // Maximize olunmuş pəncərəni sürükləmə
+            if (windowData && windowData.isMaximized) return;
+
+            activateWindow(id);
+
+            dragData = {
+                id: id,
+                startX: e.clientX,
+                startY: e.clientY,
+                initialLeft: parseInt(windowEl.style.left),
+                initialTop: parseInt(windowEl.style.top)
+            };
+
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+            e.preventDefault();
+        }
+
+        function drag(e) {
+            if (!dragData) return;
+
+            const dx = e.clientX - dragData.startX;
+            const dy = e.clientY - dragData.startY;
+
+            const windowEl = document.getElementById(dragData.id);
+            const newLeft = dragData.initialLeft + dx;
+            const newTop = dragData.initialTop + dy;
+
+            // Workspace sərhədləri daxilində saxla
+            const workspace = document.getElementById('workspace');
+            const maxLeft = workspace.clientWidth - windowEl.offsetWidth;
+            const maxTop = workspace.clientHeight - windowEl.offsetHeight;
+
+            windowEl.style.left = Math.max(0, Math.min(newLeft, maxLeft)) + 'px';
+            windowEl.style.top = Math.max(0, Math.min(newTop, maxTop)) + 'px';
+        }
+
+        function stopDrag() {
+            dragData = null;
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+
+        // Resize funksiyası
+        let resizeData = null;
+
+        function startResize(e, id) {
+            const windowEl = document.getElementById(id);
+            const windowData = windows.get(id);
+
+            // Maximize olunmuş pəncərəni resize etmə
+            if (windowData && windowData.isMaximized) return;
+
+            activateWindow(id);
+
+            resizeData = {
+                id: id,
+                startX: e.clientX,
+                startY: e.clientY,
+                initialWidth: windowEl.offsetWidth,
+                initialHeight: windowEl.offsetHeight
+            };
+
+            document.addEventListener('mousemove', resize);
+            document.addEventListener('mouseup', stopResize);
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function resize(e) {
+            if (!resizeData) return;
+
+            const dx = e.clientX - resizeData.startX;
+            const dy = e.clientY - resizeData.startY;
+
+            const windowEl = document.getElementById(resizeData.id);
+            const newWidth = Math.max(300, resizeData.initialWidth + dx);
+            const newHeight = Math.max(200, resizeData.initialHeight + dy);
+
+            windowEl.style.width = newWidth + 'px';
+            windowEl.style.height = newHeight + 'px';
+        }
+
+        function stopResize() {
+            resizeData = null;
+            document.removeEventListener('mousemove', resize);
+            document.removeEventListener('mouseup', stopResize);
+        }
+
+        // Workspace-ə klikləndikdə aktiv pəncərəni deaktiv et
+        document.getElementById('workspace').addEventListener('click', function (e) {
+            if (e.target === this && activeWindow) {
+                const prevWindow = document.getElementById(activeWindow);
+                if (prevWindow) {
+                    prevWindow.querySelector('.window-header').classList.remove('active');
+                }
+                const prevTaskbarItem = document.getElementById(`taskbar-${activeWindow}`);
+                if (prevTaskbarItem) {
+                    prevTaskbarItem.classList.remove('active');
+                }
+                activeWindow = null;
+            }
+        });
+
+        // İlk pəncərəni aç
+        createWindow('Xoş gəldiniz');
+    </script>
+</body>
+
+</html>

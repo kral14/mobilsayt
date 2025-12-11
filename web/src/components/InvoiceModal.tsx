@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react'
+﻿import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWindowStore } from '../store/windowStore'
-import type { Customer, Product, Supplier } from '@shared/types'
+import type { Customer, Product, Supplier, WarehouseLocation } from '@shared/types'
 import TableSettingsModal, { type ColumnConfig as TableColumnConfig, type FunctionSettings } from './TableSettingsModal'
 
 const COLUMN_DRAG_STORAGE_KEY = 'invoice-modal-column-drag-enabled'
@@ -79,30 +79,35 @@ interface InvoiceModalProps {
   onUpdate: (modalId: string, updates: Partial<ModalData>) => void
   onSave: (modalId: string, modalData: ModalData['data']) => Promise<void>
   onSaveAndConfirm?: (modalId: string, modalData: ModalData['data']) => Promise<void> // OK düyməsi üçün - yadda saxla və təsdiqlə
-  onActivate: (modalId: string) => void
+  onActivate?: (modalId: string) => void
   windowId: string
   onPrint?: (modalId: string, modalData: ModalData['data']) => void // Çap funksiyası
+  isEmbedded?: boolean
+  warehouses?: WarehouseLocation[]
 }
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ 
-  modal, 
-  customers = [], 
+const InvoiceModal: React.FC<InvoiceModalProps> = ({
+  modal,
+  customers = [],
+
   suppliers = [],
-  products, 
-  modalIndex, 
-  isActive, 
-  onClose, 
-  onUpdate, 
-  onSave, 
+  products,
+  isActive,
+  onClose,
+  onUpdate,
+  onSave,
   onSaveAndConfirm,
-  onActivate, 
+  onActivate,
   windowId,
-  onPrint
+  onPrint,
+
+  isEmbedded = false,
+  warehouses = []
 }) => {
   const navigate = useNavigate()
   const invoiceType = modal.invoiceType || 'sale' // Default satış
   const isPurchase = invoiceType === 'purchase'
-  
+
   const [localData, setLocalData] = useState(modal.data)
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
@@ -110,13 +115,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 })
   const [resizeStartSize, setResizeStartSize] = useState({ width: 0, height: 0 })
   const [localSize, setLocalSize] = useState<{ width: number, height: number } | null>(null)
-  
+
+  const navbarHeight = 40
+  const taskbarHeight = 40
+
   // Window store
-  const { windows, minimizeWindow, restoreWindow, updateWindow } = useWindowStore()
+  const { windows, updateWindow, minimizeWindow } = useWindowStore()
   const windowInfo = windows.get(windowId)
   const isMinimized = windowInfo?.isMinimized || false
   const isVisible = windowInfo?.isVisible !== false
-  
+
   // Window store'dan position və size al (tile windows üçün)
   const effectivePosition = React.useMemo(() => windowInfo?.position || modal.position, [windowInfo?.position, modal.position])
   // Resize sırasında local size kullan, yoksa window store veya modal size
@@ -124,21 +132,28 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     if (localSize) return localSize
     return windowInfo?.size || modal.size
   }, [localSize, windowInfo?.size, modal.size])
-  
+
+  // UI State
+  const [activeTab, setActiveTab] = useState<'items' | 'functions'>('items')
+
   // Form state-ləri
+
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(null)
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState('')
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false)
   const [customerSearchTerm, setCustomerSearchTerm] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [supplierSearchTerm, setSupplierSearchTerm] = useState('')
-  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false)
   const [notesFocused, setNotesFocused] = useState(false)
-  const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([])
-  const [showItemSettingsModal, setShowItemSettingsModal] = useState(false)
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([])
+  const [showItemSettingsModal, setShowItemSettingsModal] = useState(false)
+
   const [enableColumnDrag, setEnableColumnDrag] = useState(false)
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null)
-  
+
   const [tableColumns, setTableColumns] = useState<TableColumnConfig[]>(() => {
     if (typeof window === 'undefined') {
       return normalizeColumns()
@@ -154,23 +169,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
     return normalizeColumns()
   })
-  
+
   // Köhnə format üçün helper funksiyalar (backward compatibility)
-  const visibleOrderedColumns = useMemo(() => {
-    return [...tableColumns]
-      .filter(column => column.visible)
-      .sort((a, b) => a.order - b.order)
-  }, [tableColumns])
 
-  const visibleColumnCount = visibleOrderedColumns.length
 
-  const columnConfig = useMemo(() => {
-    const config: { [key: string]: { width: number; order: number } } = {}
-    tableColumns.forEach(col => {
-      config[col.id] = { width: col.width, order: col.order }
-    })
-    return config
-  }, [tableColumns])
+
+
+
 
   useEffect(() => {
     try {
@@ -239,11 +244,52 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </div>
         </label>
       </div>
+
+      {/* Varsayılan kimi saxla düyməsi */}
+      <button
+        onClick={() => {
+          try {
+            const settingsKey = `invoice-modal-settings-${isPurchase ? 'purchase' : 'sale'}`
+            const settings = {
+              tableColumns,
+              enableColumnDrag,
+              timestamp: Date.now()
+            }
+            localStorage.setItem(settingsKey, JSON.stringify(settings))
+            alert('Ayarlar varsayılan olaraq saxlanıldı!')
+          } catch (err) {
+            console.error('Ayarlar saxlanarkən xəta:', err)
+            alert('Ayarlar saxlanarkən xəta baş verdi')
+          }
+        }}
+        style={{
+          width: '100%',
+          padding: '0.75rem',
+          background: '#28a745',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          fontSize: '0.95rem',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          marginBottom: '1rem'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = '#218838'}
+        onMouseLeave={(e) => e.currentTarget.style.background = '#28a745'}
+      >
+        <span>💾</span>
+        Varsayılan kimi saxla
+      </button>
+
       <p style={{ fontSize: '0.85rem', color: '#555', margin: 0 }}>
         * Sütunu daşımaq üçün başlığı basılı saxlayıb yeni mövqeyə sürüşdür.
       </p>
     </div>
-  ), [enableColumnDrag, updateEnableColumnDrag])
+  ), [enableColumnDrag, updateEnableColumnDrag, tableColumns, isPurchase])
 
   useEffect(() => {
     try {
@@ -254,19 +300,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       // ignore storage write errors
     }
   }, [tableColumns])
-  
+
   // Filtered lists
-  const filteredCustomers = React.useMemo(() => {
-    if (!customerSearchTerm.trim()) return []
-    const term = customerSearchTerm.toLowerCase()
-    return customers.filter(customer =>
-      customer.name.toLowerCase().includes(term) ||
-      customer.phone?.toLowerCase().includes(term) ||
-      customer.email?.toLowerCase().includes(term)
-    ).slice(0, 10)
-  }, [customers, customerSearchTerm])
-  
+
+
   const filteredSuppliers = React.useMemo(() => {
+    // Yalnız yazı yazanda göstər, boş olduqda göstərmə
     if (!supplierSearchTerm.trim()) return []
     const term = supplierSearchTerm.toLowerCase()
     return suppliers.filter(supplier =>
@@ -275,50 +314,79 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       supplier.email?.toLowerCase().includes(term)
     ).slice(0, 10)
   }, [suppliers, supplierSearchTerm])
-  
-  // Date formatting function
-  const formatDateInput = (input: string): string => {
-    const trimmed = input.trim()
-    if (!trimmed) return ''
-    
-    // Əgər tam tarix formatındadırsa (YYYY-MM-DD), qaytar
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      return trimmed
-    }
-    
-    const today = new Date()
-    const currentYear = today.getFullYear()
-    const currentMonth = today.getMonth() + 1
-    
-    // Sadə formatlar: "15", "15.11", "15.11.2025"
-    const parts = trimmed.split(/[.\-\/]/)
-    
-    if (parts.length === 1) {
-      // Yalnız gün: "15" -> "2025-01-15" (cari ay və il)
-      const day = parseInt(parts[0])
-      if (day >= 1 && day <= 31) {
-        return `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      }
-    } else if (parts.length === 2) {
-      // Gün və ay: "15.11" -> "2025-11-15" (cari il)
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      }
-    } else if (parts.length === 3) {
-      // Tam tarix: "15.11.2025" -> "2025-11-15"
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      const year = parseInt(parts[2])
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  // Debug: Təchizatçı dropdown state-ini izlə
+  React.useEffect(() => {
+    console.log('[SUPPLIER DROPDOWN DEBUG]', {
+      showSupplierDropdown,
+      supplierSearchTerm,
+      suppliersCount: suppliers.length,
+      filteredSuppliersCount: filteredSuppliers.length,
+      filteredSuppliers: filteredSuppliers.map(s => s.name)
+    })
+  }, [showSupplierDropdown, supplierSearchTerm, suppliers, filteredSuppliers])
+
+  // Click-outside handler - dropdown-u bağla
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // Əgər supplier input və ya dropdown-a klikləməyibsə, bağla
+      if (!target.closest('[data-supplier-input]') && !target.closest('[data-supplier-dropdown]')) {
+        setShowSupplierDropdown(false)
       }
     }
-    
-    return trimmed // Əgər format düzgün deyilsə, olduğu kimi qaytar
+
+    if (showSupplierDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSupplierDropdown])
+
+  const filteredCustomers = React.useMemo(() => {
+    if (!customerSearchTerm.trim()) return []
+    const term = customerSearchTerm.toLowerCase()
+    // customers default to empty array if undefined
+    return (customers || []).filter(customer =>
+      customer.name.toLowerCase().includes(term) ||
+      customer.phone?.toLowerCase().includes(term) ||
+      customer.email?.toLowerCase().includes(term)
+    ).slice(0, 10)
+  }, [customers, customerSearchTerm])
+
+  const visibleOrderedColumns = useMemo(() => {
+    return [...tableColumns]
+      .filter(column => column.visible)
+      .sort((a, b) => a.order - b.order)
+  }, [tableColumns])
+
+  const visibleColumnCount = visibleOrderedColumns.length
+
+  const columnConfig = useMemo(() => {
+    return tableColumns.reduce((acc, col) => {
+      acc[col.id] = col
+      return acc
+    }, {} as Record<string, TableColumnConfig>)
+  }, [tableColumns])
+
+  const handleSort = (columnId: string) => {
+    if (sortColumn === columnId) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(columnId)
+      setSortDirection('asc')
+    }
   }
-  
+
+  const handleColumnDragEnd = () => {
+    setDraggedColumnKey(null)
+  }
+
+  const formatDateInput = (value: string) => {
+    return value.replace(/[^0-9.-]/g, '')
+  }
+
+
+
   // Helper functions
   const handleAddEmptyRow = () => {
     const newItems = [...localData.invoiceItems, {
@@ -330,40 +398,26 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }]
     setLocalData({ ...localData, invoiceItems: newItems })
   }
-  
+
   const handleUpdateItem = (index: number, field: 'quantity' | 'unit_price', value: number) => {
     const updatedItems = [...localData.invoiceItems]
     updatedItems[index] = {
       ...updatedItems[index],
       [field]: value,
-      total_price: field === 'quantity' 
+      total_price: field === 'quantity'
         ? value * updatedItems[index].unit_price
         : updatedItems[index].quantity * value
     }
     setLocalData({ ...localData, invoiceItems: updatedItems })
   }
-  
+
   const handleRemoveItem = (index: number) => {
     const newItems = localData.invoiceItems.filter((_, i) => i !== index)
     setLocalData({ ...localData, invoiceItems: newItems })
   }
-  
-  const handleToggleItemSelection = (index: number) => {
-    if (selectedItemIndices.includes(index)) {
-      setSelectedItemIndices(selectedItemIndices.filter(i => i !== index))
-    } else {
-      setSelectedItemIndices([...selectedItemIndices, index])
-    }
-  }
-  
-  const handleSelectAllItems = () => {
-    if (selectedItemIndices.length === localData.invoiceItems.length) {
-      setSelectedItemIndices([])
-    } else {
-      setSelectedItemIndices(localData.invoiceItems.map((_, i) => i))
-    }
-  }
-  
+
+
+
   // Hər sətir üçün məhsul axtarışı
   const getFilteredProductsForRow = (searchTerm: string) => {
     if (!searchTerm.trim()) return []
@@ -374,7 +428,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       product.barcode?.toLowerCase().includes(term)
     ).slice(0, 10)
   }
-  
+
   const handleProductSearchInRow = (index: number, searchTerm: string) => {
     const updatedItems = [...localData.invoiceItems]
     updatedItems[index] = {
@@ -383,7 +437,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
     setLocalData({ ...localData, invoiceItems: updatedItems })
   }
-  
+
   const handleProductSelectInRow = (index: number, productId: number) => {
     const product = products.find(p => p.id === productId)
     if (!product) return
@@ -400,8 +454,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
     setLocalData({ ...localData, invoiceItems: updatedItems })
   }
-  
-  // Sort fonksiyonu
+
   // Sütun sürüşdürmə funksiyaları
   const handleColumnDragStart = (e: React.DragEvent, columnKey: string) => {
     if (!enableColumnDrag) return
@@ -454,78 +507,14 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setDraggedColumnKey(null)
   }
 
-  const handleColumnDragEnd = () => {
-    setDraggedColumnKey(null)
-  }
 
-  const handleSort = (column: string) => {
-    if (enableColumnDrag) return // Sürüşdürmə aktivdirsə, sıralama işləməsin
-    const newDirection = sortColumn === column && sortDirection === 'asc' ? 'desc' : 'asc'
-    setSortColumn(column)
-    setSortDirection(newDirection)
-    
-    const sortedItems = [...localData.invoiceItems].sort((a, b) => {
-      let aVal: any
-      let bVal: any
-      
-      switch (column) {
-        case 'product':
-          aVal = a.product_name || ''
-          bVal = b.product_name || ''
-          break
-        case 'code':
-          aVal = getProductInfo(a.product_id).code || ''
-          bVal = getProductInfo(b.product_id).code || ''
-          break
-        case 'barcode':
-          aVal = getProductInfo(a.product_id).barcode || ''
-          bVal = getProductInfo(b.product_id).barcode || ''
-          break
-        case 'unit':
-          aVal = getProductInfo(a.product_id).unit || ''
-          bVal = getProductInfo(b.product_id).unit || ''
-          break
-        case 'quantity':
-          aVal = a.quantity || 0
-          bVal = b.quantity || 0
-          break
-        case 'unitPrice':
-          aVal = a.unit_price || 0
-          bVal = b.unit_price || 0
-          break
-        case 'total':
-          aVal = a.total_price || 0
-          bVal = b.total_price || 0
-          break
-        default:
-          return 0
-      }
-      
-      if (typeof aVal === 'string') {
-        return newDirection === 'asc' 
-          ? aVal.localeCompare(bVal)
-          : bVal.localeCompare(aVal)
-      } else {
-        return newDirection === 'asc' 
-          ? aVal - bVal
-          : bVal - aVal
-      }
-    })
-    
-    setLocalData({ ...localData, invoiceItems: sortedItems })
-  }
- 
+
+
+
   const invoiceTotal = useMemo(() => {
     return localData.invoiceItems.reduce((sum, item) => sum + (item.total_price || 0), 0)
   }, [localData.invoiceItems])
-  
-  // Sütunları sıralı olarak al
-  const getSortedColumns = () => {
-    return Object.entries(columnConfig)
-      .sort(([, a], [, b]) => a.order - b.order)
-      .map(([key]) => key)
-  }
-  
+
   // Məhsul bilgilerini al
   const getProductInfo = (productId: number | null) => {
     if (!productId) return { code: '', barcode: '', unit: '' }
@@ -536,18 +525,251 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       unit: product?.unit || ''
     }
   }
-  
+
   // Modal açılanda məlumatları yenilə
   useEffect(() => {
     setLocalData(modal.data)
-    if (modal.data.selectedCustomer) {
-      setCustomerSearchTerm('')
-    }
+
     if (modal.data.selectedSupplier) {
       setSupplierSearchTerm('')
     }
   }, [modal.data])
-  
+
+  // Scope fixes: Define handleResizeStart and renderCell here or before usage
+  const handleResizeStart = (e: React.MouseEvent, _columnId: string) => {
+    // Placeholder for column resize logic if needed, or implement full logic
+    // existing logic uses handleResizeMouseDown for the window, this is for columns
+    e.stopPropagation()
+  }
+
+  const renderCell = (item: InvoiceItem, idx: number, columnId: string) => {
+    const isSelected = selectedItemIndices.includes(idx)
+    // Helper to get products for row, reused logic
+    const rowProducts = getFilteredProductsForRow(item.searchTerm || '')
+
+    switch (columnId) {
+      case 'checkbox':
+        return (
+          <div style={{ textAlign: 'center' }}>
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => { }}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (e.ctrlKey || e.metaKey) {
+                  if (selectedItemIndices.includes(idx)) {
+                    setSelectedItemIndices(selectedItemIndices.filter(i => i !== idx))
+                  } else {
+                    setSelectedItemIndices([...selectedItemIndices, idx])
+                  }
+                } else {
+                  setSelectedItemIndices([idx])
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+          </div>
+        )
+      case 'number':
+        return (
+          <div style={{ textAlign: 'center' }}>
+            {idx + 1}
+          </div>
+        )
+      case 'product':
+        return (
+          <div style={{ position: 'relative' }}>
+            {item.product_id ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{item.product_name}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const updatedItems = [...localData.invoiceItems]
+                    updatedItems[idx] = {
+                      ...updatedItems[idx],
+                      product_id: null,
+                      product_name: '',
+                      searchTerm: ''
+                    }
+                    setLocalData({ ...localData, invoiceItems: updatedItems })
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#dc3545',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    padding: '0.25rem',
+                    marginLeft: '0.5rem'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Məhsul adını yazın..."
+                  value={item.searchTerm || ''}
+                  onChange={(e) => handleProductSearchInRow(idx, e.target.value)}
+                  onBlur={(e) => {
+                    setTimeout(() => {
+                      const relatedTarget = e.relatedTarget as HTMLElement
+                      if (!relatedTarget || !relatedTarget.closest('.product-dropdown')) {
+                        const updatedItems = [...localData.invoiceItems]
+                        updatedItems[idx] = {
+                          ...updatedItems[idx],
+                          searchTerm: ''
+                        }
+                        setLocalData({ ...localData, invoiceItems: updatedItems })
+                      }
+                    }, 200)
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.25rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '0.9rem'
+                  }}
+                />
+                {rowProducts.length > 0 && (
+                  <div
+                    className="product-dropdown"
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      marginTop: '0.25rem',
+                      maxHeight: '200px',
+                      overflow: 'auto',
+                      zIndex: 1000,
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {rowProducts.map(product => (
+                      <div
+                        key={product.id}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleProductSelectInRow(idx, product.id)
+                        }}
+                        style={{
+                          padding: '0.75rem',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #f0f0f0'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#f8f9fa'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'white'
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold' }}>{product.name}</div>
+                        <div style={{ fontSize: '0.875rem', color: '#666' }}>
+                          {product.code && <span>Kod: {product.code} </span>}
+                          {product.barcode && <span>Barkod: {product.barcode}</span>}
+                        </div>
+                        {isPurchase
+                          ? (product.purchase_price && (
+                            <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
+                              Qiymət: {Number(product.purchase_price).toFixed(2)} ₼
+                            </div>
+                          ))
+                          : product.sale_price && (
+                            <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
+                              Qiymət: {Number(product.sale_price).toFixed(2)} ₼
+                            </div>
+                          )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      case 'code':
+        return (
+          <div style={{ textAlign: 'left' }}>
+            {getProductInfo(item.product_id).code || '-'}
+          </div>
+        )
+      case 'barcode':
+        return (
+          <div style={{ textAlign: 'left' }}>
+            {getProductInfo(item.product_id).barcode || '-'}
+          </div>
+        )
+      case 'unit':
+        return (
+          <div style={{ textAlign: 'left' }}>
+            {getProductInfo(item.product_id).unit || '-'}
+          </div>
+        )
+      case 'quantity':
+        return (
+          <div style={{ textAlign: 'right' }}>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={item.quantity}
+              onChange={(e) => handleUpdateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                padding: '0.25rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                textAlign: 'right',
+                fontSize: '0.9rem'
+              }}
+            />
+          </div>
+        )
+      case 'unitPrice':
+        return (
+          <div style={{ textAlign: 'right' }}>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={item.unit_price}
+              onChange={(e) => handleUpdateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                padding: '0.25rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                textAlign: 'right',
+                fontSize: '0.9rem'
+              }}
+            />
+          </div>
+        )
+      case 'total':
+        return (
+          <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
+            {item.total_price.toFixed(2)} ₼
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
     if (target.classList.contains('modal-header') || target.closest('.modal-header')) {
@@ -563,9 +785,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     e.stopPropagation()
     setIsResizing(true)
     const currentSize = effectiveSize
-    setResizeStart({ 
-      x: e.clientX, 
-      y: e.clientY 
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY
     })
     setResizeStartSize({ width: currentSize.width, height: currentSize.height })
     setLocalSize(null) // Reset local size
@@ -604,13 +826,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       setIsResizing(false)
     }
 
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
   }, [isDragging, isResizing, dragStart, resizeStart, resizeStartSize, localSize, modal.id, modal.isMaximized, effectivePosition, effectiveSize, onUpdate, windowId, updateWindow])
 
   const handleMaximize = () => {
@@ -621,7 +843,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       const navbarHeight = navbar ? navbar.offsetHeight : 60
       const taskbarHeight = 50 // Taskbar yüksəkliyi
       const availableHeight = window.innerHeight - navbarHeight - taskbarHeight
-      
+
       onUpdate(modal.id, {
         isMaximized: true,
         position: { x: 0, y: navbarHeight },
@@ -640,8 +862,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       })
     }
   }
-
-  const totalAmount = localData.invoiceItems.reduce((sum, item) => sum + Number(item.total_price || 0), 0)
 
   // OK düyməsi funksiyası - yadda saxla, təsdiqlə və bağla
   const handleOK = async () => {
@@ -673,7 +893,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       console.log('[InvoiceModal] Key pressed:', e.key, 'keyCode:', e.keyCode, 'code:', e.code, 'target:', e.target)
-      
+
       // ESC: Modalı bağla (hər yerdə işləsin, ən əvvəl yoxla)
       // ESC key-in müxtəlif formatlarını yoxla
       if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27 || e.code === 'Escape') {
@@ -714,10 +934,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         // Müştəri seçildikdə geri qayıtmaq üçün event listener əlavə et
         const handleCustomerSelected = (event: CustomEvent) => {
           const customer = event.detail as Customer
-          setLocalData({ 
-            ...localData, 
-            selectedCustomerId: customer.id, 
-            selectedCustomer: customer 
+          setLocalData({
+            ...localData,
+            selectedCustomerId: customer.id,
+            selectedCustomer: customer
           })
           window.removeEventListener('customerSelected', handleCustomerSelected as EventListener)
         }
@@ -776,21 +996,865 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   if (isMinimized || !isVisible) {
     return null
   }
-  
+
   // Modal z-index navbar (1000) və taskbar (10000) arasında olmalı
   const modalZIndex = Math.min(Math.max(modal.zIndex, 1001), 9999)
-  
+
+
+
+  // State for tabs in embedded mode
+
+
+  // Embedded mode (Universal Window) render
+  if (isEmbedded) {
+    return (
+      <div
+        style={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          padding: '10px'
+        }}
+      >
+        {/* Header Form - Compact Layout */}
+        <div style={{
+          display: 'flex',
+          gap: '20px',
+          padding: '10px 0',
+          marginBottom: '5px'
+        }}>
+          {/* Sol sütun: Təchizatçı və Anbar */}
+          <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Təchizatçı Row */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <label style={{ width: '90px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
+                Təchizatçı:
+              </label>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                  <input
+                    type="text"
+                    data-supplier-input="true"
+                    placeholder="Təchizatçı adını yazın..."
+                    value={localData.selectedSupplier ? localData.selectedSupplier.name : supplierSearchTerm}
+                    onChange={(e) => {
+                      console.log('[SUPPLIER SEARCH] onChange:', e.target.value)
+                      setSupplierSearchTerm(e.target.value)
+                      setShowSupplierDropdown(true)
+                      console.log('[SUPPLIER SEARCH] Dropdown açıldı: true')
+                      // Əgər seçilmiş təchizatçı varsa və yazı dəyişirsə, seçimi təmizlə
+                      if (localData.selectedSupplier) {
+                        setLocalData(prev => ({
+                          ...prev,
+                          selectedSupplierId: null,
+                          selectedSupplier: null
+                        }))
+                      }
+                    }}
+                    onFocus={() => {
+                      console.log('[SUPPLIER SEARCH] onFocus')
+                      // Əgər seçilmiş təchizatçı varsa, onun adını axtarış termində göstər
+                      if (localData.selectedSupplier) {
+                        setSupplierSearchTerm(localData.selectedSupplier.name)
+                        setShowSupplierDropdown(true) // Seçilmiş təchizatçı varsa dropdown aç
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '4px 8px',
+                      border: '1px solid #ced4da',
+                      borderRadius: '4px',
+                      fontSize: '0.9rem',
+                      height: '30px'
+                    }}
+                  />
+                  {localData.selectedSupplier && (
+                    <button
+                      onClick={() => {
+                        setLocalData(prev => ({
+                          ...prev,
+                          selectedSupplierId: null,
+                          selectedSupplier: null
+                        }))
+                        setSupplierSearchTerm('')
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: '5px',
+                        background: 'none',
+                        border: 'none',
+                        color: '#dc3545',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        padding: '0'
+                      }}
+                      title="Təmizlə"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+
+
+                {/* Təchizatçı dropdown */}
+                {showSupplierDropdown && filteredSuppliers.length > 0 && (
+                  <div
+                    data-supplier-dropdown="true"
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: 'white',
+                      border: '2px solid #4a90e2',
+                      borderRadius: '4px',
+                      marginTop: '2px',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      zIndex: 1000,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  >
+                    {filteredSuppliers.map(supplier => (
+                      <div
+                        key={supplier.id}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #eee',
+                          fontSize: '0.9rem'
+                        }}
+                        onClick={() => {
+                          setLocalData(prev => ({
+                            ...prev,
+                            selectedSupplierId: supplier.id,
+                            selectedSupplier: supplier
+                          }))
+                          setSupplierSearchTerm(supplier.name)
+                          setShowSupplierDropdown(false)
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4a90e2', e.currentTarget.style.color = 'white')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white', e.currentTarget.style.color = '#333')}
+                      >
+                        <div style={{ fontWeight: '500' }}>{supplier.name} (x{String(supplier.id).padStart(8, '0')})</div>
+                        {supplier.phone && <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>{supplier.phone}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Anbar Row */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <label style={{ width: '90px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
+                Anbar:
+              </label>
+              <select
+                value={selectedWarehouseId || ''}
+                onChange={(e) => setSelectedWarehouseId(Number(e.target.value) || null)}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  border: '1px solid #ced4da',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  height: '30px',
+                  background: 'white'
+                }}
+              >
+                <option value="">Anbar seçin</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Sağ sütun: Qaimə № və Tarix */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Qaimə № Row */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
+                Qaimə №:
+              </label>
+              <input
+                type="text"
+                placeholder="Avtomatik"
+                value={localData.invoiceNumber || ''}
+                readOnly
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  border: '1px solid #ced4da',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  height: '30px',
+                  background: '#e9ecef',
+                  color: '#495057'
+                }}
+              />
+            </div>
+
+            {/* Tarix Row */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
+                Tarix:
+              </label>
+              <input
+                type="text"
+                value={localData.invoiceDate}
+                onChange={(e) => setLocalData({ ...localData, invoiceDate: e.target.value })}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  border: '1px solid #ced4da',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  height: '30px',
+                  background: 'white',
+                  color: '#495057'
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #dee2e6' }}>
+          <button
+            onClick={() => setActiveTab('items')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: activeTab === 'items' ? '#fff' : '#f8f9fa',
+              border: '1px solid #dee2e6',
+              borderBottom: activeTab === 'items' ? '1px solid transparent' : '1px solid #dee2e6',
+              marginBottom: '-1px',
+              borderRadius: '6px 6px 0 0',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'items' ? '600' : '400',
+              color: activeTab === 'items' ? '#007bff' : '#6c757d',
+              fontSize: '0.95rem'
+            }}
+          >
+            Cədvəl
+          </button>
+          <button
+            onClick={() => setActiveTab('functions')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: activeTab === 'functions' ? '#fff' : '#f8f9fa',
+              border: '1px solid #dee2e6',
+              borderBottom: activeTab === 'functions' ? '1px solid transparent' : '1px solid #dee2e6',
+              marginBottom: '-1px',
+              borderRadius: '6px 6px 0 0',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'functions' ? '600' : '400',
+              color: activeTab === 'functions' ? '#007bff' : '#6c757d',
+              fontSize: '0.95rem'
+            }}
+          >
+            Funksiyalar
+          </button>
+        </div>
+
+        {activeTab === 'items' ? (
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0.5rem', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+
+
+            {/* Main Table */}
+            <div style={{ flex: 1, border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Table Content - Re-using the logic from below but flattened */}
+              {/* Since moving existing table content here is complex due to size, 
+                   I will render a simplified wrapper that uses the existing table logic 
+                   or just replicate the required parts. 
+                   Ideally, I'd extract table to a sub-component, but for this refactor 
+                   I will keep inline structure. */}
+
+              {/* Warning: The bulk of the table rendering logic was in the returned JSX below. 
+                   I am effectively replacing the entire return block for isEmbedded.
+                   I need to make sure I include the table rendering here.
+               */}
+              {/* Toolbar */}
+              <div style={{ background: '#f8f9fa', padding: '0.5rem', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>Məhsullar ({localData.invoiceItems.length})</div>
+                <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                  {/* Add icon */}
+                  <button
+                    onClick={handleAddEmptyRow}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#e9ecef'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: 'transparent',
+                      color: '#28a745',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Əlavə et (Insert)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 3V13M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
+
+                  {/* Delete icon */}
+                  <button
+                    onClick={() => {
+                      const sortedIndices = [...selectedItemIndices].sort((a, b) => b - a)
+                      const newItems = [...localData.invoiceItems]
+                      sortedIndices.forEach(index => {
+                        newItems.splice(index, 1)
+                      })
+                      setLocalData({ ...localData, invoiceItems: newItems })
+                      setSelectedItemIndices([])
+                    }}
+                    disabled={selectedItemIndices.length === 0}
+                    onMouseEnter={(e) => {
+                      if (selectedItemIndices.length > 0) {
+                        e.currentTarget.style.background = '#e9ecef'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = selectedItemIndices.length === 0 ? '#e9ecef' : 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: selectedItemIndices.length === 0 ? '#e9ecef' : 'transparent',
+                      color: selectedItemIndices.length === 0 ? '#adb5bd' : '#dc3545',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: selectedItemIndices.length === 0 ? 'not-allowed' : 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Sil (Delete)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 4H13M6 4V3C6 2.44772 6.44772 2 7 2H9C9.55228 2 10 2.44772 10 3V4M6 7.5V11.5M10 7.5V11.5M4 4L4.5 13C4.5 13.5523 4.94772 14 5.5 14H10.5C11.0523 14 11.5 13.5523 11.5 13L12 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
+
+                  {/* Copy icon */}
+                  <button
+                    onClick={() => {
+                      if (selectedItemIndices.length > 0) {
+                        const sortedIndices = [...selectedItemIndices].sort((a, b) => a - b)
+                        const newItems = [...localData.invoiceItems]
+                        const copiedItems = sortedIndices.map(index => ({ ...newItems[index] }))
+                        setLocalData({ ...localData, invoiceItems: [...newItems, ...copiedItems] })
+                      }
+                    }}
+                    disabled={selectedItemIndices.length === 0}
+                    onMouseEnter={(e) => {
+                      if (selectedItemIndices.length > 0) {
+                        e.currentTarget.style.background = '#e9ecef'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = selectedItemIndices.length === 0 ? '#e9ecef' : 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: selectedItemIndices.length === 0 ? '#e9ecef' : 'transparent',
+                      color: selectedItemIndices.length === 0 ? '#adb5bd' : '#495057',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: selectedItemIndices.length === 0 ? 'not-allowed' : 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Kopyala (F9)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4 2C4 0.895431 4.89543 0 6 0H10C11.1046 0 12 0.895431 12 2V6C12 7.10457 11.1046 8 10 8H6C4.89543 8 4 7.10457 4 6V2Z" stroke="currentColor" strokeWidth="1.5" />
+                      <path d="M4 6H2C0.895431 6 0 6.89543 0 8V12C0 13.1046 0.895431 14 2 14H6C7.10457 14 8 13.1046 8 12V10" stroke="currentColor" strokeWidth="1.5" />
+                    </svg>
+                  </button>
+
+                  {/* Move up icon */}
+                  <button
+                    onClick={() => {
+                      if (selectedItemIndices.length === 1) {
+                        const index = selectedItemIndices[0]
+                        if (index > 0) {
+                          const newItems = [...localData.invoiceItems]
+                          const temp = newItems[index]
+                          newItems[index] = newItems[index - 1]
+                          newItems[index - 1] = temp
+                          setLocalData({ ...localData, invoiceItems: newItems })
+                          setSelectedItemIndices([index - 1])
+                        }
+                      }
+                    }}
+                    disabled={selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0}
+                    onMouseEnter={(e) => {
+                      if (selectedItemIndices.length === 1 && selectedItemIndices[0] > 0) {
+                        e.currentTarget.style.background = '#e9ecef'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = (selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0) ? '#e9ecef' : 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0) ? '#e9ecef' : 'transparent',
+                      color: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0) ? '#adb5bd' : '#495057',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0) ? 'not-allowed' : 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Yuxarı"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 12V4M8 4L4 8M8 4L12 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  {/* Move down icon */}
+                  <button
+                    onClick={() => {
+                      if (selectedItemIndices.length === 1) {
+                        const index = selectedItemIndices[0]
+                        if (index < localData.invoiceItems.length - 1) {
+                          const newItems = [...localData.invoiceItems]
+                          const temp = newItems[index]
+                          newItems[index] = newItems[index + 1]
+                          newItems[index + 1] = temp
+                          setLocalData({ ...localData, invoiceItems: newItems })
+                          setSelectedItemIndices([index + 1])
+                        }
+                      }
+                    }}
+                    disabled={selectedItemIndices.length !== 1 || selectedItemIndices[0] === localData.invoiceItems.length - 1}
+                    onMouseEnter={(e) => {
+                      if (selectedItemIndices.length === 1 && selectedItemIndices[0] < localData.invoiceItems.length - 1) {
+                        e.currentTarget.style.background = '#e9ecef'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = (selectedItemIndices.length !== 1 || selectedItemIndices[0] === localData.invoiceItems.length - 1) ? '#e9ecef' : 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === localData.invoiceItems.length - 1) ? '#e9ecef' : 'transparent',
+                      color: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === localData.invoiceItems.length - 1) ? '#adb5bd' : '#495057',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === localData.invoiceItems.length - 1) ? 'not-allowed' : 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Aşağı"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 4V12M8 12L4 8M8 12L12 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  {/* Barcode icon */}
+                  <button
+                    onClick={() => {
+                      // Barkod funksiyası
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#e9ecef'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: 'transparent',
+                      color: '#495057',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Barkod"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 4H2M1 8H2M1 12H2M4 4H5M4 8H5M4 12H5M7 4H8M7 8H8M7 12H8M10 4H11M10 8H11M10 12H11M13 4H14M13 8H14M13 12H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
+
+                  {/* Folder icon */}
+                  <button
+                    onClick={() => {
+                      // Papka funksiyası
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#e9ecef'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: 'transparent',
+                      color: '#495057',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Papka"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M2 3C2 2.44772 2.44772 2 3 2H6.58579C6.851 2 7.10536 2.10536 7.29289 2.29289L8.70711 3.70711C8.89464 3.89464 9.149 4 9.41421 4H13C13.5523 4 14 4.44772 14 5V13C14 13.5523 13.5523 14 13 14H3C2.44772 14 2 13.5523 2 13V3Z" stroke="currentColor" strokeWidth="1.5" />
+                    </svg>
+                  </button>
+
+                  {/* Settings icon */}
+                  <button
+                    onClick={() => {
+                      setShowItemSettingsModal(true)
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#e9ecef'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                    style={{
+                      padding: '0.5rem',
+                      background: 'transparent',
+                      color: '#495057',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title="Ayarlar"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 10C9.10457 10 10 9.10457 10 8C10 6.89543 9.10457 6 8 6C6.89543 6 6 6.89543 6 8C6 9.10457 6.89543 10 8 10Z" stroke="currentColor" strokeWidth="1.5" />
+                      <path d="M12.5 8C12.5 7.5 12.7 7 12.9 6.6L13.8 5.1C14 4.7 13.9 4.2 13.5 3.9L12.1 2.9C11.7 2.6 11.2 2.6 10.8 2.9L9.8 3.5C9.4 3.3 9 3.1 8.5 3.1H7.5C7 3.1 6.6 3.3 6.2 3.5L5.2 2.9C4.8 2.6 4.3 2.6 3.9 2.9L2.5 3.9C2.1 4.2 2 4.7 2.2 5.1L3.1 6.6C3.3 7 3.1 7.5 3.1 8C3.1 8.5 3.3 9 3.1 9.4L2.2 10.9C2 11.3 2.1 11.8 2.5 12.1L3.9 13.1C4.3 13.4 4.8 13.4 5.2 13.1L6.2 12.5C6.6 12.7 7 12.9 7.5 12.9H8.5C9 12.9 9.4 12.7 9.8 12.5L10.8 13.1C11.2 13.4 11.7 13.4 12.1 13.1L13.5 12.1C13.9 11.8 14 11.3 13.8 10.9L12.9 9.4C12.7 9 12.5 8.5 12.5 8Z" stroke="currentColor" strokeWidth="1.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f1f3f5' }}>
+                    <tr>
+                      <th style={{ padding: '8px', borderBottom: '2px solid #dee2e6', width: '40px', textAlign: 'center' }}>№</th>
+                      {tableColumns.filter(c => c.visible).map((column, _index) => (
+                        <th key={column.id}
+                          style={{
+                            padding: '8px',
+                            borderBottom: '2px solid #dee2e6',
+                            textAlign: column.align as any || 'left',
+                            width: column.width,
+                            cursor: enableColumnDrag ? 'move' : 'default',
+                            position: 'relative',
+                            userSelect: 'none'
+                          }}
+                          draggable={enableColumnDrag}
+                          onDragStart={(e) => handleColumnDragStart(e, column.id)}
+                          onDragOver={handleColumnDragOver}
+                          onDrop={(e) => handleColumnDrop(e, column.id)}
+                        >
+                          {column.label}
+                          {/* Resize handle */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: '5px',
+                              cursor: 'col-resize',
+                              zIndex: 1
+                            }}
+                            onMouseDown={(e) => handleResizeStart(e, column.id)}
+                          />
+                        </th>
+                      ))}
+                      <th style={{ padding: '8px', borderBottom: '2px solid #dee2e6', width: '50px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Render Rows */}
+                    {localData.invoiceItems.map((item, index) => (
+                      <tr key={index} style={{ borderBottom: '1px solid #eee', background: index % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                        <td style={{ padding: '6px', textAlign: 'center', color: '#666' }}>{index + 1}</td>
+                        {tableColumns.filter(c => c.visible).map(column => (
+                          <td key={column.id} style={{ padding: '4px' }}>
+                            {renderCell(item, index, column.id)}
+                          </td>
+                        ))}
+                        <td style={{ padding: '4px', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleRemoveItem(index)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#dc3545',
+                              cursor: 'pointer',
+                              fontSize: '1.2rem',
+                              padding: '0 4px'
+                            }}
+                            title="Sətiri sil"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {/* New Item Row (Empty) - Logic to add new item */}
+                  </tbody>
+                  <tfoot style={{ position: 'sticky', bottom: 0, background: '#f8f9fa', fontWeight: 'bold' }}>
+                    <tr>
+                      <td colSpan={2} style={{ padding: '8px', textAlign: 'right' }}>Cəmi:</td>
+                      <td colSpan={tableColumns.length} style={{ padding: '8px' }}>
+                        {localData.invoiceItems.reduce((sum, item) => sum + (item.total_price || 0), 0).toFixed(2)} ₼
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '1.5rem' }}>
+            {/* Functions Tab Content */}
+            <div style={{
+              background: '#f8f9fa',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              border: '1px solid #dee2e6'
+            }}>
+              <h3 style={{ margin: '0 0 1rem 0', color: '#495057' }}>Əlavə Funksiyalar</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+                <button
+                  onClick={() => setShowItemSettingsModal(true)}
+                  style={{
+                    padding: '1rem',
+                    background: 'white',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>⚙️</span>
+                  <span>Cədvəl Ayarları</span>
+                </button>
+                <button
+                  onClick={() => onPrint && onPrint(modal.id, localData)}
+                  style={{
+                    padding: '1rem',
+                    background: 'white',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>🖨️</span>
+                  <span>Çap Et</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showItemSettingsModal && (
+          <TableSettingsModal
+            isOpen={showItemSettingsModal}
+            onClose={() => setShowItemSettingsModal(false)}
+            columns={tableColumns}
+            onColumnsChange={setTableColumns}
+            title="Məhsul Cədvəli Ayarları"
+            defaultColumns={BASE_TABLE_COLUMNS}
+            functionSettings={functionSettings}
+            onFunctionSettingsChange={(settings) => {
+              if (settings.enableColumnDrag !== undefined) {
+                updateEnableColumnDrag(settings.enableColumnDrag)
+              }
+            }}
+            showFunctionsTab={true}
+            customFunctionContent={functionTabContent}
+          />
+        )}
+        {/* Footer */}
+        <div style={{ padding: '10px', borderTop: '1px solid #dee2e6', background: '#f8f9fa', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          {/* Notes */}
+          <div style={{ flex: 1 }}>
+            <textarea
+              value={localData.notes}
+              onChange={(e) => setLocalData({ ...localData, notes: e.target.value })}
+              onFocus={() => setNotesFocused(true)}
+              onBlur={() => {
+                if (!localData.notes) setNotesFocused(false)
+              }}
+              placeholder="Qeydlər..."
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ced4da',
+                borderRadius: '4px',
+                fontSize: '0.875rem',
+                resize: 'none',
+                height: '38px',
+                fontFamily: 'inherit',
+                overflow: 'hidden'
+              }}
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {onPrint && (
+              <button
+                onClick={() => onPrint(modal.id, localData)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+                title="Çap et"
+              >
+                🖨️ Çap
+              </button>
+            )}
+            <button
+              onClick={() => onClose(modal.id)}
+              style={{
+                padding: '8px 16px',
+                background: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              Bağla
+            </button>
+            <button
+              onClick={() => onSave(modal.id, localData)}
+              style={{
+                padding: '8px 16px',
+                background: '#17a2b8',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              Yadda Saxla
+            </button>
+            <button
+              onClick={handleOK}
+              style={{
+                padding: '8px 16px',
+                background: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       style={{
         position: 'fixed',
-        top: 0,
+        top: `${navbarHeight}px`, // Navbar altından başla
         left: 0,
         right: 0,
-        bottom: 0,
+        bottom: `${taskbarHeight}px`, // Taskbar üstündə bitir
         background: 'rgba(0, 0, 0, 0.3)',
         zIndex: modalZIndex,
-        pointerEvents: 'none',
+        pointerEvents: 'auto', // Overlay-ə klikləmək üçün
+      }}
+      onClick={(e) => {
+        // Yalnız overlay-ə klikləndikdə (pəncərənin özünə deyil)
+        if (e.target === e.currentTarget) {
+          if (!isActive) {
+            onActivate?.(modal.id)
+          }
+        }
       }}
     >
       <div
@@ -811,8 +1875,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         data-modal-container
         onClick={(e) => {
           e.stopPropagation()
+          // Yalnız aktiv deyilsə aktivləşdir
           if (!isActive) {
-            onActivate(modal.id)
+            onActivate?.(modal.id)
           }
         }}
       >
@@ -821,10 +1886,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           className="modal-header"
           onMouseDown={handleMouseDown}
           style={{
-            padding: '1rem',
-            borderBottom: '1px solid #ddd',
+            padding: '0.75rem 1rem',
+            borderBottom: 'none',
             cursor: isDragging ? 'grabbing' : 'grab',
-            background: '#f8f9fa',
+            background: '#007bff',
+            color: 'white',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -832,14 +1898,14 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
             flexShrink: 0,
           }}
         >
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', flex: 1 }}>
-            {modal.invoiceId 
-              ? `Qaimə #${modal.invoiceId}` 
-              : modal.invoiceType === 'purchase' 
-                ? 'Yeni Alış Qaiməsi' 
+          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: '500', flex: 1, color: 'white' }}>
+            {modal.invoiceId
+              ? `Qaimə #${modal.invoiceId}`
+              : modal.invoiceType === 'purchase'
+                ? 'Yeni Alış Qaiməsi'
                 : 'Yeni Satış Qaiməsi'}
           </h2>
-          <div style={{ display: 'flex', gap: '0', alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
             <button
               onClick={() => {
                 minimizeWindow(windowId)
@@ -852,7 +1918,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 fontSize: '14px',
                 cursor: 'pointer',
                 padding: '0',
-                color: '#666',
+                color: 'white',
                 width: '46px',
                 height: '32px',
                 display: 'flex',
@@ -869,7 +1935,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               title="Aşağı göndər"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect y="5" width="12" height="1" fill="currentColor"/>
+                <rect y="5" width="12" height="1" fill="currentColor" />
               </svg>
             </button>
             <button
@@ -899,12 +1965,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
             >
               {modal.isMaximized ? (
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="2" y="2" width="8" height="8" stroke="currentColor" strokeWidth="1" fill="none"/>
-                  <rect x="4" y="4" width="6" height="6" stroke="currentColor" strokeWidth="1" fill="none"/>
+                  <rect x="2" y="2" width="8" height="8" stroke="currentColor" strokeWidth="1" fill="none" />
+                  <rect x="4" y="4" width="6" height="6" stroke="currentColor" strokeWidth="1" fill="none" />
                 </svg>
               ) : (
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="1" y="1" width="10" height="10" stroke="currentColor" strokeWidth="1" fill="none"/>
+                  <rect x="1" y="1" width="10" height="10" stroke="currentColor" strokeWidth="1" fill="none" />
                 </svg>
               )}
             </button>
@@ -937,12 +2003,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               title="Bağla"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </button>
           </div>
         </div>
-        
+
         {/* Modal məzmunu */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '1rem', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Qaimə nömrəsi və tarixi */}
@@ -991,244 +2057,244 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
           {/* Müştəri və Son ödəniş tarixi - yan-yana */}
           {!isPurchase ? (
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
-            {/* Müştəri */}
-            <div style={{ flex: 1, position: 'relative' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                Müştəri
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate('/musteriler/alici')
-                    // Müştəri seçildikdə geri qayıtmaq üçün event listener əlavə et
-                    const handleCustomerSelected = (event: CustomEvent) => {
-                      const customer = event.detail as Customer
-                      setLocalData({ 
-                        ...localData, 
-                        selectedCustomerId: customer.id, 
-                        selectedCustomer: customer 
-                      })
-                      window.removeEventListener('customerSelected', handleCustomerSelected as EventListener)
-                    }
-                    window.addEventListener('customerSelected', handleCustomerSelected as EventListener)
-                  }}
-                  style={{
-                    padding: '0.35rem 0.5rem',
-                    background: '#f8f9fa',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '1rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}
-                  title="Müştərilər səhifəsini aç (F4)"
-                >
-                  📁
-                </button>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    type="text"
-                    placeholder="Müştəri adını yazın..."
-                    value={localData.selectedCustomer ? localData.selectedCustomer.name : customerSearchTerm}
-                    data-customer-input="true"
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setCustomerSearchTerm(value)
-                      setShowCustomerDropdown(value.length > 0)
-                      if (!value) {
-                        setLocalData({ ...localData, selectedCustomerId: null, selectedCustomer: null })
-                        setShowCustomerDropdown(false)
-                      }
-                    }}
-                    onFocus={() => {
-                      if (customerSearchTerm && !localData.selectedCustomer) {
-                        setShowCustomerDropdown(true)
-                      }
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => setShowCustomerDropdown(false), 200)
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.35rem 0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                  {showCustomerDropdown && filteredCustomers.length > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: 'white',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      marginTop: '0.25rem',
-                      maxHeight: '200px',
-                      overflow: 'auto',
-                      zIndex: 1000,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                      {filteredCustomers.map(customer => (
-                        <div
-                          key={customer.id}
-                          onClick={() => {
-                            setLocalData({ ...localData, selectedCustomerId: customer.id, selectedCustomer: customer })
-                            setCustomerSearchTerm('')
-                            setShowCustomerDropdown(false)
-                          }}
-                          style={{
-                            padding: '0.75rem',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #f0f0f0'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#f8f9fa'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'white'
-                          }}
-                        >
-                          <div style={{ fontWeight: 'bold' }}>{customer.name}</div>
-                          {customer.phone && <div style={{ fontSize: '0.875rem', color: '#666' }}>Tel: {customer.phone}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {localData.selectedCustomer && (
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              {/* Müştəri */}
+              <div style={{ flex: 1, position: 'relative' }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
+                  Müştəri
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     type="button"
                     onClick={() => {
-                      setLocalData({ ...localData, selectedCustomerId: null, selectedCustomer: null })
-                      setCustomerSearchTerm('')
-                      setShowCustomerDropdown(false)
+                      navigate('/musteriler/alici')
+                      // Müştəri seçildikdə geri qayıtmaq üçün event listener əlavə et
+                      const handleCustomerSelected = (event: CustomEvent) => {
+                        const customer = event.detail as Customer
+                        setLocalData({
+                          ...localData,
+                          selectedCustomerId: customer.id,
+                          selectedCustomer: customer
+                        })
+                        window.removeEventListener('customerSelected', handleCustomerSelected as EventListener)
+                      }
+                      window.addEventListener('customerSelected', handleCustomerSelected as EventListener)
                     }}
                     style={{
-                      padding: '0.35rem 0.75rem',
-                      background: '#dc3545',
-                      color: 'white',
-                      border: 'none',
+                      padding: '0.35rem 0.5rem',
+                      background: '#f8f9fa',
+                      border: '1px solid #ddd',
                       borderRadius: '4px',
                       cursor: 'pointer',
-                      fontSize: '0.875rem',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       flexShrink: 0
                     }}
-                    title="Təmizlə"
+                    title="Müştərilər səhifəsini aç (F4)"
                   >
-                    ✕
+                    рџ“Ѓ
                   </button>
-                )}
-              </div>
-            </div>
-            
-            {/* Son ödəniş tarixi */}
-            {localData.paymentDate !== undefined && (
-            <div style={{ flex: 1, position: 'relative' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                Son ödəniş tarixi
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type="text"
-                  placeholder="15, 15.11 və ya 15.11.2025 formatında daxil edin..."
-                  value={localData.paymentDate || ''}
-                  onChange={(e) => {
-                    setLocalData({ ...localData, paymentDate: e.target.value })
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      const value = e.currentTarget.value.trim()
-                      if (value) {
-                        const formatted = formatDateInput(value)
-                        if (formatted) {
-                          setLocalData({ ...localData, paymentDate: formatted })
-                        }
-                      }
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const value = e.target.value.trim()
-                    if (value) {
-                      const formatted = formatDateInput(value)
-                      if (formatted) {
-                        setLocalData({ ...localData, paymentDate: formatted })
-                      }
-                    }
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '0.35rem 0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '0.875rem'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowDatePicker(!showDatePicker)}
-                  style={{
-                    padding: '0.35rem 0.5rem',
-                    background: '#f8f9fa',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '1rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}
-                  title="Tarix seç"
-                >
-                  📅
-                </button>
-                {showDatePicker && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: 0,
-                    marginTop: '0.25rem',
-                    background: 'white',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    padding: '0.5rem',
-                    zIndex: 1000,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                  }}>
+                  <div style={{ flex: 1, position: 'relative' }}>
                     <input
-                      type="date"
-                      value={localData.paymentDate ? localData.paymentDate.split(' ')[0] : ''}
+                      type="text"
+                      placeholder="Müştəri adını yazın..."
+                      value={localData.selectedCustomer ? localData.selectedCustomer.name : customerSearchTerm}
+                      data-customer-input="true"
                       onChange={(e) => {
-                        const dateValue = e.target.value
-                        if (dateValue) {
-                          const timePart = localData.paymentDate?.split(' ')[1] || '00:00:00'
-                          setLocalData({ ...localData, paymentDate: `${dateValue} ${timePart}` })
-                        } else {
-                          setLocalData({ ...localData, paymentDate: '' })
+                        const value = e.target.value
+                        setCustomerSearchTerm(value)
+                        setShowCustomerDropdown(value.length > 0)
+                        if (!value) {
+                          setLocalData({ ...localData, selectedCustomerId: null, selectedCustomer: null })
+                          setShowCustomerDropdown(false)
                         }
-                        setShowDatePicker(false)
+                      }}
+                      onFocus={() => {
+                        if (customerSearchTerm && !localData.selectedCustomer) {
+                          setShowCustomerDropdown(true)
+                        }
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => setShowCustomerDropdown(false), 200)
                       }}
                       style={{
-                        padding: '0.25rem',
+                        width: '100%',
+                        padding: '0.35rem 0.5rem',
                         border: '1px solid #ddd',
                         borderRadius: '4px',
                         fontSize: '0.875rem'
                       }}
                     />
+                    {showCustomerDropdown && filteredCustomers.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: 'white',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        marginTop: '0.25rem',
+                        maxHeight: '200px',
+                        overflow: 'auto',
+                        zIndex: 1000,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}>
+                        {filteredCustomers.map(customer => (
+                          <div
+                            key={customer.id}
+                            onClick={() => {
+                              setLocalData({ ...localData, selectedCustomerId: customer.id, selectedCustomer: customer })
+                              setCustomerSearchTerm('')
+                              setShowCustomerDropdown(false)
+                            }}
+                            style={{
+                              padding: '0.75rem',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #f0f0f0'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#f8f9fa'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'white'
+                            }}
+                          >
+                            <div style={{ fontWeight: 'bold' }}>{customer.name}</div>
+                            {customer.phone && <div style={{ fontSize: '0.875rem', color: '#666' }}>Tel: {customer.phone}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                  {localData.selectedCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalData({ ...localData, selectedCustomerId: null, selectedCustomer: null })
+                        setCustomerSearchTerm('')
+                        setShowCustomerDropdown(false)
+                      }}
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        background: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        flexShrink: 0
+                      }}
+                      title="Təmizlə"
+                    >
+                      ✖
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Son ödəniş tarixi */}
+              {localData.paymentDate !== undefined && (
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
+                    Son ödəniş tarixi
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="text"
+                      placeholder="15, 15.11 və ya 15.11.2025 formatında daxil edin..."
+                      value={localData.paymentDate || ''}
+                      onChange={(e) => {
+                        setLocalData({ ...localData, paymentDate: e.target.value })
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          const value = e.currentTarget.value.trim()
+                          if (value) {
+                            const formatted = formatDateInput(value)
+                            if (formatted) {
+                              setLocalData({ ...localData, paymentDate: formatted })
+                            }
+                          }
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const value = e.target.value.trim()
+                        if (value) {
+                          const formatted = formatDateInput(value)
+                          if (formatted) {
+                            setLocalData({ ...localData, paymentDate: formatted })
+                          }
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '0.35rem 0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDatePicker(!showDatePicker)}
+                      style={{
+                        padding: '0.35rem 0.5rem',
+                        background: '#f8f9fa',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}
+                      title="Tarix seç"
+                    >
+                      рџ“…
+                    </button>
+                    {showDatePicker && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: '0.25rem',
+                        background: 'white',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        padding: '0.5rem',
+                        zIndex: 1000,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}>
+                        <input
+                          type="date"
+                          value={localData.paymentDate ? localData.paymentDate.split(' ')[0] : ''}
+                          onChange={(e) => {
+                            const dateValue = e.target.value
+                            if (dateValue) {
+                              const timePart = localData.paymentDate?.split(' ')[1] || '00:00:00'
+                              setLocalData({ ...localData, paymentDate: `${dateValue} ${timePart}` })
+                            } else {
+                              setLocalData({ ...localData, paymentDate: '' })
+                            }
+                            setShowDatePicker(false)
+                          }}
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '0.875rem'
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            )}
-          </div>
           ) : (
             <div style={{ marginBottom: '0.75rem', position: 'relative' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
@@ -1305,9 +2371,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           {supplier.phone && <div style={{ fontSize: '0.875rem', color: '#666' }}>Tel: {supplier.phone}</div>}
                         </div>
                       ))}
-              </div>
-            )}
-          </div>
+                    </div>
+                  )}
+                </div>
                 {localData.selectedSupplier && (
                   <button
                     type="button"
@@ -1327,7 +2393,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     }}
                     title="Təmizlə"
                   >
-                    ✕
+                    ✖
                   </button>
                 )}
               </div>
@@ -1368,10 +2434,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Əlavə et (Insert)"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 3V13M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <path d="M8 3V13M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
                 </button>
-                
+
                 {/* Delete icon */}
                 <button
                   onClick={() => {
@@ -1410,12 +2476,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Sil (Delete)"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 4H13M6 4V3C6 2.44772 6.44772 2 7 2H9C9.55228 2 10 2.44772 10 3V4M6 7.5V11.5M10 7.5V11.5M4 4L4.5 13C4.5 13.5523 4.94772 14 5.5 14H10.5C11.0523 14 11.5 13.5523 11.5 13L12 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <path d="M3 4H13M6 4V3C6 2.44772 6.44772 2 7 2H9C9.55228 2 10 2.44772 10 3V4M6 7.5V11.5M10 7.5V11.5M4 4L4.5 13C4.5 13.5523 4.94772 14 5.5 14H10.5C11.0523 14 11.5 13.5523 11.5 13L12 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
                 </button>
-                
+
                 {/* Copy icon */}
-              <button
+                <button
                   onClick={() => {
                     if (selectedItemIndices.length > 0) {
                       const sortedIndices = [...selectedItemIndices].sort((a, b) => a - b)
@@ -1433,8 +2499,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = selectedItemIndices.length === 0 ? '#e9ecef' : 'transparent'
                   }}
-                style={{
-                  padding: '0.5rem',
+                  style={{
+                    padding: '0.5rem',
                     background: selectedItemIndices.length === 0 ? '#e9ecef' : 'transparent',
                     color: selectedItemIndices.length === 0 ? '#adb5bd' : '#495057',
                     border: 'none',
@@ -1451,11 +2517,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Kopyala (F9)"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 2C4 0.895431 4.89543 0 6 0H10C11.1046 0 12 0.895431 12 2V6C12 7.10457 11.1046 8 10 8H6C4.89543 8 4 7.10457 4 6V2Z" stroke="currentColor" strokeWidth="1.5"/>
-                    <path d="M4 6H2C0.895431 6 0 6.89543 0 8V12C0 13.1046 0.895431 14 2 14H6C7.10457 14 8 13.1046 8 12V10" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M4 2C4 0.895431 4.89543 0 6 0H10C11.1046 0 12 0.895431 12 2V6C12 7.10457 11.1046 8 10 8H6C4.89543 8 4 7.10457 4 6V2Z" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M4 6H2C0.895431 6 0 6.89543 0 8V12C0 13.1046 0.895431 14 2 14H6C7.10457 14 8 13.1046 8 12V10" stroke="currentColor" strokeWidth="1.5" />
                   </svg>
                 </button>
-                
+
                 {/* Move up icon */}
                 <button
                   onClick={() => {
@@ -1498,10 +2564,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Yuxarı"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 12V4M8 4L4 8M8 4L12 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M8 12V4M8 4L4 8M8 4L12 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                
+
                 {/* Move down icon */}
                 <button
                   onClick={() => {
@@ -1544,10 +2610,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Aşağı"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 4V12M8 12L4 8M8 12L12 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M8 4V12M8 12L4 8M8 12L12 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                
+
                 {/* Barcode icon */}
                 <button
                   onClick={() => {
@@ -1577,10 +2643,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Barkod"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M1 4H2M1 8H2M1 12H2M4 4H5M4 8H5M4 12H5M7 4H8M7 8H8M7 12H8M10 4H11M10 8H11M10 12H11M13 4H14M13 8H14M13 12H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <path d="M1 4H2M1 8H2M1 12H2M4 4H5M4 8H5M4 12H5M7 4H8M7 8H8M7 12H8M10 4H11M10 8H11M10 12H11M13 4H14M13 8H14M13 12H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
                 </button>
-                
+
                 {/* Folder icon */}
                 <button
                   onClick={() => {
@@ -1610,10 +2676,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Papka"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M2 3C2 2.44772 2.44772 2 3 2H6.58579C6.851 2 7.10536 2.10536 7.29289 2.29289L8.70711 3.70711C8.89464 3.89464 9.149 4 9.41421 4H13C13.5523 4 14 4.44772 14 5V13C14 13.5523 13.5523 14 13 14H3C2.44772 14 2 13.5523 2 13V3Z" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M2 3C2 2.44772 2.44772 2 3 2H6.58579C6.851 2 7.10536 2.10536 7.29289 2.29289L8.70711 3.70711C8.89464 3.89464 9.149 4 9.41421 4H13C13.5523 4 14 4.44772 14 5V13C14 13.5523 13.5523 14 13 14H3C2.44772 14 2 13.5523 2 13V3Z" stroke="currentColor" strokeWidth="1.5" />
                   </svg>
                 </button>
-                
+
                 {/* Settings icon */}
                 <button
                   onClick={() => {
@@ -1643,10 +2709,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   title="Ayarlar"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 10C9.10457 10 10 9.10457 10 8C10 6.89543 9.10457 6 8 6C6.89543 6 6 6.89543 6 8C6 9.10457 6.89543 10 8 10Z" stroke="currentColor" strokeWidth="1.5"/>
-                    <path d="M12.5 8C12.5 7.5 12.7 7 12.9 6.6L13.8 5.1C14 4.7 13.9 4.2 13.5 3.9L12.1 2.9C11.7 2.6 11.2 2.6 10.8 2.9L9.8 3.5C9.4 3.3 9 3.1 8.5 3.1H7.5C7 3.1 6.6 3.3 6.2 3.5L5.2 2.9C4.8 2.6 4.3 2.6 3.9 2.9L2.5 3.9C2.1 4.2 2 4.7 2.2 5.1L3.1 6.6C3.3 7 3.1 7.5 3.1 8C3.1 8.5 3.3 9 3.1 9.4L2.2 10.9C2 11.3 2.1 11.8 2.5 12.1L3.9 13.1C4.3 13.4 4.8 13.4 5.2 13.1L6.2 12.5C6.6 12.7 7 12.9 7.5 12.9H8.5C9 12.9 9.4 12.7 9.8 12.5L10.8 13.1C11.2 13.4 11.7 13.4 12.1 13.1L13.5 12.1C13.9 11.8 14 11.3 13.8 10.9L12.9 9.4C12.7 9 12.5 8.5 12.5 8Z" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M8 10C9.10457 10 10 9.10457 10 8C10 6.89543 9.10457 6 8 6C6.89543 6 6 6.89543 6 8C6 9.10457 6.89543 10 8 10Z" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M12.5 8C12.5 7.5 12.7 7 12.9 6.6L13.8 5.1C14 4.7 13.9 4.2 13.5 3.9L12.1 2.9C11.7 2.6 11.2 2.6 10.8 2.9L9.8 3.5C9.4 3.3 9 3.1 8.5 3.1H7.5C7 3.1 6.6 3.3 6.2 3.5L5.2 2.9C4.8 2.6 4.3 2.6 3.9 2.9L2.5 3.9C2.1 4.2 2 4.7 2.2 5.1L3.1 6.6C3.3 7 3.1 7.5 3.1 8C3.1 8.5 3.3 9 3.1 9.4L2.2 10.9C2 11.3 2.1 11.8 2.5 12.1L3.9 13.1C4.3 13.4 4.8 13.4 5.2 13.1L6.2 12.5C6.6 12.7 7 12.9 7.5 12.9H8.5C9 12.9 9.4 12.7 9.8 12.5L10.8 13.1C11.2 13.4 11.7 13.4 12.1 13.1L13.5 12.1C13.9 11.8 14 11.3 13.8 10.9L12.9 9.4C12.7 9 12.5 8.5 12.5 8Z" stroke="currentColor" strokeWidth="1.5" />
                   </svg>
-              </button>
+                </button>
               </div>
             </div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
@@ -1707,18 +2773,18 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                         if (sortColumn !== columnId) {
                           return (
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.5 }}>
-                              <path d="M3 4.5L6 1.5L9 4.5M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M3 4.5L6 1.5L9 4.5M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           )
                         }
 
                         return sortDirection === 'asc' ? (
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3 4.5L6 1.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M3 4.5L6 1.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         ) : (
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         )
                       }
@@ -1730,7 +2796,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                 №
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.5 }}>
-                                  <path d="M3 4.5L6 1.5L9 4.5M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M3 4.5L6 1.5L9 4.5M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                               </div>
                             )
@@ -1819,7 +2885,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </thead>
                 <tbody>
                   {localData.invoiceItems.map((item, idx) => {
-                    const rowProducts = getFilteredProductsForRow(item.searchTerm || '')
+
                     const isSelected = selectedItemIndices.includes(idx)
                     return (
                       <tr
@@ -1842,229 +2908,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           cursor: 'pointer'
                         }}
                       >
-                        {visibleOrderedColumns.map((column) => {
-                          switch (column.id) {
-                            case 'checkbox':
-                              return (
-                                <td key={`checkbox-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => {}}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (e.ctrlKey || e.metaKey) {
-                                        if (selectedItemIndices.includes(idx)) {
-                                          setSelectedItemIndices(selectedItemIndices.filter(i => i !== idx))
-                                        } else {
-                                          setSelectedItemIndices([...selectedItemIndices, idx])
-                                        }
-                                      } else {
-                                        setSelectedItemIndices([idx])
-                                      }
-                                    }}
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                </td>
-                              )
-                            case 'number':
-                              return (
-                                <td key={`number-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
-                                  {idx + 1}
-                                </td>
-                              )
-                            case 'product':
-                              return (
-                                <td key={`product-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', position: 'relative' }}>
-                                  {item.product_id ? (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <span>{item.product_name}</span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          const updatedItems = [...localData.invoiceItems]
-                                          updatedItems[idx] = {
-                                            ...updatedItems[idx],
-                                            product_id: null,
-                                            product_name: '',
-                                            searchTerm: ''
-                                          }
-                                          setLocalData({ ...localData, invoiceItems: updatedItems })
-                                        }}
-                                        style={{
-                                          background: 'transparent',
-                                          border: 'none',
-                                          color: '#dc3545',
-                                          cursor: 'pointer',
-                                          fontSize: '1rem',
-                                          padding: '0.25rem',
-                                          marginLeft: '0.5rem'
-                                        }}
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div style={{ position: 'relative' }}>
-                                      <input
-                                        type="text"
-                                        placeholder="Məhsul adını yazın..."
-                                        value={item.searchTerm || ''}
-                                        onChange={(e) => handleProductSearchInRow(idx, e.target.value)}
-                                        onBlur={(e) => {
-                                          setTimeout(() => {
-                                            const relatedTarget = e.relatedTarget as HTMLElement
-                                            if (!relatedTarget || !relatedTarget.closest('.product-dropdown')) {
-                                              const updatedItems = [...localData.invoiceItems]
-                                              updatedItems[idx] = {
-                                                ...updatedItems[idx],
-                                                searchTerm: ''
-                                              }
-                                              setLocalData({ ...localData, invoiceItems: updatedItems })
-                                            }
-                                          }, 200)
-                                        }}
-                                        style={{
-                                          width: '100%',
-                                          padding: '0.25rem',
-                                          border: '1px solid #ddd',
-                                          borderRadius: '4px',
-                                          fontSize: '0.9rem'
-                                        }}
-                                      />
-                                      {rowProducts.length > 0 && (
-                                        <div
-                                          className="product-dropdown"
-                                          style={{
-                                            position: 'absolute',
-                                            top: '100%',
-                                            left: 0,
-                                            right: 0,
-                                            background: 'white',
-                                            border: '1px solid #ddd',
-                                            borderRadius: '4px',
-                                            marginTop: '0.25rem',
-                                            maxHeight: '200px',
-                                            overflow: 'auto',
-                                            zIndex: 1000,
-                                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                                          }}
-                                          onMouseDown={(e) => e.preventDefault()}
-                                        >
-                                          {rowProducts.map(product => (
-                                            <div
-                                              key={product.id}
-                                              onClick={(e) => {
-                                                e.preventDefault()
-                                                e.stopPropagation()
-                                                handleProductSelectInRow(idx, product.id)
-                                              }}
-                                              style={{
-                                                padding: '0.75rem',
-                                                cursor: 'pointer',
-                                                borderBottom: '1px solid #f0f0f0'
-                                              }}
-                                              onMouseEnter={(e) => {
-                                                e.currentTarget.style.background = '#f8f9fa'
-                                              }}
-                                              onMouseLeave={(e) => {
-                                                e.currentTarget.style.background = 'white'
-                                              }}
-                                            >
-                                              <div style={{ fontWeight: 'bold' }}>{product.name}</div>
-                                              <div style={{ fontSize: '0.875rem', color: '#666' }}>
-                                                {product.code && <span>Kod: {product.code} </span>}
-                                                {product.barcode && <span>Barkod: {product.barcode}</span>}
-                                              </div>
-                                              {isPurchase
-                                                ? (product.purchase_price && (
-                                                    <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
-                                                      Qiymət: {Number(product.purchase_price).toFixed(2)} ₼
-                                                    </div>
-                                                  ))
-                                                : product.sale_price && (
-                                                    <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
-                                                      Qiymət: {Number(product.sale_price).toFixed(2)} ₼
-                                                    </div>
-                                                  )}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
-                              )
-                            case 'code':
-                              return (
-                                <td key={`code-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>
-                                  {getProductInfo(item.product_id).code || '-'}
-                                </td>
-                              )
-                            case 'barcode':
-                              return (
-                                <td key={`barcode-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>
-                                  {getProductInfo(item.product_id).barcode || '-'}
-                                </td>
-                              )
-                            case 'unit':
-                              return (
-                                <td key={`unit-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>
-                                  {getProductInfo(item.product_id).unit || '-'}
-                                </td>
-                              )
-                            case 'quantity':
-                              return (
-                                <td key={`quantity-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>
-                                  <input
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={item.quantity}
-                                    onChange={(e) => handleUpdateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      width: '100%',
-                                      padding: '0.25rem',
-                                      border: '1px solid #ddd',
-                                      borderRadius: '4px',
-                                      textAlign: 'right',
-                                      fontSize: '0.9rem'
-                                    }}
-                                  />
-                                </td>
-                              )
-                            case 'unitPrice':
-                              return (
-                                <td key={`unitPrice-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={item.unit_price}
-                                    onChange={(e) => handleUpdateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      width: '100%',
-                                      padding: '0.25rem',
-                                      border: '1px solid #ddd',
-                                      borderRadius: '4px',
-                                      textAlign: 'right',
-                                      fontSize: '0.9rem'
-                                    }}
-                                  />
-                                </td>
-                              )
-                            case 'total':
-                              return (
-                                <td key={`total-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
-                                  {item.total_price.toFixed(2)} ₼
-                                </td>
-                              )
-                            default:
-                              return null
-                          }
-                        })}
+                        {visibleOrderedColumns.map((column) => (
+                          <td key={`${column.id}-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd' }}>
+                            {renderCell(item, idx, column.id)}
+                          </td>
+                        ))}
                       </tr>
                     )
                   })}
@@ -2129,7 +2977,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         <div style={{ padding: '1rem', borderTop: '1px solid #ddd', display: 'flex', gap: '1rem', alignItems: 'center', flexShrink: 0 }}>
           {/* Qeydlər */}
           <div style={{ flex: 1 }}>
-            <div style={{ 
+            <div style={{
               border: '1px solid #ddd',
               borderRadius: '4px',
               background: '#f8f9fa',
@@ -2166,7 +3014,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               />
             </div>
           </div>
-          
+
           {/* Düymələr */}
           <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
             {onPrint && (
@@ -2186,6 +3034,38 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 🖨️ Çap et
               </button>
             )}
+
+            {/* Varsayılan kimi saxla düyməsi */}
+            <button
+              onClick={() => {
+                try {
+                  const settingsKey = `invoice-modal-settings-${isPurchase ? 'purchase' : 'sale'}`
+                  const settings = {
+                    tableColumns,
+                    enableColumnDrag,
+                    timestamp: Date.now()
+                  }
+                  localStorage.setItem(settingsKey, JSON.stringify(settings))
+                  alert('Ayarlar varsayılan olaraq saxlanıldı!')
+                } catch (err) {
+                  console.error('Ayarlar saxlanarkən xəta:', err)
+                  alert('Ayarlar saxlanarkən xəta baş verdi')
+                }
+              }}
+              style={{
+                padding: '0.5rem 1.5rem',
+                background: '#17a2b8',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+              }}
+              title="Sütun ayarlarını varsayılan olaraq saxla"
+            >
+              💾 Varsayılan kimi saxla
+            </button>
+
             <button
               onClick={() => onClose(modal.id)}
               style={{
@@ -2247,6 +3127,24 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               cursor: 'nwse-resize',
               background: 'linear-gradient(135deg, transparent 0%, transparent 40%, #999 40%, #999 60%, transparent 60%)',
             }}
+          />
+        )}
+        {showItemSettingsModal && (
+          <TableSettingsModal
+            isOpen={showItemSettingsModal}
+            onClose={() => setShowItemSettingsModal(false)}
+            columns={tableColumns}
+            onColumnsChange={setTableColumns}
+            title="Məhsul Cədvəli Ayarları"
+            defaultColumns={BASE_TABLE_COLUMNS}
+            functionSettings={functionSettings}
+            onFunctionSettingsChange={(settings) => {
+              if (settings.enableColumnDrag !== undefined) {
+                updateEnableColumnDrag(settings.enableColumnDrag)
+              }
+            }}
+            showFunctionsTab={true}
+            customFunctionContent={functionTabContent}
           />
         )}
       </div>

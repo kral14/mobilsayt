@@ -78,11 +78,9 @@ export interface DataTableProps<T = any> {
 
 export default function DataTable<T = any>({
   pageId,
-  columns: initialColumns,
   data,
   loading = false,
   error = '',
-  title,
   getRowId,
   toolbarActions,
   leftToolbarItems = [],
@@ -106,14 +104,14 @@ export default function DataTable<T = any>({
         // Yeni sütunları (defaultColumns-də olan, amma savedColumns-də olmayan) əlavə et
         const savedColumnIds = new Set(savedColumns.map(col => col.id))
         const newColumns = defaultColumns.filter(col => !savedColumnIds.has(col.id))
-        
+
         // Köhnə sütunları sil (defaultColumns-də olmayan sütunları çıxar)
         const defaultColumnIds = new Set(defaultColumns.map(col => col.id))
         const filteredSavedColumns = savedColumns.filter(col => defaultColumnIds.has(col.id))
-        
+
         // Birləşdir: filteredSavedColumns + yeni sütunlar, order-ə görə sırala
         const mergedColumns = [...filteredSavedColumns, ...newColumns].sort((a, b) => a.order - b.order)
-        
+
         // Köhnə sütunları yenilə (defaultColumns-dəki məlumatlarla)
         const defaultColumnMap = new Map(defaultColumns.map(col => [col.id, col]))
         const updatedColumns = mergedColumns.map(col => {
@@ -122,16 +120,16 @@ export default function DataTable<T = any>({
             // Yeni field-ləri (məsələn render funksiyası) əlavə et
             // render funksiyası JSON-a serialize olunmur, ona görə də həmişə defaultCol-dan götürürük
             const { render, ...defaultColWithoutRender } = defaultCol
-            return { 
-              ...col, 
-              ...defaultColWithoutRender, 
+            return {
+              ...col,
+              ...defaultColWithoutRender,
               visible: col.visible !== undefined ? col.visible : defaultCol.visible,
               ...(defaultCol.render && { render: defaultCol.render }) // render funksiyasını yalnız varsa əlavə et
             }
           }
           return col
         })
-        
+
         return updatedColumns
       }
     } catch (e) {
@@ -181,15 +179,15 @@ export default function DataTable<T = any>({
   const [resizingColumn, setResizingColumn] = useState<string | null>(null)
   const [resizeStartX, setResizeStartX] = useState(0)
   const [resizeStartWidth, setResizeStartWidth] = useState(0)
-  
+
   // Cədvəl div-inə ref
   const tableRef = useRef<HTMLDivElement>(null)
-  
+
   // Debug: activeSearchColumn dəyişdikdə log yaz
   React.useEffect(() => {
     console.log('[DataTable] activeSearchColumn dəyişdi:', activeSearchColumn, 'columns:', columns.map(c => c.id))
   }, [activeSearchColumn, columns])
-  
+
   // Kontekst menyu state-ləri
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean
@@ -220,7 +218,7 @@ export default function DataTable<T = any>({
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault()
     }
-    
+
     document.addEventListener('contextmenu', handleContextMenu)
     return () => {
       document.removeEventListener('contextmenu', handleContextMenu)
@@ -234,7 +232,7 @@ export default function DataTable<T = any>({
         setContextMenu({ ...contextMenu, visible: false })
       }
     }
-    
+
     document.addEventListener('click', handleClick)
     return () => {
       document.removeEventListener('click', handleClick)
@@ -279,7 +277,7 @@ export default function DataTable<T = any>({
   const handleDrop = (e: React.DragEvent, targetColumnId: string) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     if (draggedColumn === null || draggedColumn === targetColumnId) {
       setDraggedColumn(null)
       return
@@ -338,8 +336,8 @@ export default function DataTable<T = any>({
     const handleMouseMove = (e: MouseEvent) => {
       const diff = e.clientX - resizeStartX
       const newWidth = Math.max(50, resizeStartWidth + diff)
-      
-      setColumns(prev => prev.map(col => 
+
+      setColumns(prev => prev.map(col =>
         col.id === resizingColumn ? { ...col, width: newWidth } : col
       ))
     }
@@ -359,30 +357,45 @@ export default function DataTable<T = any>({
 
   // Sıralama funksiyası
   const handleSort = (columnId: string) => {
+    console.log('[DataTable] handleSort çağırıldı, columnId:', columnId, 'current sortConfig:', sortConfig)
     setSortConfig(prev => {
+      console.log('[DataTable] setSortConfig prev:', prev)
       if (prev.column === columnId) {
-        return {
+        const newConfig: { column: string; direction: 'asc' | 'desc' } = {
           column: columnId,
-          direction: prev.direction === 'asc' ? 'desc' : 'asc'
+          direction: (prev.direction === 'asc' ? 'desc' : 'asc') as 'asc' | 'desc'
         }
+        console.log('[DataTable] Eyni sütun, direction dəyişir:', newConfig)
+        return newConfig
       }
-      return {
+      const newConfig: { column: string; direction: 'asc' | 'desc' } = {
         column: columnId,
-        direction: 'asc'
+        direction: 'asc' as 'asc' | 'desc'
       }
+      console.log('[DataTable] Yeni sütun, asc ilə başlayır:', newConfig)
+      return newConfig
     })
   }
 
   // Sıralanmış məlumatlar
   const getSortedData = () => {
-    if (!sortConfig.column) return data
+    console.log('[DataTable] getSortedData çağırıldı, sortConfig:', sortConfig)
+    if (!sortConfig.column) {
+      console.log('[DataTable] sortConfig.column yoxdur, original data qaytarılır')
+      return data
+    }
 
-    return [...data].sort((a, b) => {
+    const sorted = [...data].sort((a, b) => {
       const column = sortedColumns.find(col => col.id === sortConfig.column)
-      if (!column || !column.sortable) return 0
+      console.log('[DataTable] Sıralama üçün sütun:', column?.id, 'sortable:', column?.sortable)
+      if (!column || column.sortable === false) {
+        console.log('[DataTable] Sütun tapılmadı və ya sortable false')
+        return 0
+      }
 
       const aValue = (a as any)[sortConfig.column!]
       const bValue = (b as any)[sortConfig.column!]
+      console.log('[DataTable] Müqayisə:', aValue, 'vs', bValue)
 
       if (aValue === null || aValue === undefined) return 1
       if (bValue === null || bValue === undefined) return -1
@@ -398,9 +411,13 @@ export default function DataTable<T = any>({
       if (aStr > bStr) return sortConfig.direction === 'asc' ? 1 : -1
       return 0
     })
+
+    console.log('[DataTable] Sıralanmış data:', sorted.slice(0, 3))
+    return sorted
   }
 
   const sortedData = getSortedData()
+  console.log('[DataTable] sortedData uzunluğu:', sortedData.length, 'ilk element:', sortedData[0])
 
   // Ctrl+A kombinasiyasını dinlə (cədvəlin bütün sətirlərini seç)
   useEffect(() => {
@@ -409,21 +426,21 @@ export default function DataTable<T = any>({
       if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
         // Yalnız cədvəlin içində və ya cədvəlin div-inə focus olduqda
         const activeElement = document.activeElement
-        const isInTable = tableRef.current?.contains(activeElement) || 
-                          (activeElement?.tagName === 'INPUT' && activeElement.getAttribute('type') === 'checkbox') ||
-                          activeElement?.closest('table') !== null
-        
+        const isInTable = tableRef.current?.contains(activeElement) ||
+          (activeElement?.tagName === 'INPUT' && activeElement.getAttribute('type') === 'checkbox') ||
+          activeElement?.closest('table') !== null
+
         if (isInTable && tableRef.current) {
           e.preventDefault()
           e.stopPropagation()
-          
+
           // Cədvəlin bütün sətirlərini seç
           const allIds = sortedData.map(row => getRowId(row))
           setSelectedRows(allIds)
         }
       }
     }
-    
+
     document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
@@ -442,7 +459,7 @@ export default function DataTable<T = any>({
 
   const handleSelectRow = (id: number | string, event?: React.MouseEvent) => {
     const isCtrlPressed = event?.ctrlKey || event?.metaKey
-    
+
     if (!functionSettings.multiSelect && !isCtrlPressed) {
       setSelectedRows([id])
       return
@@ -497,23 +514,21 @@ export default function DataTable<T = any>({
   const visibleColumns = sortedColumns.filter(col => col.visible || col.id === 'checkbox')
 
   return (
-    <div style={{ padding: '0.5rem 1rem', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 0 }}>
-      {title && <h1 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>{title}</h1>}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {/* Search columns label logic moved inside toolbar for better layout if needed, or kept simple */}
 
       {/* Toolbar */}
       <div style={{
         background: '#f5f5f5',
-        padding: '0.75rem 1rem',
-        borderRadius: '8px',
-        marginBottom: '0.75rem',
+        padding: '0.5rem 1rem',
         display: 'flex',
         gap: '0.5rem',
         flexWrap: 'wrap',
         alignItems: 'center',
-        border: '1px solid #ddd',
+        borderBottom: '1px solid #ddd',
         flexShrink: 0,
         position: 'sticky',
-        top: '64px',
+        top: '0',
         zIndex: 100
       }}>
         {/* Sol toolbar elementləri */}
@@ -749,9 +764,9 @@ export default function DataTable<T = any>({
       )}
 
       {!loading && !error && (
-        <div 
+        <div
           ref={tableRef}
-          style={{ flex: 1, overflow: 'auto', border: '1px solid #ddd', borderRadius: '8px', minHeight: 0 }}
+          style={{ flex: 1, overflow: 'auto', padding: '1rem', minHeight: 0 }}
           tabIndex={0}
           onContextMenu={(e) => {
             e.preventDefault()
@@ -824,17 +839,16 @@ export default function DataTable<T = any>({
                       onClick={(e) => {
                         console.log('[DataTable] Sütun header onClick başladı:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget, 'onColumnHeaderClick:', !!onColumnHeaderClick)
                         console.log('[DataTable] onClick event details - type:', e.type, 'bubbles:', e.bubbles, 'cancelable:', e.cancelable)
-                        
+
                         // Event-in row-a düşməsinin qarşısını al (vacibdir!)
                         e.stopPropagation()
-                        e.preventDefault()
-                        
+
                         // Resize handle-a klikləyibsə, return et
                         if ((e.target as HTMLElement).closest('[data-resize-handle]')) {
                           console.log('[DataTable] Resize handle-a klikləndi, return edilir')
                           return
                         }
-                        
+
                         // Sütun header-ına klikləyəndə callback çağır (həmişə çağır, sort-dan əvvəl)
                         if (onColumnHeaderClick && column.id !== 'checkbox' && column.id !== 'is_active_status') {
                           console.log('[DataTable] Sütun header-ına klikləndi, callback çağırılır:', column.id)
@@ -847,7 +861,7 @@ export default function DataTable<T = any>({
                         } else {
                           console.log('[DataTable] Callback çağırılmadı - onColumnHeaderClick:', !!onColumnHeaderClick, 'column.id:', column.id, 'is checkbox:', column.id === 'checkbox', 'is is_active_status:', column.id === 'is_active_status')
                         }
-                        
+
                         // Sort funksiyasını çağır
                         if (isSortable) {
                           console.log('[DataTable] handleSort çağırılır:', column.id)
@@ -871,11 +885,11 @@ export default function DataTable<T = any>({
                       }}
                       title={isSortable ? 'Sıralamaq üçün klikləyin, sürüşdürmək üçün drag edin' : ''}
                     >
-                      <div 
-                        style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '0.5rem', 
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
                           justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
                           position: 'relative',
                           pointerEvents: 'auto'
@@ -903,7 +917,13 @@ export default function DataTable<T = any>({
                           console.log('[DataTable] Header div onClick:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
                           // Event-in row-a düşməsinin qarşısını al (vacibdir!)
                           e.stopPropagation()
-                          e.preventDefault()
+
+                          // Resize handle-a klikləyibsə, return et
+                          if ((e.target as HTMLElement).closest('[data-resize-handle]')) {
+                            console.log('[DataTable] Resize handle-a klikləndi, return edilir')
+                            return
+                          }
+
                           // Birbaşa callback-i çağır
                           if (onColumnHeaderClick && column.id !== 'checkbox' && column.id !== 'is_active_status') {
                             console.log('[DataTable] Header div-dən callback çağırılır:', column.id)
@@ -914,12 +934,18 @@ export default function DataTable<T = any>({
                               console.error('[DataTable] Callback xətası:', error)
                             }
                           }
+
+                          // Sort funksiyasını çağır
+                          if (isSortable) {
+                            console.log('[DataTable] handleSort çağırılır (div onClick):', column.id)
+                            handleSort(column.id)
+                          }
                         }}
                       >
                         <span>{column.label}</span>
                         {isSortable && (
-                          <span style={{ 
-                            fontSize: '0.8rem', 
+                          <span style={{
+                            fontSize: '0.8rem',
                             color: isSorted ? '#1976d2' : '#999',
                             fontWeight: isSorted ? 'bold' : 'normal'
                           }}>
@@ -975,7 +1001,7 @@ export default function DataTable<T = any>({
                   return (
                     <tr
                       key={rowId}
-                      onDoubleClick={(e) => {
+                      onDoubleClick={() => {
                         // Dubl klik zamanı sənədi aç
                         if (onRowClick) {
                           onRowClick(row, rowId)
@@ -1044,32 +1070,62 @@ export default function DataTable<T = any>({
                               }
                             }}
                             onClick={(e) => {
-                              // Dubl klik zamanı seçim etmə (dubl klik sənədi açır)
+                              // Dubl klik zamanı mətn seçimi etmə (dubl klik sənədi açır)
                               if (e.detail === 2) {
+                                // Double-click zamanı seçimi təmizlə
+                                const selection = window.getSelection()
+                                selection?.removeAllRanges()
                                 return
                               }
-                              
-                              // Hücrəyə klikləyəndə, həmin hücrənin bütün mətnini seç
-                              const target = e.currentTarget as HTMLElement
+
+                              const currentTarget = e.currentTarget as HTMLElement
+
+                              // Hücrənin padding və border məsafələrini hesabla
+                              const rect = currentTarget.getBoundingClientRect()
+                              const style = window.getComputedStyle(currentTarget)
+                              const paddingLeft = parseFloat(style.paddingLeft)
+                              const paddingRight = parseFloat(style.paddingRight)
+                              const paddingTop = parseFloat(style.paddingTop)
+                              const paddingBottom = parseFloat(style.paddingBottom)
+
+                              // Klik pozisiyası
+                              const clickX = e.clientX - rect.left
+                              const clickY = e.clientY - rect.top
+
+                              // Məzmun sahəsi (padding-siz)
+                              const contentLeft = paddingLeft
+                              const contentRight = rect.width - paddingRight
+                              const contentTop = paddingTop
+                              const contentBottom = rect.height - paddingBottom
+
+                              // Əgər padding sahəsinə klikləyibsə, mətn seçmə
+                              const clickedOnPadding = clickX < contentLeft || clickX > contentRight ||
+                                clickY < contentTop || clickY > contentBottom
+
+                              if (clickedOnPadding) {
+                                // Boş sahəyə (padding) klikləyib - mətn seçmə
+                                return
+                              }
+
                               const selection = window.getSelection()
-                              
+
                               // Əgər mətn artıq seçilibsə, row click-i işlətmə
                               if (selection && selection.toString().length > 0) {
                                 e.stopPropagation()
                                 return
                               }
-                              
-                              // Hücrənin bütün mətnini seç
+
+                              // Məzmun sahəsinə klikləyibsə, hücrənin bütün mətnini seç
                               const range = document.createRange()
                               try {
-                                range.selectNodeContents(target)
+                                range.selectNodeContents(currentTarget)
                                 selection?.removeAllRanges()
                                 selection?.addRange(range)
                               } catch (err) {
                                 // Əgər seçim uğursuz olarsa, sadəcə event-i blokla
                                 console.warn('Mətn seçimi uğursuz oldu:', err)
                               }
-                              
+
                               // Hücrəyə klikləyəndə event-in row-a düşməsinin qarşısını al
                               e.stopPropagation()
                             }}
@@ -1285,11 +1341,11 @@ export default function DataTable<T = any>({
             >
               <span style={{ position: 'relative', display: 'inline-block', fontSize: '1.2rem', marginRight: '0.5rem' }}>
                 📄
-                <span style={{ 
-                  position: 'absolute', 
-                  top: '-2px', 
-                  right: '-2px', 
-                  color: '#28a745', 
+                <span style={{
+                  position: 'absolute',
+                  top: '-2px',
+                  right: '-2px',
+                  color: '#28a745',
                   fontSize: '0.8rem',
                   fontWeight: 'bold',
                   backgroundColor: 'white',

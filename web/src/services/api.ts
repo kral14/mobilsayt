@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier } from '../../shared/types'
+import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier, WarehouseLocation } from '../../shared/types'
 
 // API URL-i müəyyən et
 const getApiBaseUrl = () => {
@@ -7,15 +7,15 @@ const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
-  
+
   // Development üçün: localhost və ya proxy
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  
+
   if (isLocalhost) {
     // Development: birbaşa API
     return 'http://localhost:5000/api'
   }
-  
+
   // Production: eyni domain-dən API (proxy ilə)
   return '/api'
 }
@@ -234,6 +234,14 @@ export const userAPI = {
 
   updateProfile: async (data: { name?: string; phone?: string; address?: string }): Promise<{ user: User; customer: Customer }> => {
     const response = await api.put<{ user: User; customer: Customer }>('/users/profile', data)
+    return response.data
+  },
+}
+
+// Warehouses API
+export const warehousesAPI = {
+  getAll: async (): Promise<WarehouseLocation[]> => {
+    const response = await api.get<WarehouseLocation[]>('/warehouses')
     return response.data
   },
 }

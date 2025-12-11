@@ -61,6 +61,7 @@ export interface Product {
   created_at: Date | null
   updated_at: Date | null
   category?: Category | null
+  stock_quantity?: number | null
 }
 
 export interface Warehouse {
@@ -158,4 +159,9 @@ export interface PurchaseInvoiceItem {
   unit_price: number
   total_price: number
   products?: Product | null
+}
+
+export interface WarehouseLocation {
+  id: number
+  name: string
 }

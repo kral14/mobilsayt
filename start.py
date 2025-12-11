@@ -585,11 +585,11 @@ def main():
     print_colored("📝 API:      http://localhost:5000/api", Colors.CYAN)
     print_colored("💚 Health:   http://localhost:5000/api/health", Colors.CYAN)
     print()
-    print_colored("🌐 Frontend (PC): http://localhost:3000", Colors.MAGENTA)
+    print_colored("🌐 Web (PC): http://localhost:5173", Colors.MAGENTA)
     print_colored("📱 Mobil UI: http://localhost:3001", Colors.GREEN)
     local_ip = get_local_ip()
     if local_ip:
-        print_colored(f"   Telefon üçün PC versiyası: http://{local_ip}:3000", Colors.MAGENTA)
+        print_colored(f"   Telefon üçün Web versiyası: http://{local_ip}:5173", Colors.MAGENTA)
         print_colored(f"   Telefon üçün Mobil versiya: http://{local_ip}:3001", Colors.GREEN)
     print()
     print()
@@ -646,7 +646,7 @@ def main():
     
     print_colored("🔍 Port-lar yoxlanılır...", Colors.YELLOW)
     kill_process_on_port(5000)  # Backend port
-    kill_process_on_port(3000)  # Frontend (PC) port
+    kill_process_on_port(5173)  # Web (Vite) port
     kill_process_on_port(3001)  # Mobil port
     print()
     
@@ -688,7 +688,7 @@ def main():
         except Exception as e:
             print_colored(f"⚠️  File watcher başladıla bilmədi: {str(e)}", Colors.YELLOW)
         
-        # Frontend process (PC versiyası) - 3000 portunda
+        # Web Frontend process - 5173 portunda (Vite default)
         is_windows = platform.system() == 'Windows'
         frontend_cmd = ['npm', 'run', 'dev', '--', '--host', '0.0.0.0']
         frontend_process = subprocess.Popen(
@@ -701,7 +701,7 @@ def main():
             bufsize=1
         )
         
-        processes.append(('Frontend (PC)', frontend_process, Colors.MAGENTA))
+        processes.append(('Web (PC)', frontend_process, Colors.MAGENTA))
 
         # Mobile process - 3001 portunda
         mobile_cmd_3001 = ['npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3001']

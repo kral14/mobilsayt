@@ -6,6 +6,7 @@ export interface ColumnConfig {
   visible: boolean
   width: number
   order: number
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface FunctionSettings {
@@ -64,7 +65,7 @@ export default function TableSettingsModal({
   const moveColumn = (columnId: string, direction: 'up' | 'down') => {
     const updatedColumns = [...columns]
     const currentIndex = updatedColumns.findIndex(col => col.id === columnId)
-    
+
     if (currentIndex === -1) return
 
     const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
@@ -120,8 +121,8 @@ export default function TableSettingsModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ 
-          padding: '1.5rem 1.5rem 0 1.5rem', 
+        <div style={{
+          padding: '1.5rem 1.5rem 0 1.5rem',
           borderBottom: '1px solid #e0e0e0',
           display: 'flex',
           justifyContent: 'space-between',
@@ -158,8 +159,8 @@ export default function TableSettingsModal({
         </div>
 
         {/* Tabs */}
-        <div style={{ 
-          display: 'flex', 
+        <div style={{
+          display: 'flex',
           borderBottom: '1px solid #e0e0e0',
           padding: '0 1.5rem',
           gap: '0.5rem'
@@ -201,9 +202,9 @@ export default function TableSettingsModal({
         </div>
 
         {/* Content */}
-        <div style={{ 
-          padding: '1.5rem', 
-          overflow: 'auto', 
+        <div style={{
+          padding: '1.5rem',
+          overflow: 'auto',
           flex: 1,
           minHeight: 0
         }}>
@@ -313,17 +314,17 @@ export default function TableSettingsModal({
                   <div>
                     <div style={{ marginBottom: '1.5rem' }}>
                       <h3 style={{ marginBottom: '1rem', color: '#333', fontSize: '1rem', fontWeight: '600' }}>Seçim Funksiyaları</h3>
-                      
+
                       {functionSettings.multiSelect !== undefined && (
-                        <div style={{ 
-                          padding: '1rem', 
-                          background: '#f8f9fa', 
+                        <div style={{
+                          padding: '1rem',
+                          background: '#f8f9fa',
                           borderRadius: '8px',
                           marginBottom: '1rem'
                         }}>
-                          <label style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
+                          <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
                             gap: '0.75rem',
                             cursor: 'pointer',
                             marginBottom: '1rem'
@@ -345,9 +346,9 @@ export default function TableSettingsModal({
                           </label>
 
                           {functionSettings.ctrlClickMultiSelect !== undefined && (
-                            <label style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            <label style={{
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: '0.75rem',
                               cursor: 'pointer',
                               marginBottom: '1rem'
@@ -357,9 +358,9 @@ export default function TableSettingsModal({
                                 checked={functionSettings.ctrlClickMultiSelect}
                                 onChange={(e) => updateFunctionSettings('ctrlClickMultiSelect', e.target.checked)}
                                 disabled={!functionSettings.multiSelect}
-                                style={{ 
-                                  width: '20px', 
-                                  height: '20px', 
+                                style={{
+                                  width: '20px',
+                                  height: '20px',
                                   cursor: functionSettings.multiSelect ? 'pointer' : 'not-allowed',
                                   opacity: functionSettings.multiSelect ? 1 : 0.5
                                 }}
@@ -376,9 +377,9 @@ export default function TableSettingsModal({
                           )}
 
                           {functionSettings.deleteEnabled !== undefined && (
-                            <label style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            <label style={{
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: '0.75rem',
                               cursor: 'pointer'
                             }}>
@@ -400,9 +401,9 @@ export default function TableSettingsModal({
                           )}
 
                           {functionSettings.enableColumnDrag !== undefined && (
-                            <label style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            <label style={{
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: '0.75rem',
                               cursor: 'pointer',
                               marginTop: '1rem'
@@ -434,12 +435,12 @@ export default function TableSettingsModal({
         </div>
 
         {/* Footer */}
-        <div style={{ 
-          padding: '1rem 1.5rem', 
+        <div style={{
+          padding: '1rem 1.5rem',
           borderTop: '1px solid #e0e0e0',
-          display: 'flex', 
-          justifyContent: 'flex-end', 
-          gap: '0.5rem' 
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: '0.5rem'
         }}>
           <button
             onClick={onClose}

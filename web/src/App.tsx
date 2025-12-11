@@ -12,6 +12,7 @@ import KassaMedaxil from './pages/Kassa/Medaxil'
 import KassaMexaric from './pages/Kassa/Mexaric'
 import Alicilar from './pages/Musteriler/Alici'
 import Saticilar from './pages/Musteriler/Satici'
+import WindowTest from './pages/WindowTest'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -106,6 +107,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/window-test" element={<WindowTest />} />
       </Routes>
     </BrowserRouter>
   )
