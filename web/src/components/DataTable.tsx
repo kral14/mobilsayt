@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 export interface ColumnConfig {
   id: string
@@ -95,6 +95,12 @@ export default function DataTable<T = any>({
   onActiveSearchColumnChange,
   onColumnHeaderClick
 }: DataTableProps<T>) {
+  // Debug helper - yalnız development mode-da log yazır
+  const debugLog = (...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(...args)
+    }
+  }
   // localStorage-dan columns yüklə
   const loadColumnsFromStorage = useCallback((): ColumnConfig[] => {
     try {
@@ -183,9 +189,9 @@ export default function DataTable<T = any>({
   // Cədvəl div-inə ref
   const tableRef = useRef<HTMLDivElement>(null)
 
-  // Debug: activeSearchColumn dəyişdikdə log yaz
+  // Debug: activeSearchColumn dəyişdikdə log yaz (yalnız development mode-da)
   React.useEffect(() => {
-    console.log('[DataTable] activeSearchColumn dəyişdi:', activeSearchColumn, 'columns:', columns.map(c => c.id))
+    debugLog('[DataTable] activeSearchColumn dəyişdi:', activeSearchColumn, 'columns:', columns.map(c => c.id))
   }, [activeSearchColumn, columns])
 
   // Kontekst menyu state-ləri
@@ -357,45 +363,40 @@ export default function DataTable<T = any>({
 
   // Sıralama funksiyası
   const handleSort = (columnId: string) => {
-    console.log('[DataTable] handleSort çağırıldı, columnId:', columnId, 'current sortConfig:', sortConfig)
+    debugLog('[DataTable] handleSort çağırıldı, columnId:', columnId, 'current sortConfig:', sortConfig)
     setSortConfig(prev => {
-      console.log('[DataTable] setSortConfig prev:', prev)
+      debugLog('[DataTable] setSortConfig prev:', prev)
       if (prev.column === columnId) {
         const newConfig: { column: string; direction: 'asc' | 'desc' } = {
           column: columnId,
           direction: (prev.direction === 'asc' ? 'desc' : 'asc') as 'asc' | 'desc'
         }
-        console.log('[DataTable] Eyni sütun, direction dəyişir:', newConfig)
+        debugLog('[DataTable] Eyni sütun, direction dəyişir:', newConfig)
         return newConfig
       }
       const newConfig: { column: string; direction: 'asc' | 'desc' } = {
         column: columnId,
         direction: 'asc' as 'asc' | 'desc'
       }
-      console.log('[DataTable] Yeni sütun, asc ilə başlayır:', newConfig)
+      debugLog('[DataTable] Yeni sütun, asc ilə başlayır:', newConfig)
       return newConfig
     })
   }
 
-  // Sıralanmış məlumatlar
-  const getSortedData = () => {
-    console.log('[DataTable] getSortedData çağırıldı, sortConfig:', sortConfig)
+  // Sıralanmış məlumatlar - useMemo ilə optimize edilmiş
+  const sortedData = useMemo(() => {
     if (!sortConfig.column) {
-      console.log('[DataTable] sortConfig.column yoxdur, original data qaytarılır')
       return data
     }
 
     const sorted = [...data].sort((a, b) => {
       const column = sortedColumns.find(col => col.id === sortConfig.column)
-      console.log('[DataTable] Sıralama üçün sütun:', column?.id, 'sortable:', column?.sortable)
       if (!column || column.sortable === false) {
-        console.log('[DataTable] Sütun tapılmadı və ya sortable false')
         return 0
       }
 
       const aValue = (a as any)[sortConfig.column!]
       const bValue = (b as any)[sortConfig.column!]
-      console.log('[DataTable] Müqayisə:', aValue, 'vs', bValue)
 
       if (aValue === null || aValue === undefined) return 1
       if (bValue === null || bValue === undefined) return -1
@@ -412,12 +413,8 @@ export default function DataTable<T = any>({
       return 0
     })
 
-    console.log('[DataTable] Sıralanmış data:', sorted.slice(0, 3))
     return sorted
-  }
-
-  const sortedData = getSortedData()
-  console.log('[DataTable] sortedData uzunluğu:', sortedData.length, 'ilk element:', sortedData[0])
+  }, [data, sortConfig, sortedColumns])
 
   // Ctrl+A kombinasiyasını dinlə (cədvəlin bütün sətirlərini seç)
   useEffect(() => {
@@ -558,7 +555,7 @@ export default function DataTable<T = any>({
                 {onActiveSearchColumnChange && (
                   <button
                     onClick={(e) => {
-                      console.log('[DataTable] X düyməsi basıldı, sütun filtrini ləğv edir')
+                      debugLog('[DataTable] X düyməsi basıldı, sütun filtrini ləğv edir')
                       e.stopPropagation()
                       onActiveSearchColumnChange(null)
                     }}
@@ -583,9 +580,9 @@ export default function DataTable<T = any>({
             <div style={{ position: 'relative', width: '100%' }}>
               {(() => {
                 const showColumnLabel = activeSearchColumn && searchTerm === ''
-                console.log('[DataTable] Render - activeSearchColumn:', activeSearchColumn, 'searchTerm:', searchTerm, 'showColumnLabel:', showColumnLabel)
+                debugLog('[DataTable] Render - activeSearchColumn:', activeSearchColumn, 'searchTerm:', searchTerm, 'showColumnLabel:', showColumnLabel)
                 const columnLabel = activeSearchColumn ? columns.find(c => c.id === activeSearchColumn)?.label || activeSearchColumn : null
-                console.log('[DataTable] Render - columnLabel:', columnLabel)
+                debugLog('[DataTable] Render - columnLabel:', columnLabel)
                 return showColumnLabel ? (
                   <div style={{
                     position: 'absolute',
@@ -610,11 +607,11 @@ export default function DataTable<T = any>({
                 placeholder={!activeSearchColumn ? "🔍 Axtarış... (Ctrl+F)" : ""}
                 value={searchTerm}
                 onChange={(e) => {
-                  console.log('[DataTable] Axtarış dəyəri dəyişdi:', e.target.value, 'activeSearchColumn:', activeSearchColumn)
+                  debugLog('[DataTable] Axtarış dəyəri dəyişdi:', e.target.value, 'activeSearchColumn:', activeSearchColumn)
                   setSearchTerm(e.target.value)
                 }}
                 onFocus={() => {
-                  console.log('[DataTable] Axtarış input focus oldu, activeSearchColumn:', activeSearchColumn, 'searchTerm:', searchTerm)
+                  debugLog('[DataTable] Axtarış input focus oldu, activeSearchColumn:', activeSearchColumn, 'searchTerm:', searchTerm)
                   // Focus olduqda yazı itir (searchTerm boş olmadıqda), amma sütun aktiv qalır
                 }}
                 style={{
@@ -817,59 +814,59 @@ export default function DataTable<T = any>({
                       onDrop={(e) => handleDrop(e, column.id)}
                       onDragEnd={handleDragEnd}
                       onMouseDown={(e) => {
-                        console.log('[DataTable] Sütun header onMouseDown:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
+                        debugLog('[DataTable] Sütun header onMouseDown:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
                         // Event-in row-a düşməsinin qarşısını al
                         e.stopPropagation()
                         // Resize handle-a klikləyibsə, return et
                         if ((e.target as HTMLElement).closest('[data-resize-handle]')) {
-                          console.log('[DataTable] Resize handle-a klikləndi, return edilir')
+                          debugLog('[DataTable] Resize handle-a klikləndi, return edilir')
                           return
                         }
                         // Sütun header-ına klikləyəndə callback çağır (mouseDown-da çağır)
                         if (onColumnHeaderClick && column.id !== 'checkbox' && column.id !== 'is_active_status') {
-                          console.log('[DataTable] Sütun header onMouseDown-dan callback çağırılır:', column.id)
+                          debugLog('[DataTable] Sütun header onMouseDown-dan callback çağırılır:', column.id)
                           try {
                             onColumnHeaderClick(column.id)
-                            console.log('[DataTable] Callback çağırıldı (onMouseDown):', column.id)
+                            debugLog('[DataTable] Callback çağırıldı (onMouseDown):', column.id)
                           } catch (error) {
                             console.error('[DataTable] Callback xətası:', error)
                           }
                         }
                       }}
                       onClick={(e) => {
-                        console.log('[DataTable] Sütun header onClick başladı:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget, 'onColumnHeaderClick:', !!onColumnHeaderClick)
-                        console.log('[DataTable] onClick event details - type:', e.type, 'bubbles:', e.bubbles, 'cancelable:', e.cancelable)
+                        debugLog('[DataTable] Sütun header onClick başladı:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget, 'onColumnHeaderClick:', !!onColumnHeaderClick)
+                        debugLog('[DataTable] onClick event details - type:', e.type, 'bubbles:', e.bubbles, 'cancelable:', e.cancelable)
 
                         // Event-in row-a düşməsinin qarşısını al (vacibdir!)
                         e.stopPropagation()
 
                         // Resize handle-a klikləyibsə, return et
                         if ((e.target as HTMLElement).closest('[data-resize-handle]')) {
-                          console.log('[DataTable] Resize handle-a klikləndi, return edilir')
+                          debugLog('[DataTable] Resize handle-a klikləndi, return edilir')
                           return
                         }
 
                         // Sütun header-ına klikləyəndə callback çağır (həmişə çağır, sort-dan əvvəl)
                         if (onColumnHeaderClick && column.id !== 'checkbox' && column.id !== 'is_active_status') {
-                          console.log('[DataTable] Sütun header-ına klikləndi, callback çağırılır:', column.id)
+                          debugLog('[DataTable] Sütun header-ına klikləndi, callback çağırılır:', column.id)
                           try {
                             onColumnHeaderClick(column.id)
-                            console.log('[DataTable] Callback çağırıldı:', column.id)
+                            debugLog('[DataTable] Callback çağırıldı:', column.id)
                           } catch (error) {
                             console.error('[DataTable] Callback xətası:', error)
                           }
                         } else {
-                          console.log('[DataTable] Callback çağırılmadı - onColumnHeaderClick:', !!onColumnHeaderClick, 'column.id:', column.id, 'is checkbox:', column.id === 'checkbox', 'is is_active_status:', column.id === 'is_active_status')
+                          debugLog('[DataTable] Callback çağırılmadı - onColumnHeaderClick:', !!onColumnHeaderClick, 'column.id:', column.id, 'is checkbox:', column.id === 'checkbox', 'is is_active_status:', column.id === 'is_active_status')
                         }
 
                         // Sort funksiyasını çağır
                         if (isSortable) {
-                          console.log('[DataTable] handleSort çağırılır:', column.id)
+                          debugLog('[DataTable] handleSort çağırılır:', column.id)
                           handleSort(column.id)
                         }
                       }}
                       onMouseUp={(e) => {
-                        console.log('[DataTable] Sütun header onMouseUp:', column.id, 'target:', e.target)
+                        debugLog('[DataTable] Sütun header onMouseUp:', column.id, 'target:', e.target)
                       }}
                       style={{
                         padding: '0.75rem',
@@ -895,7 +892,7 @@ export default function DataTable<T = any>({
                           pointerEvents: 'auto'
                         }}
                         onMouseDown={(e) => {
-                          console.log('[DataTable] Header div onMouseDown:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
+                          debugLog('[DataTable] Header div onMouseDown:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
                           // Event-in row-a düşməsinin qarşısını al
                           e.stopPropagation()
                           // Resize handle-a klikləyibsə, return et
@@ -904,32 +901,32 @@ export default function DataTable<T = any>({
                           }
                           // Sütun header-ına klikləyəndə callback çağır (mouseDown-da çağır)
                           if (onColumnHeaderClick && column.id !== 'checkbox' && column.id !== 'is_active_status') {
-                            console.log('[DataTable] Header div onMouseDown-dan callback çağırılır:', column.id)
+                            debugLog('[DataTable] Header div onMouseDown-dan callback çağırılır:', column.id)
                             try {
                               onColumnHeaderClick(column.id)
-                              console.log('[DataTable] Callback çağırıldı (div onMouseDown):', column.id)
+                              debugLog('[DataTable] Callback çağırıldı (div onMouseDown):', column.id)
                             } catch (error) {
                               console.error('[DataTable] Callback xətası:', error)
                             }
                           }
                         }}
                         onClick={(e) => {
-                          console.log('[DataTable] Header div onClick:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
+                          debugLog('[DataTable] Header div onClick:', column.id, 'target:', e.target, 'currentTarget:', e.currentTarget)
                           // Event-in row-a düşməsinin qarşısını al (vacibdir!)
                           e.stopPropagation()
 
                           // Resize handle-a klikləyibsə, return et
                           if ((e.target as HTMLElement).closest('[data-resize-handle]')) {
-                            console.log('[DataTable] Resize handle-a klikləndi, return edilir')
+                            debugLog('[DataTable] Resize handle-a klikləndi, return edilir')
                             return
                           }
 
                           // Birbaşa callback-i çağır
                           if (onColumnHeaderClick && column.id !== 'checkbox' && column.id !== 'is_active_status') {
-                            console.log('[DataTable] Header div-dən callback çağırılır:', column.id)
+                            debugLog('[DataTable] Header div-dən callback çağırılır:', column.id)
                             try {
                               onColumnHeaderClick(column.id)
-                              console.log('[DataTable] Callback çağırıldı (div onClick):', column.id)
+                              debugLog('[DataTable] Callback çağırıldı (div onClick):', column.id)
                             } catch (error) {
                               console.error('[DataTable] Callback xətası:', error)
                             }
@@ -937,7 +934,7 @@ export default function DataTable<T = any>({
 
                           // Sort funksiyasını çağır
                           if (isSortable) {
-                            console.log('[DataTable] handleSort çağırılır (div onClick):', column.id)
+                            debugLog('[DataTable] handleSort çağırılır (div onClick):', column.id)
                             handleSort(column.id)
                           }
                         }}

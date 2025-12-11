@@ -11,6 +11,7 @@ import customerRoutes from './routes/customerRoutes'
 import customerFolderRoutes from './routes/customerFolderRoutes'
 import supplierRoutes from './routes/supplierRoutes'
 import purchaseInvoiceRoutes from './routes/purchaseInvoiceRoutes'
+import warehouseRoutes from './routes/warehouseRoutes'
 import testRoutes from './routes/testRoutes'
 
 dotenv.config()
@@ -91,6 +92,7 @@ app.use('/api/customers', customerRoutes)
 app.use('/api/customer-folders', customerFolderRoutes)
 app.use('/api/suppliers', supplierRoutes)
 app.use('/api/purchase-invoices', purchaseInvoiceRoutes)
+app.use('/api/warehouses', warehouseRoutes)
 app.use('/api/test', testRoutes)
 
 // 404 handler

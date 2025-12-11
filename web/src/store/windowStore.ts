@@ -203,6 +203,10 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const window = state.windows.get(id)
     if (!window) return
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[windowStore] maximizeWindow çağırıldı', { id, isMaximized: window.isMaximized, normalState: window.normalState })
+    }
+
     const newWindows = new Map(state.windows)
 
     if (!window.isMaximized) {
@@ -217,16 +221,24 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
         size: { width: 0, height: 0 }, // CSS-də 100% olacaq
         isMaximized: true
       })
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[windowStore] Pəncərə maximize edildi')
+      }
     } else {
       // Restore et
-      if (window.normalState) {
-        newWindows.set(id, {
-          ...window,
-          position: window.normalState.position,
-          size: window.normalState.size,
-          isMaximized: false,
-          normalState: null
-        })
+      // Əgər normalState yoxdursa, cari position/size istifadə et (default ölçü)
+      const restorePosition = window.normalState?.position || window.position
+      const restoreSize = window.normalState?.size || { width: 900, height: 700 }
+
+      newWindows.set(id, {
+        ...window,
+        position: restorePosition,
+        size: restoreSize,
+        isMaximized: false,
+        normalState: null
+      })
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[windowStore] Pəncərə restore edildi', { restorePosition, restoreSize })
       }
     }
 
@@ -636,7 +648,9 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       console.error('Failed to load window preferences:', e)
     }
 
-    console.log('[windowStore] Opening page window:', { pageId, id, newCounter, windowCounter: state.windowCounter })
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[windowStore] Opening page window:', { pageId, id, newCounter, windowCounter: state.windowCounter })
+    }
 
     const newWindow: WindowData = {
       id,

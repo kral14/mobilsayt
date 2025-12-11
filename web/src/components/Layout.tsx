@@ -50,6 +50,39 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // ESC düyməsi ilə bütün açıq pəncərələri bağla
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ESC düyməsi basıldıqda
+      if (e.key === 'Escape') {
+        // Əgər input, textarea və ya contentEditable element aktivdirsə, ignore et
+        const activeElement = document.activeElement as HTMLElement
+        if (
+          activeElement &&
+          (activeElement.tagName === 'INPUT' ||
+            activeElement.tagName === 'TEXTAREA' ||
+            activeElement.isContentEditable ||
+            activeElement.closest('input') ||
+            activeElement.closest('textarea'))
+        ) {
+          return
+        }
+
+        // Bütün açıq pəncərələri bağla
+        const { windows, closeWindow } = useWindowStore.getState()
+        if (windows.size > 0) {
+          // Bütün pəncərələri bağla
+          Array.from(windows.keys()).forEach(windowId => {
+            closeWindow(windowId)
+          })
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const handleLogout = () => {
     logout()
     navigate('/')

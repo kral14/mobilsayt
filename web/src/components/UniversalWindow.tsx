@@ -1,6 +1,6 @@
 import React from 'react'
 import { useWindowStore } from '../store/windowStore'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import SnapLayoutMenu from './SnapLayoutMenu'
 
 interface UniversalWindowProps {
@@ -49,8 +49,33 @@ export default function UniversalWindow({
     // Snap Layout Menu (Deaktiv edilib - Istifadeci isteyi ile)
     const [showSnapMenu, setShowSnapMenu] = useState(false)
 
+    // Settings modal ref - kənara kliklədikdə bağlamaq üçün
+    const settingsRef = useRef<HTMLDivElement>(null)
+
     // Zoom Functions
     const zoomPresets = [50, 75, 100, 125, 150]
+
+    // Kənara kliklədikdə settings modalını bağla
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (showSettings && settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+                // Settings button-a kliklədikdə bağlanmasın (toggle üçün)
+                const target = event.target as HTMLElement
+                if (target.closest('button[title="Ayarlar"]') || target.closest('button')?.title === 'Ayarlar') {
+                    return
+                }
+                setShowSettings(false)
+            }
+        }
+
+        if (showSettings) {
+            document.addEventListener('mousedown', handleClickOutside)
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside)
+        }
+    }, [showSettings])
 
     // Load saved preferences on mount
     React.useEffect(() => {
@@ -93,9 +118,33 @@ export default function UniversalWindow({
     }
 
     const handleHeaderMouseDown = (e: React.MouseEvent) => {
+        // Əgər düyməyə klikləyibsə, drag başlatma
+        const target = e.target as HTMLElement
+        if (target.tagName === 'BUTTON' || target.closest('button')) {
+            return
+        }
+
         if (isMaximized) return
         startDrag(id, e)
         e.preventDefault()
+    }
+
+    // Dubl kliklə maximize/restore
+    const handleHeaderDoubleClick = (e: React.MouseEvent) => {
+        // Əgər düyməyə və ya settings modal-ına klikləyibsə, ignore et
+        const target = e.target as HTMLElement
+        if (target.tagName === 'BUTTON' || target.closest('button')) {
+            return
+        }
+        
+        // Settings modal-ına klikləyibsə, ignore et
+        if (settingsRef.current && settingsRef.current.contains(target)) {
+            return
+        }
+
+        e.stopPropagation()
+        e.preventDefault()
+        maximizeWindow(id)
     }
 
     return (
@@ -119,6 +168,7 @@ export default function UniversalWindow({
             <div
                 className={`window-header ${isActive ? 'active' : ''}`}
                 onMouseDown={handleHeaderMouseDown}
+                onDoubleClick={handleHeaderDoubleClick}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -129,6 +179,7 @@ export default function UniversalWindow({
                     color: isActive ? 'white' : 'black',
                     borderBottom: '1px solid #ccc',
                     userSelect: 'none',
+                    cursor: 'default',
                     borderTopLeftRadius: isMaximized ? 0 : '8px',
                     borderTopRightRadius: isMaximized ? 0 : '8px'
                 }}
@@ -166,6 +217,7 @@ export default function UniversalWindow({
                         {/* Settings Popover */}
                         {showSettings && (
                             <div
+                                ref={settingsRef}
                                 style={{
                                     position: 'absolute',
                                     top: '100%',
@@ -306,6 +358,7 @@ export default function UniversalWindow({
                     <button
                         className="btn-maximize"
                         onClick={(e) => {
+                            console.log('[UniversalWindow] Maximize düyməsinə basıldı', { id, isMaximized })
                             e.stopPropagation()
                             maximizeWindow(id)
                         }}

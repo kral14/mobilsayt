@@ -144,6 +144,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [customerSearchTerm, setCustomerSearchTerm] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [showInvoiceDatePicker, setShowInvoiceDatePicker] = useState(false)
+  const [invoiceDateInputFocused, setInvoiceDateInputFocused] = useState(false)
   const [notesFocused, setNotesFocused] = useState(false)
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -381,9 +383,121 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setDraggedColumnKey(null)
   }
 
-  const formatDateInput = (value: string) => {
-    return value.replace(/[^0-9.-]/g, '')
+  // Cari tarix və saatı raw formatda qaytarır (YYYY-MM-DD HH:MM:SS)
+  const getCurrentDateTimeRaw = (): string => {
+    const now = new Date()
+    const day = String(now.getDate()).padStart(2, '0')
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const year = now.getFullYear()
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const seconds = String(now.getSeconds()).padStart(2, '0')
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
   }
+
+  // Tarix formatlaşdırma funksiyası - DD.MM.YYYY HH:MM:SS formatına çevirir
+  const formatDateToDisplay = (dateString: string | null | undefined): string => {
+    if (!dateString) {
+      // Əgər tarix yoxdursa, cari tarix və saatı göstər
+      const now = new Date()
+      const day = String(now.getDate()).padStart(2, '0')
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const year = now.getFullYear()
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    }
+    
+    try {
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) return dateString
+      
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    } catch {
+      return dateString
+    }
+  }
+
+  // Smart tarix parsing - qısa formatları parse edir
+  const parseSmartDate = (input: string): string => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1
+    const currentDay = now.getDate()
+    const currentHours = now.getHours()
+    const currentMinutes = now.getMinutes()
+    const currentSeconds = now.getSeconds()
+
+    // Təmizlə: yalnız rəqəmlər və nöqtələr
+    const cleaned = input.replace(/[^\d.]/g, '').trim()
+    
+    if (!cleaned) {
+      // Boşdursa, cari tarix və saatı qaytar
+      const day = String(currentDay).padStart(2, '0')
+      const month = String(currentMonth).padStart(2, '0')
+      const year = currentYear
+      const hours = String(currentHours).padStart(2, '0')
+      const minutes = String(currentMinutes).padStart(2, '0')
+      const seconds = String(currentSeconds).padStart(2, '0')
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+    }
+
+    const parts = cleaned.split('.')
+
+    if (parts.length === 1 && parts[0]) {
+      // Sadəcə gün: "11" -> bugünün tarixi, gün 11, cari saat
+      const day = parseInt(parts[0])
+      if (day >= 1 && day <= 31) {
+        const month = String(currentMonth).padStart(2, '0')
+        const year = currentYear
+        const hours = String(currentHours).padStart(2, '0')
+        const minutes = String(currentMinutes).padStart(2, '0')
+        const seconds = String(currentSeconds).padStart(2, '0')
+        return `${year}-${month}-${String(day).padStart(2, '0')} ${hours}:${minutes}:${seconds}`
+      }
+    } else if (parts.length === 2 && parts[0] && parts[1]) {
+      // Gün və ay: "11.10" -> bu ilin vaxtı, gün 11, ay 10, saat 00:00:00
+      const day = parseInt(parts[0])
+      const month = parseInt(parts[1])
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+        const year = currentYear
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} 00:00:00`
+      }
+    } else if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      // Tam tarix: "11.10.2025" -> 2025-10-11 00:00:00
+      const day = parseInt(parts[0])
+      const month = parseInt(parts[1])
+      const year = parseInt(parts[2])
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} 00:00:00`
+      }
+    }
+
+    // Əgər format düzgün deyilsə, olduğu kimi qaytar
+    return input
+  }
+
+  // Modal açılanda tarixi avtomatik set et (yalnız yeni qaimələr üçün)
+  useEffect(() => {
+    if (!modal.data.invoiceDate && !localData.invoiceDate) {
+      const now = new Date()
+      const day = String(now.getDate()).padStart(2, '0')
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const year = now.getFullYear()
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      const formattedDate = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+      setLocalData(prev => ({ ...prev, invoiceDate: formattedDate }))
+    }
+  }, [modal.data.invoiceDate]) // Yalnız modal açılanda və ya invoiceDate dəyişdikdə
 
 
 
@@ -1203,21 +1317,148 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
                 Tarix:
               </label>
-              <input
-                type="text"
-                value={localData.invoiceDate}
-                onChange={(e) => setLocalData({ ...localData, invoiceDate: e.target.value })}
-                style={{
-                  flex: 1,
-                  padding: '4px 8px',
-                  border: '1px solid #ced4da',
-                  borderRadius: '4px',
-                  fontSize: '0.9rem',
-                  height: '30px',
-                  background: 'white',
-                  color: '#495057'
-                }}
-              />
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input
+                  type="text"
+                  value={invoiceDateInputFocused ? (localData.invoiceDate || getCurrentDateTimeRaw()) : formatDateToDisplay(localData.invoiceDate)}
+                  onChange={(e) => {
+                    // Yalnız rəqəmlər, nöqtələr, boşluq və iki nöqtəyə icazə ver
+                    const value = e.target.value.replace(/[^\d. :]/g, '')
+                    setLocalData({ ...localData, invoiceDate: value })
+                  }}
+                  onFocus={(e) => {
+                    setInvoiceDateInputFocused(true)
+                    setShowInvoiceDatePicker(false)
+                    // Bütün mətn seç (yalnız birinci focus-da, cursor yoxdursa)
+                    const input = e.target as HTMLInputElement
+                    setTimeout(() => {
+                      // Əgər cursor yoxdursa (yəni yeni focus), bütün mətn seç
+                      if (input.selectionStart === input.selectionEnd && input.selectionStart === 0) {
+                        input.select()
+                      }
+                    }, 0)
+                  }}
+                  onMouseDown={(e) => {
+                    // İkinci kliklə seçimi ləğv et (cursor qoymağa icazə ver)
+                    const input = e.currentTarget
+                    if (input.selectionStart === 0 && input.selectionEnd === input.value.length) {
+                      // Əgər bütün mətn seçilmişdirsə, seçimi ləğv et və cursor qoy
+                      e.preventDefault()
+                      const rect = input.getBoundingClientRect()
+                      const clickPosition = e.clientX - rect.left
+                      const textWidth = input.scrollWidth
+                      const charWidth = textWidth / input.value.length
+                      const charIndex = Math.max(0, Math.min(input.value.length, Math.floor(clickPosition / charWidth)))
+                      setTimeout(() => {
+                        input.setSelectionRange(charIndex, charIndex)
+                        input.focus()
+                      }, 0)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const parsed = parseSmartDate(e.currentTarget.value)
+                      setLocalData({ ...localData, invoiceDate: parsed })
+                      setInvoiceDateInputFocused(false)
+                    }
+                    // Rəqəm yazıldıqda seçilmiş mətn dəyişir (default davranış)
+                  }}
+                  onBlur={(e) => {
+                    // Focus itirdikdə parse et və formatla
+                    const parsed = parseSmartDate(e.target.value)
+                    setLocalData({ ...localData, invoiceDate: parsed })
+                    setInvoiceDateInputFocused(false)
+                    // Date picker bağlanması üçün kiçik gecikmə
+                    setTimeout(() => setShowInvoiceDatePicker(false), 200)
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '4px 8px',
+                    paddingRight: '30px',
+                    border: '1px solid #ced4da',
+                    borderRadius: '4px',
+                    fontSize: '0.9rem',
+                    height: '30px',
+                    background: 'white',
+                    color: '#495057'
+                  }}
+                  placeholder={localData.invoiceDate ? '' : 'DD.MM.YYYY HH:MM:SS'}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowInvoiceDatePicker(!showInvoiceDatePicker)
+                    setInvoiceDateInputFocused(false)
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#6c757d',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Kalendar"
+                >
+                  📅
+                </button>
+                {showInvoiceDatePicker && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '0.25rem',
+                      background: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      padding: '0.5rem',
+                      zIndex: 1000,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <input
+                      type="date"
+                      value={localData.invoiceDate ? localData.invoiceDate.split(' ')[0] : ''}
+                      onChange={(e) => {
+                        const dateValue = e.target.value
+                        if (dateValue) {
+                          const timePart = localData.invoiceDate?.split(' ')[1] || '00:00:00'
+                          setLocalData({ ...localData, invoiceDate: `${dateValue} ${timePart}` })
+                        } else {
+                          const now = new Date()
+                          const day = String(now.getDate()).padStart(2, '0')
+                          const month = String(now.getMonth() + 1).padStart(2, '0')
+                          const year = now.getFullYear()
+                          const hours = String(now.getHours()).padStart(2, '0')
+                          const minutes = String(now.getMinutes()).padStart(2, '0')
+                          const seconds = String(now.getSeconds()).padStart(2, '0')
+                          setLocalData({ ...localData, invoiceDate: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}` })
+                        }
+                        setShowInvoiceDatePicker(false)
+                      }}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2037,21 +2278,145 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
                 Qaimə tarixi
               </label>
-              <input
-                type="text"
-                placeholder="YYYY-MM-DD HH:MM:SS"
-                value={localData.invoiceDate || ''}
-                onChange={(e) => {
-                  setLocalData({ ...localData, invoiceDate: e.target.value })
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.35rem 0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '0.875rem'
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  value={invoiceDateInputFocused ? (localData.invoiceDate || getCurrentDateTimeRaw()) : formatDateToDisplay(localData.invoiceDate)}
+                  onChange={(e) => {
+                    // Yalnız rəqəmlər, nöqtələr, boşluq və iki nöqtəyə icazə ver
+                    const value = e.target.value.replace(/[^\d. :]/g, '')
+                    setLocalData({ ...localData, invoiceDate: value })
+                  }}
+                  onFocus={(e) => {
+                    setInvoiceDateInputFocused(true)
+                    setShowInvoiceDatePicker(false)
+                    // Bütün mətn seç (yalnız birinci focus-da, cursor yoxdursa)
+                    const input = e.target as HTMLInputElement
+                    setTimeout(() => {
+                      // Əgər cursor yoxdursa (yəni yeni focus), bütün mətn seç
+                      if (input.selectionStart === input.selectionEnd && input.selectionStart === 0) {
+                        input.select()
+                      }
+                    }, 0)
+                  }}
+                  onMouseDown={(e) => {
+                    // İkinci kliklə seçimi ləğv et (cursor qoymağa icazə ver)
+                    const input = e.currentTarget
+                    if (input.selectionStart === 0 && input.selectionEnd === input.value.length) {
+                      // Əgər bütün mətn seçilmişdirsə, seçimi ləğv et və cursor qoy
+                      e.preventDefault()
+                      const rect = input.getBoundingClientRect()
+                      const clickPosition = e.clientX - rect.left
+                      const textWidth = input.scrollWidth
+                      const charWidth = textWidth / input.value.length
+                      const charIndex = Math.max(0, Math.min(input.value.length, Math.floor(clickPosition / charWidth)))
+                      setTimeout(() => {
+                        input.setSelectionRange(charIndex, charIndex)
+                        input.focus()
+                      }, 0)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const parsed = parseSmartDate(e.currentTarget.value)
+                      setLocalData({ ...localData, invoiceDate: parsed })
+                      setInvoiceDateInputFocused(false)
+                    }
+                    // Rəqəm yazıldıqda seçilmiş mətn dəyişir (default davranış)
+                  }}
+                  onBlur={(e) => {
+                    // Focus itirdikdə parse et və formatla
+                    const parsed = parseSmartDate(e.target.value)
+                    setLocalData({ ...localData, invoiceDate: parsed })
+                    setInvoiceDateInputFocused(false)
+                    // Date picker bağlanması üçün kiçik gecikmə
+                    setTimeout(() => setShowInvoiceDatePicker(false), 200)
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.35rem 0.5rem',
+                    paddingRight: '30px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '0.875rem'
+                  }}
+                  placeholder={localData.invoiceDate ? '' : 'DD.MM.YYYY HH:MM:SS'}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowInvoiceDatePicker(!showInvoiceDatePicker)
+                    setInvoiceDateInputFocused(false)
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#6c757d',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Kalendar"
+                >
+                  📅
+                </button>
+                {showInvoiceDatePicker && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '0.25rem',
+                      background: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      padding: '0.5rem',
+                      zIndex: 1000,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <input
+                      type="date"
+                      value={localData.invoiceDate ? localData.invoiceDate.split(' ')[0] : ''}
+                      onChange={(e) => {
+                        const dateValue = e.target.value
+                        if (dateValue) {
+                          const timePart = localData.invoiceDate?.split(' ')[1] || '00:00:00'
+                          setLocalData({ ...localData, invoiceDate: `${dateValue} ${timePart}` })
+                        } else {
+                          const now = new Date()
+                          const day = String(now.getDate()).padStart(2, '0')
+                          const month = String(now.getMonth() + 1).padStart(2, '0')
+                          const year = now.getFullYear()
+                          const hours = String(now.getHours()).padStart(2, '0')
+                          const minutes = String(now.getMinutes()).padStart(2, '0')
+                          const seconds = String(now.getSeconds()).padStart(2, '0')
+                          setLocalData({ ...localData, invoiceDate: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}` })
+                        }
+                        setShowInvoiceDatePicker(false)
+                      }}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -3034,37 +3399,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 🖨️ Çap et
               </button>
             )}
-
-            {/* Varsayılan kimi saxla düyməsi */}
-            <button
-              onClick={() => {
-                try {
-                  const settingsKey = `invoice-modal-settings-${isPurchase ? 'purchase' : 'sale'}`
-                  const settings = {
-                    tableColumns,
-                    enableColumnDrag,
-                    timestamp: Date.now()
-                  }
-                  localStorage.setItem(settingsKey, JSON.stringify(settings))
-                  alert('Ayarlar varsayılan olaraq saxlanıldı!')
-                } catch (err) {
-                  console.error('Ayarlar saxlanarkən xəta:', err)
-                  alert('Ayarlar saxlanarkən xəta baş verdi')
-                }
-              }}
-              style={{
-                padding: '0.5rem 1.5rem',
-                background: '#17a2b8',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-              }}
-              title="Sütun ayarlarını varsayılan olaraq saxla"
-            >
-              💾 Varsayılan kimi saxla
-            </button>
 
             <button
               onClick={() => onClose(modal.id)}

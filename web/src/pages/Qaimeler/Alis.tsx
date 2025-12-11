@@ -354,8 +354,22 @@ export default function AlisQaimeleri() {
       const modalCount = visibleModalsCount
       const screenWidth = window.innerWidth
       const screenHeight = window.innerHeight
-      const modalWidth = Math.min(900, Math.floor((screenWidth - 60) / 2))
-      const modalHeight = Math.min(700, screenHeight - 80)
+
+      // Saxlanılan ayarları yüklə
+      let savedPrefs: any = null
+      try {
+        const stored = localStorage.getItem('window-pref-purchase-invoice-modal')
+        if (stored) {
+          savedPrefs = JSON.parse(stored)
+          console.log('[Alis] Saxlanılan ayarlar yükləndi:', savedPrefs)
+        }
+      } catch (e) {
+        console.error('[Alis] Ayarları yükləmək uğursuz oldu:', e)
+      }
+
+      // Əgər saxlanılan ayarlar varsa, onları istifadə et
+      const modalWidth = savedPrefs?.size?.width || Math.min(900, Math.floor((screenWidth - 60) / 2))
+      const modalHeight = savedPrefs?.size?.height || Math.min(700, screenHeight - 80)
 
       // Invoice date formatla - saat, dəqiqə, saniyə ilə
       let invoiceDateStr = ''
@@ -388,7 +402,7 @@ export default function AlisQaimeleri() {
           width: modalWidth,
           height: modalHeight
         },
-        isMaximized: false,
+        isMaximized: savedPrefs?.isMaximized || false,
         zIndex: newZIndex,
         invoiceType: 'purchase',
         isActive: fullInvoice ? fullInvoice.is_active || false : undefined,
@@ -400,7 +414,7 @@ export default function AlisQaimeleri() {
           invoiceNumber: fullInvoice?.invoice_number || '',
           invoiceDate: invoiceDateStr
         }
-      }
+      } as any // normalState type error-ını aradan qaldırmaq üçün
 
       setBaseZIndex(newZIndex)
       setOpenModals(prev => {
