@@ -57,45 +57,67 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
   try {
     const { supplier_id, items, notes, is_active } = req.body
 
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: 'Məhsul seçilməlidir' })
-    }
+    // Yadda saxla düyməsi üçün boş qaimə yarada bilər
+    // Validasiya yalnız OK düyməsi üçün frontend-dədir
+    // if (!items || items.length === 0) {
+    //   return res.status(400).json({ message: 'Məhsul seçilməlidir' })
+    // }
 
-    // Faktura nömrəsi yarat (ardıcıl format: PI-0000000001)
-    const lastInvoice = await prisma.purchase_invoices.findFirst({
+    // Faktura nömrəsi yarat (ardıcıl format: AL00000001)
+    // Əvvəlcə "AL" ilə başlayan bütün faktura nömrələrini al
+    const allInvoices = await prisma.purchase_invoices.findMany({
       where: {
         invoice_number: {
-          startsWith: 'PI-'
+          startsWith: 'AL'
         }
       },
+      select: {
+        invoice_number: true
+      },
       orderBy: {
-        id: 'desc'
+        invoice_number: 'asc'
       }
     })
     
-    let nextNumber = 1
-    if (lastInvoice) {
-      // Son qaimə nömrəsindən rəqəmi çıxar (PI-0000000001 və ya PI-1763327417457 -> rəqəm)
-      const match = lastInvoice.invoice_number.match(/PI-(\d+)/)
+    // İstifadə olunmuş nömrələri çıxar və rəqəmə çevir
+    const usedNumbers = new Set<number>()
+    allInvoices.forEach(invoice => {
+      const match = invoice.invoice_number.match(/AL(\d+)/)
       if (match) {
-        const lastNumber = parseInt(match[1], 10)
-        // Əgər köhnə formatdırsa (timestamp kimi böyük rəqəm), yeni formatdan başla
-        // Yeni format: 10 rəqəmli (maksimum 9999999999)
-        if (lastNumber > 9999999999) {
-          nextNumber = 1
-        } else {
-          nextNumber = lastNumber + 1
-        }
+        const number = parseInt(match[1], 10)
+        usedNumbers.add(number)
       }
+    })
+    
+    // İlk boş nömrəni tap (1-dən başlayaraq)
+    let nextNumber = 1
+    while (nextNumber <= 99999999 && usedNumbers.has(nextNumber)) {
+      nextNumber++
     }
     
-    // 10 rəqəmli format: PI-0000000001
-    const invoiceNumber = `PI-${String(nextNumber).padStart(10, '0')}`
+    if (nextNumber > 99999999) {
+      return res.status(400).json({ message: 'Faktura nömrəsi maksimuma çatıb (99999999)' })
+    }
+    
+    // 8 rəqəmli format: AL00000001
+    const invoiceNumber = `AL${String(nextNumber).padStart(8, '0')}`
+    
+    // Son yoxlama - eyni faktura nömrəsi ola bilməz
+    const existingInvoice = await prisma.purchase_invoices.findUnique({
+      where: {
+        invoice_number: invoiceNumber
+      }
+    })
+    
+    if (existingInvoice) {
+      return res.status(400).json({ message: `Faktura nömrəsi ${invoiceNumber} artıq mövcuddur` })
+    }
 
     // Ümumi məbləği hesabla
     let totalAmount = 0
-    items.forEach((item: any) => {
-      totalAmount += parseFloat(item.total_price)
+    const itemsArray = items || []
+    itemsArray.forEach((item: any) => {
+      totalAmount += parseFloat(item.total_price || 0)
     })
 
     // Faktura yarat
@@ -109,23 +131,25 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
       },
     })
 
-    // Faktura maddələrini yarat
-    const invoiceItems = await Promise.all(
-      items.map((item: any) =>
-        prisma.purchase_invoice_items.create({
-          data: {
-            invoice_id: invoice.id,
-            product_id: item.product_id,
-            quantity: parseFloat(item.quantity),
-            unit_price: parseFloat(item.unit_price),
-            total_price: parseFloat(item.total_price),
-          },
-        })
-      )
-    )
+    // Faktura maddələrini yarat (əgər items varsa)
+    const invoiceItems = itemsArray.length > 0
+      ? await Promise.all(
+          itemsArray.map((item: any) =>
+            prisma.purchase_invoice_items.create({
+              data: {
+                invoice_id: invoice.id,
+                product_id: item.product_id,
+                quantity: parseFloat(item.quantity),
+                unit_price: parseFloat(item.unit_price),
+                total_price: parseFloat(item.total_price),
+              },
+            })
+          )
+        )
+      : []
 
-    // Anbar qalığını artır
-    for (const item of items) {
+    // Anbar qalığını artır (əgər items varsa)
+    for (const item of itemsArray) {
       const warehouse = await prisma.warehouse.findFirst({
         where: { product_id: item.product_id },
       })

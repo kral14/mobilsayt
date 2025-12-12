@@ -340,25 +340,57 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Pəncərələr */}
         {Array.from(windows.values())
-          .filter(window => !window.isMinimized)
-          .map(window => (
-            <UniversalWindow
-              key={window.id}
-              id={window.id}
-              title={window.title}
-              icon={window.icon}
-              position={window.position}
-              size={window.size}
-              isMaximized={window.isMaximized}
-              zIndex={window.zIndex}
-              isActive={activeWindowId === window.id}
-              pageId={window.pageId}
-              onClose={window.onClose}
-              onActivate={window.onActivate}
-            >
-              {window.content}
-            </UniversalWindow>
-          ))}
+          .filter(window => {
+            const shouldShow = !window.isMinimized && window.isVisible !== false
+            if (window.id.startsWith('purchase-invoice-modal-')) {
+              console.log(`[Layout.tsx] Window filter:`, {
+                windowId: window.id,
+                isMinimized: window.isMinimized,
+                isVisible: window.isVisible,
+                shouldShow
+              })
+            }
+            return shouldShow
+          })
+          .map(window => {
+            if (window.id.startsWith('purchase-invoice-modal-')) {
+            if (window.id.startsWith('purchase-invoice-modal-')) {
+              console.log(`[Layout.tsx] Window render olunur:`, {
+                windowId: window.id,
+                title: window.title,
+                zIndex: window.zIndex,
+                hasContent: !!window.content,
+                positionX: window.position.x,
+                positionY: window.position.y,
+                sizeWidth: window.size.width,
+                sizeHeight: window.size.height,
+                isMaximized: window.isMaximized,
+                screenWidth: typeof window !== 'undefined' ? window.innerWidth : 0,
+                screenHeight: typeof window !== 'undefined' ? window.innerHeight : 0,
+                isVisible: window.isVisible,
+                isMinimized: window.isMinimized
+              })
+            }
+            }
+            return (
+              <UniversalWindow
+                key={window.id}
+                id={window.id}
+                title={window.title}
+                icon={window.icon}
+                position={window.position}
+                size={window.size}
+                isMaximized={window.isMaximized}
+                zIndex={window.zIndex}
+                isActive={activeWindowId === window.id}
+                pageId={window.pageId}
+                onClose={window.onClose}
+                onActivate={window.onActivate}
+              >
+                {window.content}
+              </UniversalWindow>
+            )
+          })}
       </div>
 
       {/* Snap Assist Overlay */}

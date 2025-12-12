@@ -168,18 +168,57 @@ export const purchaseInvoicesAPI = {
     }[]
     notes?: string
   }): Promise<PurchaseInvoice> => {
-    const response = await api.post<PurchaseInvoice>('/purchase-invoices', data)
-    return response.data
+    console.log('[API] purchaseInvoicesAPI.create çağırıldı')
+    console.log('[API] Request URL:', '/purchase-invoices')
+    console.log('[API] Request method: POST')
+    console.log('[API] Request data:', data)
+    try {
+      const response = await api.post<PurchaseInvoice>('/purchase-invoices', data)
+      console.log('[API] purchaseInvoicesAPI.create cavabı:', response.data)
+      console.log('[API] Response status:', response.status)
+      return response.data
+    } catch (error: any) {
+      console.error('[API] purchaseInvoicesAPI.create xətası:', error)
+      console.error('[API] Error response:', error.response)
+      console.error('[API] Error response data:', error.response?.data)
+      throw error
+    }
   },
 
   update: async (id: string, data: { supplier_id?: number; items?: any[]; notes?: string; is_active?: boolean }): Promise<PurchaseInvoice> => {
-    const response = await api.patch<PurchaseInvoice>(`/purchase-invoices/${id}`, data)
-    return response.data
+    console.log('[API] purchaseInvoicesAPI.update çağırıldı')
+    console.log('[API] Request URL:', `/purchase-invoices/${id}`)
+    console.log('[API] Request method: PATCH')
+    console.log('[API] Request data:', data)
+    try {
+      const response = await api.patch<PurchaseInvoice>(`/purchase-invoices/${id}`, data)
+      console.log('[API] purchaseInvoicesAPI.update cavabı:', response.data)
+      console.log('[API] Response status:', response.status)
+      return response.data
+    } catch (error: any) {
+      console.error('[API] purchaseInvoicesAPI.update xətası:', error)
+      console.error('[API] Error response:', error.response)
+      console.error('[API] Error response data:', error.response?.data)
+      throw error
+    }
   },
 
   updateStatus: async (id: string, is_active: boolean): Promise<PurchaseInvoice> => {
-    const response = await api.patch<PurchaseInvoice>(`/purchase-invoices/${id}/status`, { is_active })
-    return response.data
+    console.log('[API] purchaseInvoicesAPI.updateStatus çağırıldı')
+    console.log('[API] Request URL:', `/purchase-invoices/${id}/status`)
+    console.log('[API] Request method: PATCH')
+    console.log('[API] Request data:', { is_active })
+    try {
+      const response = await api.patch<PurchaseInvoice>(`/purchase-invoices/${id}/status`, { is_active })
+      console.log('[API] purchaseInvoicesAPI.updateStatus cavabı:', response.data)
+      console.log('[API] Response status:', response.status)
+      return response.data
+    } catch (error: any) {
+      console.error('[API] purchaseInvoicesAPI.updateStatus xətası:', error)
+      console.error('[API] Error response:', error.response)
+      console.error('[API] Error response data:', error.response?.data)
+      throw error
+    }
   },
 
   delete: async (id: string): Promise<void> => {

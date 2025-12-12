@@ -395,6 +395,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
   }
 
+  // Display formatını raw formata çevirir (DD.MM.YYYY HH:MM:SS -> YYYY-MM-DD HH:MM:SS)
+  const convertDisplayToRaw = (displayString: string): string => {
+    if (!displayString) return ''
+    // DD.MM.YYYY HH:MM:SS formatını parse et
+    const match = displayString.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/)
+    if (match) {
+      const [, day, month, year, hours, minutes, seconds] = match
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+    }
+    // Əgər artıq raw formatdırsa, olduğu kimi qaytar
+    return displayString
+  }
+
   // Tarix formatlaşdırma funksiyası - DD.MM.YYYY HH:MM:SS formatına çevirir
   const formatDateToDisplay = (dateString: string | null | undefined): string => {
     if (!dateString) {
@@ -409,6 +422,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
     }
     
+    // Əgər artıq display formatındadırsa (tam və ya qismən), olduğu kimi qaytar (yazmaq üçün)
+    // Qismən formatlar: "12", "12.1", "12.10", "12.10.2025", "12.10.2025 10", və s.
+    if (/^[\d. :]*$/.test(dateString) && !dateString.includes('-')) {
+      return dateString
+    }
+    
+    // Əgər raw formatdırsa (YYYY-MM-DD HH:MM:SS), display formatına çevir
     try {
       const date = new Date(dateString)
       if (isNaN(date.getTime())) return dateString
@@ -977,23 +997,178 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
   }
 
+  // Yadda Saxla düyməsi funksiyası - yadda saxla, amma təsdiqləmə və modal açıq qalır
+  const handleSave = async () => {
+    console.log('[InvoiceModal] ========== handleSave FUNKSİYASI ÇAĞIRILDI ==========')
+    console.log('[InvoiceModal] handleSave çağırıldı', { 
+      modalId: modal.id, 
+      modalInvoiceId: modal.invoiceId,
+      localData,
+      modalObject: modal
+    })
+    console.log('[InvoiceModal] onSave prop-u mövcuddur:', !!onSave)
+    console.log('[InvoiceModal] onSave prop-u tipi:', typeof onSave)
+    console.log('[InvoiceModal] onSave prop-u funksiyadır:', typeof onSave === 'function')
+    
+    if (!onSave) {
+      console.error('[InvoiceModal] XƏTA: onSave prop-u mövcud deyil!')
+      return
+    }
+    
+    if (typeof onSave !== 'function') {
+      console.error('[InvoiceModal] XƏTA: onSave prop-u funksiya deyil!', { type: typeof onSave, value: onSave })
+      return
+    }
+    
+    try {
+      console.log('[InvoiceModal] onSave çağırılır...', { 
+        modalId: modal.id, 
+        localDataKeys: Object.keys(localData),
+        invoiceItemsCount: localData.invoiceItems?.length || 0,
+        invoiceItems: localData.invoiceItems,
+        validItems: localData.invoiceItems?.filter(item => item.product_id !== null) || []
+      })
+      await onSave(modal.id, localData)
+      console.log('[InvoiceModal] onSave uğurla tamamlandı')
+      // Uğurlu saxlanıldıqdan sonra modal açıq qalır (istifadəçi davam edə bilər)
+    } catch (error) {
+      // Xəta baş verərsə, modal açıq qalır (xəta mesajı onSave içində göstərilir)
+      console.error('[InvoiceModal] Qaimə yadda saxlanılarkən xəta:', error)
+      console.error('[InvoiceModal] Xəta detalları:', {
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      })
+    }
+  }
+
   // OK düyməsi funksiyası - yadda saxla, təsdiqlə və bağla
   const handleOK = async () => {
+    console.log('[InvoiceModal] ========== handleOK FUNKSİYASI ÇAĞIRILDI ==========')
+    console.log('[InvoiceModal] handleOK çağırıldı', { 
+      modalId: modal.id, 
+      modalInvoiceId: modal.invoiceId,
+      localData, 
+      hasOnSaveAndConfirm: !!onSaveAndConfirm,
+      modalObject: modal
+    })
+    console.log('[InvoiceModal] onSave prop-u mövcuddur:', !!onSave)
+    console.log('[InvoiceModal] onSave prop-u tipi:', typeof onSave)
+    console.log('[InvoiceModal] onSave prop-u funksiyadır:', typeof onSave === 'function')
+    console.log('[InvoiceModal] onSaveAndConfirm prop-u mövcuddur:', !!onSaveAndConfirm)
+    console.log('[InvoiceModal] onSaveAndConfirm prop-u tipi:', typeof onSaveAndConfirm)
+    console.log('[InvoiceModal] onSaveAndConfirm prop-u funksiyadır:', typeof onSaveAndConfirm === 'function')
+    
+    // OK düyməsi üçün validasiya - təchizatçı və məhsul seçilməlidir
+    if (isPurchase) {
+      // Alış qaiməsi üçün təchizatçı seçilməlidir
+      if (!localData.selectedSupplierId) {
+        alert('Təchizatçı seçilməlidir')
+        return
+      }
+    } else {
+      // Satış qaiməsi üçün müştəri seçilməlidir
+      if (!localData.selectedCustomerId) {
+        alert('Müştəri seçilməlidir')
+        return
+      }
+    }
+    
+    // Ən azı bir məhsul seçilməlidir
+    const validItems = localData.invoiceItems.filter(item => item.product_id !== null)
+    if (validItems.length === 0) {
+      alert('Məhsul seçilməyib')
+      return
+    }
+    
     try {
       if (onSaveAndConfirm) {
         // OK düyməsi - yadda saxla və təsdiqlə
+        console.log('[InvoiceModal] onSaveAndConfirm çağırılır...', { 
+          modalId: modal.id, 
+          localDataKeys: Object.keys(localData),
+          invoiceItemsCount: localData.invoiceItems?.length || 0,
+          invoiceItems: localData.invoiceItems,
+          validItems: localData.invoiceItems?.filter(item => item.product_id !== null) || []
+        })
         await onSaveAndConfirm(modal.id, localData)
+        console.log('[InvoiceModal] onSaveAndConfirm uğurla tamamlandı')
       } else {
         // Əgər onSaveAndConfirm yoxdursa, sadəcə yadda saxla
+        if (!onSave) {
+          console.error('[InvoiceModal] XƏTA: onSave prop-u mövcud deyil!')
+          return
+        }
+        console.log('[InvoiceModal] onSave çağırılır (onSaveAndConfirm yoxdur)...', { modalId: modal.id, localDataKeys: Object.keys(localData) })
         await onSave(modal.id, localData)
+        console.log('[InvoiceModal] onSave uğurla tamamlandı')
       }
       // Uğurla yadda saxlanıldıqdan sonra modalı bağla
+      console.log('[InvoiceModal] Modal bağlanır...', { modalId: modal.id })
       onClose(modal.id)
+      console.log('[InvoiceModal] Modal bağlandı')
     } catch (error) {
       // Xəta baş verərsə, modal açıq qalır (xəta mesajı onSave içində göstərilir)
-      console.error('Qaimə yadda saxlanılarkən xəta:', error)
+      console.error('[InvoiceModal] Qaimə yadda saxlanılarkən xəta:', error)
+      console.error('[InvoiceModal] Xəta detalları:', {
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      })
     }
   }
+
+  // Prop validation - onSave və onSaveAndConfirm prop-larının mövcudluğunu yoxla
+  useEffect(() => {
+    console.log('[InvoiceModal] ========== PROP VALIDATION ==========')
+    console.log('[InvoiceModal] onSave prop-u:', {
+      exists: !!onSave,
+      type: typeof onSave,
+      isFunction: typeof onSave === 'function',
+      value: onSave
+    })
+    console.log('[InvoiceModal] onSaveAndConfirm prop-u:', {
+      exists: !!onSaveAndConfirm,
+      type: typeof onSaveAndConfirm,
+      isFunction: typeof onSaveAndConfirm === 'function',
+      value: onSaveAndConfirm
+    })
+    console.log('[InvoiceModal] handleSave funksiyası:', {
+      exists: typeof handleSave !== 'undefined',
+      type: typeof handleSave,
+      isFunction: typeof handleSave === 'function'
+    })
+    console.log('[InvoiceModal] handleOK funksiyası:', {
+      exists: typeof handleOK !== 'undefined',
+      type: typeof handleOK,
+      isFunction: typeof handleOK === 'function'
+    })
+    console.log('[InvoiceModal] Modal ID:', modal.id)
+    console.log('[InvoiceModal] ======================================')
+  }, [onSave, onSaveAndConfirm, modal.id])
+
+  // OK düyməsi üçün disabled vəziyyəti - təchizatçı və məhsul seçilməlidir
+  const isOKDisabled = useMemo(() => {
+    if (isPurchase) {
+      // Alış qaiməsi üçün təchizatçı seçilməlidir
+      if (!localData.selectedSupplierId) {
+        return true
+      }
+    } else {
+      // Satış qaiməsi üçün müştəri seçilməlidir
+      if (!localData.selectedCustomerId) {
+        return true
+      }
+    }
+    
+    // Ən azı bir məhsul seçilməlidir
+    const validItems = localData.invoiceItems.filter(item => item.product_id !== null)
+    if (validItems.length === 0) {
+      return true
+    }
+    
+    return false
+  }, [localData, isPurchase])
 
   // Modal içində qısa yollar
   useEffect(() => {
@@ -1320,15 +1495,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div style={{ flex: 1, position: 'relative' }}>
                 <input
                   type="text"
-                  value={invoiceDateInputFocused ? (localData.invoiceDate || getCurrentDateTimeRaw()) : formatDateToDisplay(localData.invoiceDate)}
+                  value={formatDateToDisplay(localData.invoiceDate)}
                   onChange={(e) => {
                     // Yalnız rəqəmlər, nöqtələr, boşluq və iki nöqtəyə icazə ver
                     const value = e.target.value.replace(/[^\d. :]/g, '')
+                    // Birbaşa yazılan dəyəri saxla (display formatında)
                     setLocalData({ ...localData, invoiceDate: value })
                   }}
                   onFocus={(e) => {
                     setInvoiceDateInputFocused(true)
                     setShowInvoiceDatePicker(false)
+                    // Əgər localData.invoiceDate boşdursa, cari tarixi təyin et
+                    if (!localData.invoiceDate) {
+                      const displayValue = formatDateToDisplay(null)
+                      const rawValue = convertDisplayToRaw(displayValue)
+                      setLocalData({ ...localData, invoiceDate: rawValue })
+                    }
                     // Bütün mətn seç (yalnız birinci focus-da, cursor yoxdursa)
                     const input = e.target as HTMLInputElement
                     setTimeout(() => {
@@ -1358,16 +1540,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault()
-                      const parsed = parseSmartDate(e.currentTarget.value)
-                      setLocalData({ ...localData, invoiceDate: parsed })
+                      const displayValue = e.currentTarget.value
+                      const parsed = parseSmartDate(displayValue)
+                      // Əgər parse uğurlu oldusa, raw formata çevir
+                      const rawValue = convertDisplayToRaw(parsed)
+                      setLocalData({ ...localData, invoiceDate: rawValue || parsed })
                       setInvoiceDateInputFocused(false)
                     }
                     // Rəqəm yazıldıqda seçilmiş mətn dəyişir (default davranış)
                   }}
                   onBlur={(e) => {
-                    // Focus itirdikdə parse et və formatla
-                    const parsed = parseSmartDate(e.target.value)
-                    setLocalData({ ...localData, invoiceDate: parsed })
+                    // Focus itirdikdə parse et və raw formata çevir
+                    const displayValue = e.target.value
+                    const parsed = parseSmartDate(displayValue)
+                    // Əgər parse uğurlu oldusa, raw formata çevir
+                    const rawValue = convertDisplayToRaw(parsed)
+                    setLocalData({ ...localData, invoiceDate: rawValue || parsed })
                     setInvoiceDateInputFocused(false)
                     // Date picker bağlanması üçün kiçik gecikmə
                     setTimeout(() => setShowInvoiceDatePicker(false), 200)
@@ -2012,23 +2200,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '6px' }}>
-            {onPrint && (
-              <button
-                onClick={() => onPrint(modal.id, localData)}
-                style={{
-                  padding: '8px 16px',
-                  background: '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
-                title="Çap et"
-              >
-                🖨️ Çap
-              </button>
-            )}
             <button
               onClick={() => onClose(modal.id)}
               style={{
@@ -2044,7 +2215,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               Bağla
             </button>
             <button
-              onClick={() => onSave(modal.id, localData)}
+              onClick={(e) => {
+                console.log('[InvoiceModal] Yadda Saxla düyməsi klik olundu (embedded)', {
+                  event: e,
+                  handleSaveType: typeof handleSave,
+                  handleSaveUndefined: handleSave === undefined,
+                  modalId: modal.id
+                })
+                if (handleSave) {
+                  handleSave()
+                } else {
+                  console.error('[InvoiceModal] handleSave funksiyası undefined-dır!')
+                }
+              }}
               style={{
                 padding: '8px 16px',
                 background: '#17a2b8',
@@ -2054,22 +2237,59 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 cursor: 'pointer',
                 fontWeight: '500'
               }}
+              title="Yadda Saxla (Ctrl+S)"
             >
               Yadda Saxla
             </button>
             <button
-              onClick={handleOK}
+              onClick={(e) => {
+                console.log('[InvoiceModal] OK düyməsi klik olundu (embedded)', {
+                  event: e,
+                  handleOKType: typeof handleOK,
+                  handleOKUndefined: handleOK === undefined,
+                  modalId: modal.id,
+                  isOKDisabled
+                })
+                if (isOKDisabled) {
+                  return
+                }
+                if (handleOK) {
+                  handleOK()
+                } else {
+                  console.error('[InvoiceModal] handleOK funksiyası undefined-dır!')
+                }
+              }}
+              disabled={isOKDisabled}
               style={{
                 padding: '8px 16px',
-                background: '#28a745',
+                background: isOKDisabled ? '#6c757d' : '#28a745',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: '500'
+                cursor: isOKDisabled ? 'not-allowed' : 'pointer',
+                fontWeight: '500',
+                opacity: isOKDisabled ? 0.6 : 1
               }}
+              title={isOKDisabled ? (isPurchase ? 'Təchizatçı və məhsul seçilməlidir' : 'Müştəri və məhsul seçilməlidir') : 'Yadda saxla və təsdiqlə'}
             >
               OK
+            </button>
+            <button
+              onClick={() => onPrint && onPrint(modal.id, localData)}
+              disabled={!onPrint}
+              style={{
+                padding: '8px 16px',
+                background: onPrint ? '#6f42c1' : '#ccc',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: onPrint ? 'pointer' : 'not-allowed',
+                fontWeight: '500',
+                opacity: onPrint ? 1 : 0.6
+              }}
+              title={onPrint ? "Çap et (Ctrl+P)" : "Çap funksiyası mövcud deyil"}
+            >
+              Çap
             </button>
           </div>
         </div>
@@ -2281,15 +2501,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
-                  value={invoiceDateInputFocused ? (localData.invoiceDate || getCurrentDateTimeRaw()) : formatDateToDisplay(localData.invoiceDate)}
+                  value={formatDateToDisplay(localData.invoiceDate)}
                   onChange={(e) => {
                     // Yalnız rəqəmlər, nöqtələr, boşluq və iki nöqtəyə icazə ver
                     const value = e.target.value.replace(/[^\d. :]/g, '')
+                    // Birbaşa yazılan dəyəri saxla (display formatında)
                     setLocalData({ ...localData, invoiceDate: value })
                   }}
                   onFocus={(e) => {
                     setInvoiceDateInputFocused(true)
                     setShowInvoiceDatePicker(false)
+                    // Əgər localData.invoiceDate boşdursa, cari tarixi təyin et
+                    if (!localData.invoiceDate) {
+                      const displayValue = formatDateToDisplay(null)
+                      const rawValue = convertDisplayToRaw(displayValue)
+                      setLocalData({ ...localData, invoiceDate: rawValue })
+                    }
                     // Bütün mətn seç (yalnız birinci focus-da, cursor yoxdursa)
                     const input = e.target as HTMLInputElement
                     setTimeout(() => {
@@ -2319,16 +2546,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault()
-                      const parsed = parseSmartDate(e.currentTarget.value)
-                      setLocalData({ ...localData, invoiceDate: parsed })
+                      const displayValue = e.currentTarget.value
+                      const parsed = parseSmartDate(displayValue)
+                      // Əgər parse uğurlu oldusa, raw formata çevir
+                      const rawValue = convertDisplayToRaw(parsed)
+                      setLocalData({ ...localData, invoiceDate: rawValue || parsed })
                       setInvoiceDateInputFocused(false)
                     }
                     // Rəqəm yazıldıqda seçilmiş mətn dəyişir (default davranış)
                   }}
                   onBlur={(e) => {
-                    // Focus itirdikdə parse et və formatla
-                    const parsed = parseSmartDate(e.target.value)
-                    setLocalData({ ...localData, invoiceDate: parsed })
+                    // Focus itirdikdə parse et və raw formata çevir
+                    const displayValue = e.target.value
+                    const parsed = parseSmartDate(displayValue)
+                    // Əgər parse uğurlu oldusa, raw formata çevir
+                    const rawValue = convertDisplayToRaw(parsed)
+                    setLocalData({ ...localData, invoiceDate: rawValue || parsed })
                     setInvoiceDateInputFocused(false)
                     // Date picker bağlanması üçün kiçik gecikmə
                     setTimeout(() => setShowInvoiceDatePicker(false), 200)
@@ -3416,7 +3649,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               Bağla
             </button>
             <button
-              onClick={() => onSave(modal.id, localData)}
+              onClick={(e) => {
+                console.log('[InvoiceModal] Yadda Saxla düyməsi klik olundu (normal)', {
+                  event: e,
+                  handleSaveType: typeof handleSave,
+                  handleSaveUndefined: handleSave === undefined,
+                  modalId: modal.id
+                })
+                if (handleSave) {
+                  handleSave()
+                } else {
+                  console.error('[InvoiceModal] handleSave funksiyası undefined-dır!')
+                }
+              }}
               style={{
                 padding: '0.5rem 1.5rem',
                 background: '#17a2b8',
@@ -3431,7 +3676,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               Yadda Saxla
             </button>
             <button
-              onClick={handleOK}
+              onClick={(e) => {
+                console.log('[InvoiceModal] OK düyməsi klik olundu (normal)', {
+                  event: e,
+                  handleOKType: typeof handleOK,
+                  handleOKUndefined: handleOK === undefined,
+                  modalId: modal.id
+                })
+                if (handleOK) {
+                  handleOK()
+                } else {
+                  console.error('[InvoiceModal] handleOK funksiyası undefined-dır!')
+                }
+              }}
               style={{
                 padding: '0.5rem 1.5rem',
                 background: '#28a745',
@@ -3444,6 +3701,24 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               }}
             >
               OK
+            </button>
+            <button
+              onClick={() => onPrint && onPrint(modal.id, localData)}
+              disabled={!onPrint}
+              style={{
+                padding: '0.5rem 1.5rem',
+                background: onPrint ? '#6f42c1' : '#ccc',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: onPrint ? 'pointer' : 'not-allowed',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                opacity: onPrint ? 1 : 0.6
+              }}
+              title={onPrint ? "Çap et (Ctrl+P)" : "Çap funksiyası mövcud deyil"}
+            >
+              Çap
             </button>
           </div>
         </div>

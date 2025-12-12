@@ -48,6 +48,7 @@ export default function UniversalWindow({
 
     // Snap Layout Menu (Deaktiv edilib - Istifadeci isteyi ile)
     const [showSnapMenu, setShowSnapMenu] = useState(false)
+    const snapMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     // Settings modal ref - kənara kliklədikdə bağlamaq üçün
     const settingsRef = useRef<HTMLDivElement>(null)
@@ -76,6 +77,16 @@ export default function UniversalWindow({
             document.removeEventListener('mousedown', handleClickOutside)
         }
     }, [showSettings])
+
+    // Snap menu timeout cleanup
+    useEffect(() => {
+        return () => {
+            if (snapMenuTimeoutRef.current) {
+                clearTimeout(snapMenuTimeoutRef.current)
+                snapMenuTimeoutRef.current = null
+            }
+        }
+    }, [])
 
     // Load saved preferences on mount
     React.useEffect(() => {
@@ -361,6 +372,18 @@ export default function UniversalWindow({
                             console.log('[UniversalWindow] Maximize düyməsinə basıldı', { id, isMaximized })
                             e.stopPropagation()
                             maximizeWindow(id)
+                        }}
+                        onMouseEnter={() => {
+                            snapMenuTimeoutRef.current = setTimeout(() => {
+                                setShowSnapMenu(true)
+                            }, 1000)
+                        }}
+                        onMouseLeave={() => {
+                            if (snapMenuTimeoutRef.current) {
+                                clearTimeout(snapMenuTimeoutRef.current)
+                                snapMenuTimeoutRef.current = null
+                            }
+                            // Menu-nu dərhal bağlama, SnapLayoutMenu özü idarə edəcək
                         }}
                         style={{
                             background: 'transparent',

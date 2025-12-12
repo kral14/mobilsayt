@@ -1912,16 +1912,20 @@ export default function SatisQaimeleri() {
             })
           }}
           onSave={async (_modalId, modalData) => {
+            console.log('[Satis.tsx] onSave çağırıldı', { modalId: _modalId, modalData })
             try {
               // Validasiya - məhsul seçilməlidir
               const validItems = modalData.invoiceItems.filter(item => item.product_id !== null)
+              console.log('[Satis.tsx] Valid items:', validItems.length)
               if (validItems.length === 0) {
+                console.log('[Satis.tsx] Validasiya xətası: məhsul seçilməyib')
                 showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
                 return
               }
 
               if (modal.invoiceId) {
                 // Mövcud qaimə - yenilə
+                console.log('[Satis.tsx] Mövcud qaimə yenilənir:', modal.invoiceId)
                 await ordersAPI.update(modal.invoiceId.toString(), {
                   customer_id: modalData.selectedCustomerId ?? undefined,
                   items: validItems.map(item => ({
@@ -1939,9 +1943,11 @@ export default function SatisQaimeleri() {
                 if (modal.isActive !== undefined) {
                   await ordersAPI.updateStatus(modal.invoiceId.toString(), modal.isActive)
                 }
+                console.log('[Satis.tsx] Qaimə yeniləndi')
                 showNotification('Qaimə uğurla yeniləndi', 'success')
               } else {
                 // Yeni qaimə - yarad, amma tesdiqsiz saxla
+                console.log('[Satis.tsx] Yeni qaimə yaradılır (təsdiqsiz)...')
                 const newInvoice = await ordersAPI.create({
                   customer_id: modalData.selectedCustomerId ?? undefined,
                   items: validItems.map(item => ({
@@ -1982,19 +1988,25 @@ export default function SatisQaimeleri() {
                   return newMap
                 })
 
+                console.log('[Satis.tsx] Yeni qaimə yaradıldı:', newInvoice.id)
                 showNotification('Qaimə uğurla yaradıldı (təsdiqsiz)', 'success')
               }
+              console.log('[Satis.tsx] Cədvəl yenilənir (loadInvoices)...')
               await loadInvoices()
+              console.log('[Satis.tsx] Cədvəl yeniləndi')
             } catch (err: any) {
               showNotification(err.response?.data?.message || 'Qaimə yadda saxlanarkən xəta baş verdi', 'error')
               throw err // Xətanı yuxarı at ki, modal bağlanmasın
             }
           }}
           onSaveAndConfirm={async (_modalId, modalData) => {
+            console.log('[Satis.tsx] onSaveAndConfirm çağırıldı', { modalId: _modalId, modalData })
             try {
               // Validasiya - məhsul seçilməlidir
               const validItems = modalData.invoiceItems.filter(item => item.product_id !== null)
+              console.log('[Satis.tsx] Valid items:', validItems.length)
               if (validItems.length === 0) {
+                console.log('[Satis.tsx] Validasiya xətası: məhsul seçilməyib')
                 showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
                 return
               }
@@ -2004,6 +2016,7 @@ export default function SatisQaimeleri() {
 
               if (modal.invoiceId) {
                 // Mövcud qaimə - yenilə və təsdiqlə
+                console.log('[Satis.tsx] Mövcud qaimə yenilənir və təsdiqlənir:', modal.invoiceId)
                 await ordersAPI.update(modal.invoiceId.toString(), {
                   customer_id: modalData.selectedCustomerId ?? undefined,
                   items: validItems.map(item => ({
@@ -2019,9 +2032,11 @@ export default function SatisQaimeleri() {
                 })
                 // Təsdiqlə
                 await ordersAPI.updateStatus(modal.invoiceId.toString(), true)
+                console.log('[Satis.tsx] Qaimə yeniləndi və təsdiq edildi')
                 showNotification('Qaimə uğurla yeniləndi və təsdiq edildi', 'success')
               } else {
                 // Yeni qaimə - yarad və təsdiqlə
+                console.log('[Satis.tsx] Yeni qaimə yaradılır və təsdiqlənir...')
                 const newInvoice = await ordersAPI.create({
                   customer_id: modalData.selectedCustomerId ?? undefined,
                   items: validItems.map(item => ({
@@ -2062,9 +2077,12 @@ export default function SatisQaimeleri() {
                   return newMap
                 })
 
+                console.log('[Satis.tsx] Yeni qaimə yaradıldı və təsdiq edildi:', newInvoice.id)
                 showNotification('Qaimə uğurla yaradıldı və təsdiq edildi', 'success')
               }
+              console.log('[Satis.tsx] Cədvəl yenilənir (loadInvoices)...')
               await loadInvoices()
+              console.log('[Satis.tsx] Cədvəl yeniləndi')
             } catch (err: any) {
               showNotification(err.response?.data?.message || 'Qaimə yadda saxlanarkən xəta baş verdi', 'error')
               throw err // Xətanı yuxarı at ki, modal bağlanmasın
