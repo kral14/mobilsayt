@@ -19,6 +19,7 @@ export interface Customer {
   email: string | null
   address: string | null
   balance: number | null
+  permanent_discount: number | null
   folder_id: number | null
   is_active: boolean | null
   created_at: Date | null
@@ -96,6 +97,8 @@ export interface SaleInvoiceItem {
   quantity: number
   unit_price: number
   total_price: number
+  discount_auto?: number | null
+  discount_manual?: number | null
   products?: Product | null
 }
 
@@ -124,6 +127,8 @@ export interface CreateOrderRequest {
     quantity: number
     unit_price: number
     total_price: number
+    discount_auto?: number
+    discount_manual?: number
   }[]
   notes?: string
   payment_date?: string
@@ -164,10 +169,35 @@ export interface PurchaseInvoiceItem {
   quantity: number
   unit_price: number
   total_price: number
+  discount_auto?: number | null
+  discount_manual?: number | null
   products?: Product | null
 }
 
 export interface WarehouseLocation {
   id: number
   name: string
+}
+
+export interface DiscountDocumentItem {
+  id: number
+  document_id: number
+  product_id: number | null
+  discount_percent: number
+  description: string | null
+  product?: Product | null
+}
+
+export interface DiscountDocument {
+  id: number
+  document_number: string
+  document_date: Date | string
+  start_date?: Date | string
+  end_date?: Date | string
+  type: 'SUPPLIER' | 'PRODUCT'
+  entity_id: number | null
+  is_active: boolean
+  notes: string | null
+  created_at: Date | null
+  items?: DiscountDocumentItem[]
 }

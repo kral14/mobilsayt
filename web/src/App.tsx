@@ -14,6 +14,7 @@ import Alicilar from './pages/Musteriler/Alici'
 import Saticilar from './pages/Musteriler/Satici'
 import WindowTest from './pages/WindowTest'
 import Admin from './pages/Admin'
+import DiscountDocuments from './pages/Discounts/DiscountDocuments'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -114,6 +115,22 @@ function App() {
           element={
             <ProtectedRoute>
               <Admin />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents/supplier-discounts"
+          element={
+            <ProtectedRoute>
+              <DiscountDocuments type="SUPPLIER" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents/product-discounts"
+          element={
+            <ProtectedRoute>
+              <DiscountDocuments type="PRODUCT" />
             </ProtectedRoute>
           }
         />

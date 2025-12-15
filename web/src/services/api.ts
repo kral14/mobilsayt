@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier, WarehouseLocation } from '@shared/types'
+import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier, WarehouseLocation, DiscountDocument, DiscountDocumentItem } from '@shared/types'
 
 // API URL-i müəyyən et
 // API URL-i müəyyən et
@@ -145,6 +145,24 @@ export const categoriesAPI = {
   moveProducts: async (product_ids: number[], category_id: number | null): Promise<void> => {
     await api.post('/categories/move-products', { product_ids, category_id })
   },
+
+}
+
+// Product Discounts API
+export const productDiscountsAPI = {
+  create: async (productId: number, data: { percentage: number; start_date: string; end_date: string }): Promise<any> => {
+    const response = await api.post(`/products/${productId}/discounts`, data)
+    return response.data
+  },
+
+  getAll: async (productId: number): Promise<any[]> => {
+    const response = await api.get(`/products/${productId}/discounts`)
+    return response.data
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/products/discounts/${id}`)
+  },
 }
 
 // Orders API (Sale Invoices)
@@ -263,6 +281,20 @@ export const customersAPI = {
     const response = await api.get<Customer[]>('/customers')
     return response.data
   },
+
+  create: async (data: Partial<Customer>): Promise<Customer> => {
+    const response = await api.post<Customer>('/customers', data)
+    return response.data
+  },
+
+  update: async (id: string, data: Partial<Customer>): Promise<Customer> => {
+    const response = await api.put<Customer>(`/customers/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/customers/${id}`)
+  },
 }
 
 // Customer Folders API
@@ -317,3 +349,57 @@ export const warehousesAPI = {
 }
 
 export default api
+
+// Discount Documents API
+export const discountDocumentsAPI = {
+  getAll: async (params?: { type?: string; entity_id?: number; active_only?: boolean }): Promise<DiscountDocument[]> => {
+    const response = await api.get<DiscountDocument[]>('/documents/discounts', { params })
+    return response.data
+  },
+
+  getById: async (id: number | string): Promise<DiscountDocument> => {
+    const response = await api.get<DiscountDocument>(`/documents/discounts/${id}`)
+    return response.data
+  },
+
+  create: async (data: Partial<DiscountDocument> & { items: Partial<DiscountDocumentItem>[] }): Promise<DiscountDocument> => {
+    const response = await api.post<DiscountDocument>('/documents/discounts', data)
+    return response.data
+  },
+
+  getActive: async (type: 'SUPPLIER' | 'PRODUCT', entityId: number): Promise<DiscountDocument | null> => {
+    const response = await api.get<DiscountDocument[]>('/documents/discounts', {
+      params: { type, entity_id: entityId, active_only: true }
+    })
+
+    // Server returns sorted by date desc. We need the first one that is currently valid time-wise.
+    const now = new Date()
+    const validDoc = response.data.find(doc => {
+      const s = doc.start_date ? new Date(doc.start_date) : null
+      const e = doc.end_date ? new Date(doc.end_date) : null
+
+      if (s && now < s) return false // Too early
+      if (e && now > e) return false // Expired
+      return true
+    })
+
+    return validDoc || null
+  },
+
+  getAllActive: async (type: 'SUPPLIER' | 'PRODUCT', entityId?: number | null): Promise<DiscountDocument[]> => {
+    const params: any = { type, active_only: true }
+    if (entityId) params.entity_id = entityId
+
+    const response = await api.get<DiscountDocument[]>('/documents/discounts', { params })
+    return response.data
+  },
+
+  update: async (id: number | string, data: Partial<DiscountDocument> & { items: Partial<DiscountDocumentItem>[] }): Promise<DiscountDocument> => {
+    const response = await api.put<DiscountDocument>(`/documents/discounts/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: number | string): Promise<void> => {
+    await api.delete(`/documents/discounts/${id}`)
+  }
+}

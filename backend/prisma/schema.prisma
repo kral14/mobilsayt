@@ -21,6 +21,30 @@ model customers {
   is_active     Boolean?          @default(true)
   folder        customer_folders? @relation(fields: [folder_id], references: [id], onUpdate: NoAction)
   sale_invoices sale_invoices[]
+  customer_discounts customer_discounts[]
+  permanent_discount Decimal?        @default(0) @db.Decimal(5, 2)
+}
+
+model customer_discounts {
+  id          Int       @id @default(autoincrement())
+  customer_id Int
+  percentage  Decimal   @db.Decimal(5, 2)
+  start_date  DateTime  @db.Timestamp(6)
+  end_date    DateTime  @db.Timestamp(6)
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  customer    customers @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model product_discounts {
+  id          Int       @id @default(autoincrement())
+  product_id  Int
+  percentage  Decimal   @db.Decimal(5, 2)
+  start_date  DateTime  @db.Timestamp(6)
+  end_date    DateTime  @db.Timestamp(6)
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  product     products  @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model password_reset_tokens {
@@ -75,6 +99,8 @@ model products {
   purchase_invoice_items purchase_invoice_items[]
   sale_invoice_items     sale_invoice_items[]
   warehouse              warehouse[]
+  product_discounts      product_discounts[]
+  discount_document_items discount_document_items[]
 }
 
 model purchase_invoice_items {
@@ -84,6 +110,8 @@ model purchase_invoice_items {
   quantity          Decimal            @db.Decimal(10, 2)
   unit_price        Decimal            @db.Decimal(10, 2)
   total_price       Decimal            @db.Decimal(10, 2)
+  discount_auto     Decimal?           @default(0) @db.Decimal(5, 2)
+  discount_manual   Decimal?           @default(0) @db.Decimal(5, 2)
   purchase_invoices purchase_invoices? @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   products          products?          @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -109,6 +137,8 @@ model sale_invoice_items {
   quantity      Decimal        @db.Decimal(10, 2)
   unit_price    Decimal        @db.Decimal(10, 2)
   total_price   Decimal        @db.Decimal(10, 2)
+  discount_auto Decimal?       @default(0) @db.Decimal(5, 2)
+  discount_manual Decimal?     @default(0) @db.Decimal(5, 2)
   sale_invoices sale_invoices? @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   products      products?      @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -193,3 +223,30 @@ model activity_logs {
   @@index([log_id], map: "idx_logs_log_id")
   @@index([user_id, timestamp(sort: Desc)], map: "idx_logs_user_timestamp")
 }
+
+model discount_documents {
+  id              Int                       @id @default(autoincrement())
+  document_number String                    @unique @db.VarChar(100)
+  document_date   DateTime                  @db.Timestamp(6) // Keep for reference? Or user wants to replace? User said "tarixi secende iki tarix olmalidi". "When selecting date".
+  // I will keep document_date as "Document Date" (paper date) and add validity.
+  start_date      DateTime?                 @default(now()) @db.Timestamp(6)
+  end_date        DateTime?                 @default(now()) @db.Timestamp(6)
+  type            String                    @db.VarChar(20) // 'SUPPLIER' or 'PRODUCT'
+  entity_id       Int?                      // Supplier ID or Product ID
+  is_active       Boolean?                  @default(true)
+  notes           String?
+  created_at      DateTime?                 @default(now()) @db.Timestamp(6)
+  items           discount_document_items[]
+}
+
+model discount_document_items {
+  id             Int                @id @default(autoincrement())
+  document_id    Int
+  product_id     Int?
+  discount_percent Decimal          @db.Decimal(5, 2)
+  description    String?
+  document       discount_documents @relation(fields: [document_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product        products?          @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+// Trigger restart

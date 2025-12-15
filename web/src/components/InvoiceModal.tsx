@@ -2,10 +2,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useWindowStore } from '../store/windowStore'
 import { formatDateInput } from '../utils/dateUtils'
-import type { Customer, Product, Supplier, WarehouseLocation } from '@shared/types'
+import type { Customer, Product, Supplier, WarehouseLocation, DiscountDocument } from '@shared/types'
 import TableSettingsModal, { type ColumnConfig as TableColumnConfig, type FunctionSettings } from './TableSettingsModal'
 import ConfirmDialog from './ConfirmDialog'
-import { purchaseInvoicesAPI } from '../services/api'
+import { purchaseInvoicesAPI, productDiscountsAPI } from '../services/api'
 
 const COLUMN_DRAG_STORAGE_KEY = 'invoice-modal-column-drag-enabled'
 const TABLE_COLUMNS_STORAGE_KEY = 'invoice-modal-table-columns'
@@ -19,7 +19,9 @@ const BASE_TABLE_COLUMNS: TableColumnConfig[] = [
   { id: 'unit', label: 'Vahid', visible: true, width: 80, order: 5 },
   { id: 'quantity', label: 'Miqdar', visible: true, width: 100, order: 6 },
   { id: 'unitPrice', label: 'Vahid qiymət', visible: true, width: 120, order: 7 },
-  { id: 'total', label: 'Cəm', visible: true, width: 120, order: 8 },
+  { id: 'discountAuto', label: 'Avto %', visible: true, width: 80, order: 8 },
+  { id: 'discountManual', label: 'Manual %', visible: true, width: 80, order: 9 },
+  { id: 'total', label: 'Cəm', visible: true, width: 120, order: 10 },
 ]
 
 const normalizeColumns = (source?: Partial<TableColumnConfig>[]): TableColumnConfig[] => {
@@ -46,6 +48,8 @@ export interface InvoiceItem {
   quantity: number
   unit_price: number
   total_price: number
+  discount_auto?: number
+  discount_manual?: number
   searchTerm?: string // Məhsul axtarışı üçün
 }
 
@@ -535,15 +539,26 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setLocalData({ ...localData, invoiceItems: newItems })
   }
 
-  const handleUpdateItem = (index: number, field: 'quantity' | 'unit_price', value: number) => {
+  const handleUpdateItem = (index: number, field: 'quantity' | 'unit_price' | 'discount_manual', value: number) => {
     const updatedItems = [...localData.invoiceItems]
-    updatedItems[index] = {
-      ...updatedItems[index],
-      [field]: value,
-      total_price: field === 'quantity'
-        ? value * updatedItems[index].unit_price
-        : updatedItems[index].quantity * value
+    const currentItem = updatedItems[index]
+
+    // Update the field
+    const newItem = {
+      ...currentItem,
+      [field]: value
     }
+
+    // Calculate new total
+    const qty = newItem.quantity || 0
+    const price = newItem.unit_price || 0
+    const autoDisc = newItem.discount_auto || 0
+    const manualDisc = newItem.discount_manual || 0
+    const totalDisc = Math.min(autoDisc + manualDisc, 100) // Cap at 100%
+
+    newItem.total_price = (qty * price) * (1 - totalDisc / 100)
+
+    updatedItems[index] = newItem
     setLocalData({ ...localData, invoiceItems: updatedItems })
   }
 
@@ -574,21 +589,99 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setLocalData({ ...localData, invoiceItems: updatedItems })
   }
 
-  const handleProductSelectInRow = (index: number, productId: number) => {
+  const handleProductSelectInRow = async (index: number, productId: number) => {
     const product = products.find(p => p.id === productId)
     if (!product) return
 
-    const updatedItems = [...localData.invoiceItems]
-    const price = isPurchase ? (product.purchase_price || 0) : (product.sale_price || 0)
-    updatedItems[index] = {
-      ...updatedItems[index],
-      product_id: productId,
-      product_name: product.name,
-      unit_price: price,
-      total_price: updatedItems[index].quantity * price,
-      searchTerm: ''
+    // Calculate Auto Discount
+    let autoDisc = 0
+
+    if (isPurchase) {
+      if (activeDiscountDocument && activeDiscountDocument.items) {
+        // 1. Supplier (Cari) Discount
+        const item = activeDiscountDocument.items.find((i: any) => i.product_id === productId)
+        if (item) {
+          autoDisc += Number(item.discount_percent)
+        } else {
+          // General discount
+          const general = activeDiscountDocument.items.find((i: any) => i.product_id === null)
+          if (general) {
+            autoDisc += Number(general.discount_percent)
+          }
+        }
+      }
+
+      // 2. Product Discount (Campaigns)
+      const now = new Date()
+      if (productDiscountDocuments && productDiscountDocuments.length > 0) {
+        productDiscountDocuments.forEach(doc => {
+          // Check date validity
+          const start = new Date(doc.start_date || doc.document_date)
+          const end = new Date(doc.end_date || doc.document_date)
+
+          if (now >= start && now <= end) {
+            // Check for product specific discount in this doc
+            const pItem = doc.items?.find((i: any) => i.product_id === productId)
+            if (pItem) {
+              autoDisc += Number(pItem.discount_percent)
+            }
+          }
+        })
+      }
+    } else {
+      // Sale Logic
+      const customer = localData.selectedCustomer
+      // @ts-ignore - permanent_discount field might strict typed
+      const customerDiscount = Number(customer?.permanent_discount || 0)
+
+      let productDiscount = 0
+      try {
+        const discounts = await productDiscountsAPI.getAll(productId)
+        const now = new Date()
+        const activeDiscount = discounts.find((d: any) => {
+          const start = new Date(d.start_date)
+          const end = new Date(d.end_date)
+          return now >= start && now <= end
+        })
+
+        if (activeDiscount) {
+          productDiscount = Number(activeDiscount.percentage)
+        }
+      } catch (e) {
+        console.error('Failed to load product discounts', e)
+      }
+      autoDisc = customerDiscount + productDiscount
     }
-    setLocalData({ ...localData, invoiceItems: updatedItems })
+    // const autoDisc = customerDiscount + productDiscount // Removed old line
+
+    // Check if component mounted/state valid? 
+    // For now assuming safe enough or user simple flow
+    // Need to get latest items state in case it changed during await
+    // Using functional state update or refetching from ref would be safer but complex
+    // Re-reading localData from state might be stale in closure
+
+    setLocalData(prev => {
+      const newItems = [...prev.invoiceItems]
+      const currentItem = newItems[index]
+      // If row changed product in meantime, abort? 
+      // For simplicity, just update.
+
+      const price = isPurchase ? (product.purchase_price || 0) : (product.sale_price || 0)
+      const currentQty = currentItem.quantity || 0
+      const manualDisc = currentItem.discount_manual || 0
+      const totalDisc = Math.min(autoDisc + manualDisc, 100)
+
+      newItems[index] = {
+        ...currentItem,
+        product_id: productId,
+        product_name: product.name,
+        unit_price: price,
+        discount_auto: autoDisc,
+        total_price: (currentQty * price) * (1 - totalDisc / 100),
+        searchTerm: ''
+      }
+      return { ...prev, invoiceItems: newItems }
+    })
   }
 
   // Sütun sürüşdürmə funksiyaları
@@ -691,6 +784,200 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       onUpdate(modal.id, { data: localData })
     }
   }, [localData, modal.data, modal.id, onUpdate])
+
+  // Discount Document Logic
+  const [activeDiscountDocument, setActiveDiscountDocument] = useState<DiscountDocument | null>(null) // Supplier Doc
+  const [productDiscountDocuments, setProductDiscountDocuments] = useState<DiscountDocument[]>([]) // Product Docs
+
+  // Fetch active discount document when supplier changes (for Purchase)
+  useEffect(() => {
+    const fetchDiscount = async () => {
+      // Only for Purchase invoices
+      if (!isPurchase) {
+        setActiveDiscountDocument(null)
+        setProductDiscountDocuments([])
+        return
+      }
+
+      console.log(`[DiscountEffect] Fetching Documents. SupplierId: ${localData.selectedSupplierId}`)
+
+      try {
+        const api = await import('../services/api').then(m => m.discountDocumentsAPI)
+
+        // 1. Fetch Supplier Document
+        if (localData.selectedSupplierId) {
+          const doc = await api.getActive('SUPPLIER', localData.selectedSupplierId)
+          console.log('[DiscountEffect] Active Supplier Doc:', doc)
+          setActiveDiscountDocument(doc)
+        } else {
+          setActiveDiscountDocument(null)
+        }
+
+        // 2. Fetch Global Product Documents
+        const prodDocs = await api.getAllActive('PRODUCT')
+        console.log('[DiscountEffect] Active Product Docs:', prodDocs.length)
+        setProductDiscountDocuments(prodDocs)
+
+      } catch (err) {
+        console.error('Failed to fetch discount documents:', err)
+        setActiveDiscountDocument(null)
+      }
+    }
+    fetchDiscount()
+  }, [isPurchase, localData.selectedSupplierId])
+
+  // Helper to calculate auto discount based on active document
+  // Helper to calculate auto discount based on active document
+  const calculateAutoDiscount = React.useCallback((productId: number): number => {
+    const now = new Date()
+
+    // DEBUG: Start Calculation
+    // console.log(`[DiscountCalc] Starting for Product ${productId}`)
+
+    // 1. Calculate Supplier Discount
+    let supplierDiscount = 0
+    if (activeDiscountDocument && activeDiscountDocument.items) {
+      let valid = true
+      if (activeDiscountDocument.start_date && now < new Date(activeDiscountDocument.start_date)) {
+        console.log(`[DiscountCalc] Supplier Doc Invalid: Too Early (Start: ${activeDiscountDocument.start_date})`)
+        valid = false
+      }
+      if (activeDiscountDocument.end_date && now > new Date(activeDiscountDocument.end_date)) {
+        console.log(`[DiscountCalc] Supplier Doc Invalid: Expired (End: ${activeDiscountDocument.end_date})`)
+        valid = false
+      }
+
+      if (valid) {
+        // console.log(`[DiscountCalc] Searching Supplier Items:`, activeDiscountDocument.items)
+        const item = activeDiscountDocument.items.find((i: any) => Number(i.product_id) === Number(productId))
+        if (item) {
+          supplierDiscount = Number(item.discount_percent)
+          console.log(`[DiscountCalc] Found Supplier Specific: ${supplierDiscount}%`)
+        } else {
+          const general = activeDiscountDocument.items.find((i: any) => i.product_id === null)
+          if (general) {
+            supplierDiscount = Number(general.discount_percent)
+            console.log(`[DiscountCalc] Found Supplier General: ${supplierDiscount}%`)
+          }
+        }
+      }
+    }
+    // console.log(`[DiscountCalc] Supplier Discount: ${supplierDiscount}%`)
+
+    // 2. Calculate Product Discount (Layered: Newest Valid Overrides Oldest)
+    let productDiscount = 0
+
+    // Ensure docs are sorted Newest -> Oldest
+    // We assume API returns them sorted, but let's be safe if we rely on order
+    // Note: sorting every time might be slow? limit to valid ones.
+    const validProductDocs = productDiscountDocuments.filter(doc => {
+      if (!doc.items) return false
+      if (doc.start_date && now < new Date(doc.start_date)) return false
+      if (doc.end_date && now > new Date(doc.end_date)) return false
+      return true
+    })
+
+    // Pass 1: Specific Product Match (Newest Wins)
+    for (const doc of validProductDocs) {
+      const item = doc.items.find((i: any) => i.product_id === productId)
+      if (item) {
+        productDiscount = Number(item.discount_percent)
+        console.log(`[DiscountCalc] Found Specific Product Match in Doc ${doc.document_number}: ${productDiscount}%`)
+        break // Stop searching, we found the newest override
+      }
+    }
+
+    // Pass 2: If no specific match, Specific General Match (if needed?) 
+    // Wait, usually specific overrides general.
+    // If I didn't find specific, should I look for general in the NEWEST doc? or the newest general?
+    // Logic: A general discount in a NEWER doc should probably override an OLDER specific?
+    // Or does Specific always override General?
+    // Standard Override: Newest *Rule* wins.
+    // Rule A (General 10%, Date Today). Rule B (Specific 5%, Date Yesterday).
+    // Today's General 10% should probably win? Or Specific is always "more specific"?
+    // User asked for "Newest overrides".
+    // Let's iterate docs ONE by ONE. In each doc, check Specific -> then General.
+    // If Doc A is newest.
+    // Identifies rule for Product X?
+    //   Yes (Specific) -> Use it. Done.
+    //   No (Specific) -> Has General?
+    //      Yes -> Use it. Done.
+    //      No -> Go to Doc B.
+
+    if (productDiscount === 0 && validProductDocs.length > 0) {
+      // Re-iterate (or could combine)
+      // Actually, if we want strict "Newest Doc Wins regardless of Specificity", we do:
+      for (const doc of validProductDocs) {
+        const item = doc.items.find((i: any) => i.product_id === productId)
+        if (item) {
+          productDiscount = Number(item.discount_percent)
+          console.log(`[DiscountCalc] Found Specific Match in Doc ${doc.document_number}: ${productDiscount}%`)
+          break
+        }
+        // If this doc has no specific match, does it have a general match?
+        const general = doc.items.find((i: any) => i.product_id === null)
+        if (general) {
+          // Wait, if an *older* doc has a specific match, and *newer* has general.
+          // Does newer general override older specific? Usually yes in time-based layered systems.
+          // But typically "Specific" > "General".
+          // Let's stick to "Specific Match First" across all docs? 
+          // Previous implementation attempt: "Specific in Newest" -> "General in Newest".
+          // I will use: "Find first Specific". If none, "Find first General".
+          // This preserves "Specific > General" globally, but "Newest > Oldest" within same specificity.
+          // This is safer.
+        }
+      }
+
+      if (productDiscount === 0) {
+        for (const doc of validProductDocs) {
+          const general = doc.items.find((i: any) => i.product_id === null)
+          if (general) {
+            productDiscount = Number(general.discount_percent)
+            console.log(`[DiscountCalc] Found General Match in Doc ${doc.document_number}: ${productDiscount}%`)
+            break
+          }
+        }
+      }
+    }
+
+    console.log(`[DiscountCalc] Product ${productId} | Supplier: ${supplierDiscount}% | Product: ${productDiscount}% | Total: ${Math.min(supplierDiscount + productDiscount, 100)}%`)
+
+    // Return Sum, capped at 100
+    return Math.min(supplierDiscount + productDiscount, 100)
+  }, [activeDiscountDocument, productDiscountDocuments])
+
+  // Re-calculate discounts for all items when activeDiscountDocument changes
+  useEffect(() => {
+    if (!activeDiscountDocument) return
+
+    setLocalData(prev => {
+      const updatedItems = prev.invoiceItems.map(item => {
+        if (!item.product_id) return item
+
+        const autoDisc = calculateAutoDiscount(item.product_id)
+
+        // Only update if changed
+        if (item.discount_auto === autoDisc) return item
+
+        const startPrice = item.unit_price || 0
+        const qty = item.quantity || 0
+        const manualDisc = item.discount_manual || 0
+        const totalDisc = Math.min(autoDisc + manualDisc, 100)
+
+        return {
+          ...item,
+          discount_auto: autoDisc,
+          total_price: (qty * startPrice) * (1 - totalDisc / 100)
+        }
+      })
+
+      // Checking if any item actually changed to avoid loop (though useEffect dep is activeDiscountDocument)
+      if (JSON.stringify(updatedItems) !== JSON.stringify(prev.invoiceItems)) {
+        return { ...prev, invoiceItems: updatedItems }
+      }
+      return prev
+    })
+  }, [activeDiscountDocument, productDiscountDocuments, calculateAutoDiscount])
 
   // Scope fixes: Define handleResizeStart and renderCell here or before usage
   const handleResizeStart = (e: React.MouseEvent, _columnId: string) => {
@@ -913,6 +1200,35 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 border: '1px solid #ddd',
                 borderRadius: '4px',
                 textAlign: 'right',
+                fontSize: '0.9rem'
+              }}
+            />
+          </div>
+        )
+      case 'discountAuto':
+        return (
+          <div style={{ textAlign: 'center', padding: '0.25rem', color: '#666', fontSize: '0.9rem' }}>
+            {(item.discount_auto || 0)}%
+          </div>
+        )
+      case 'discountManual':
+        return (
+          <div style={{ textAlign: 'center' }}>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={item.discount_manual || 0}
+              onChange={(e) => handleUpdateItem(idx, 'discount_manual', parseFloat(e.target.value) || 0)}
+              onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => e.target.select()}
+              style={{
+                width: '100%',
+                padding: '0.25rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                textAlign: 'center',
                 fontSize: '0.9rem'
               }}
             />

@@ -26,5 +26,11 @@ router.post('/', authMiddleware, createProduct)
 router.put('/:id', authMiddleware, updateProduct)
 router.delete('/:id', authMiddleware, deleteProduct)
 
+// Discount routes
+import { createProductDiscount, getProductDiscounts, deleteProductDiscount } from '../controllers/productDiscountController'
+router.post('/:productId/discounts', authMiddleware, createProductDiscount)
+router.get('/:productId/discounts', authMiddleware, getProductDiscounts)
+router.delete('/discounts/:id', authMiddleware, deleteProductDiscount)
+
 export default router
 

@@ -2,6 +2,7 @@ import React from 'react'
 import { useWindowStore } from '../store/windowStore'
 import { useState, useEffect, useRef } from 'react'
 import SnapLayoutMenu from './SnapLayoutMenu'
+import WindowContext from '../context/WindowContext'
 
 interface UniversalWindowProps {
     id: string
@@ -166,7 +167,7 @@ export default function UniversalWindow({
     return (
         <div
             className={`window ${isMaximized ? 'maximized' : ''}`}
-            onClick={() => {
+            onMouseDown={() => {
                 activateWindow(id)
                 if (onActivate) onActivate()
             }}
@@ -483,7 +484,14 @@ export default function UniversalWindow({
                     zoom: `${zoom}%`
                 }}
             >
-                {children}
+                <WindowContext.Provider value={{
+                    windowId: id,
+                    close: () => closeWindow(id),
+                    maximize: () => maximizeWindow(id),
+                    minimize: () => minimizeWindow(id)
+                }}>
+                    {children}
+                </WindowContext.Provider>
             </div>
 
             {/* Resize Handle */}

@@ -16,6 +16,7 @@ import KassaMexaric from '../pages/Kassa/Mexaric'
 import Alicilar from '../pages/Musteriler/Alici'
 import Saticilar from '../pages/Musteriler/Satici'
 import Admin from '../pages/Admin'
+import DiscountDocuments, { SupplierDiscountDocuments, ProductDiscountDocuments } from '../pages/Discounts/DiscountDocuments'
 
 
 
@@ -111,13 +112,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Bütün açıq pəncərələri bağla
-        const { windows, closeWindow } = useWindowStore.getState()
-        if (windows.size > 0) {
-          // Bütün pəncərələri bağla
-          Array.from(windows.keys()).forEach(windowId => {
-            closeWindow(windowId)
-          })
+        // Aktiv və ya ən üstteki pəncərəni bağla
+        const { windows, activeWindowId, closeWindow } = useWindowStore.getState()
+
+        let targetId = activeWindowId
+
+        // Əgər aktiv pəncərə yoxdursa, zIndex-i ən yüksək olanı tap
+        if (!targetId && windows.size > 0) {
+          const sorted = Array.from(windows.values())
+            .filter(w => !w.isMinimized && w.isVisible !== false)
+            .sort((a, b) => b.zIndex - a.zIndex)
+
+          if (sorted.length > 0) {
+            targetId = sorted[0].id
+          }
+        }
+
+        if (targetId) {
+          closeWindow(targetId)
         }
       }
     }
@@ -370,6 +382,71 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       }}
                     >
                       <span>🏢 Satıcılar</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Sənədlər Dropdown (Faiz Əməliyyatları) */}
+              <div
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setActiveDropdown('senedler')}
+                onMouseLeave={() => setActiveDropdown(null)}
+              >
+                <button>
+                  Sənədlər <span style={{ fontSize: '0.7em', marginLeft: '5px' }}>▼</span>
+                </button>
+                {activeDropdown === 'senedler' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    background: '#242424',
+                    minWidth: '240px',
+                    marginTop: '0',
+                    borderRadius: '0 0 8px 8px',
+                    boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
+                    borderTop: '3px solid #ffcc00',
+                    zIndex: 1000
+                  }}>
+                    <button
+                      onClick={() => handleOpenPage('discount-supplier', 'Təchizatçı Faizləri', '📉', SupplierDiscountDocuments)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        width: '100%',
+                        textAlign: 'left',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ddd',
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #333',
+                        cursor: 'pointer',
+                        fontSize: '16px'
+                      }}
+                    >
+                      <span>📉 Təchizatçılar üzrə</span>
+                      <span>→</span>
+                    </button>
+                    <button
+                      onClick={() => handleOpenPage('discount-product', 'Məhsul Faizləri', '🏷️', ProductDiscountDocuments)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        width: '100%',
+                        textAlign: 'left',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ddd',
+                        padding: '12px 20px',
+                        cursor: 'pointer',
+                        fontSize: '16px'
+                      }}
+                    >
+                      <span>🏷️ Məhsullar üzrə</span>
                       <span>→</span>
                     </button>
                   </div>

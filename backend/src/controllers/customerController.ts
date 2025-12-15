@@ -15,15 +15,15 @@ export const getAllCustomers = async (req: AuthRequest, res: Response) => {
     console.error('Get customers error:', error)
     console.error('Error details:', error.message, error.code)
     console.error('Error stack:', error.stack)
-    
+
     let hint = undefined
     if (error.code === 'P2021' || error.message?.includes('does not exist')) {
       hint = 'Database schema yenilənməyib. Prisma migration tətbiq edin: npx prisma db push'
     } else if (error.message?.includes('relation') && error.message?.includes('does not exist')) {
       hint = 'Customers cədvəli mövcud deyil. backend/create_all_tables.sql skriptini çalışdırın.'
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       message: 'Müştərilər yüklənərkən xəta baş verdi',
       error: error.message,
       code: error.code,
@@ -88,6 +88,7 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
         email: email && email.trim() !== '' ? email.trim() : null,
         address: address && address.trim() !== '' ? address.trim() : null,
         balance: balance !== undefined && balance !== null ? parseFloat(balance) : 0,
+        permanent_discount: req.body.permanent_discount !== undefined && req.body.permanent_discount !== null ? parseFloat(req.body.permanent_discount) : 0,
         folder_id: folder_id !== undefined && folder_id !== null ? parseInt(folder_id) : null,
         is_active: is_active !== undefined ? Boolean(is_active) : true,
       },
@@ -96,7 +97,7 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
     res.status(201).json(newCustomer)
   } catch (error: any) {
     console.error('Create customer error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Müştəri yaradılarkən xəta baş verdi',
       error: error.message,
     })
@@ -107,7 +108,7 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
 export const updateCustomer = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params
-    const { name, phone, email, address, balance, folder_id, code, is_active } = req.body
+    const { name, phone, email, address, balance, folder_id, code, is_active, permanent_discount } = req.body
 
     // Müştərinin mövcud olduğunu yoxla
     const existingCustomer = await prisma.customers.findUnique({
@@ -170,6 +171,7 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
         ...(email !== undefined && { email }),
         ...(address !== undefined && { address }),
         ...(balance !== undefined && { balance }),
+        ...(permanent_discount !== undefined && { permanent_discount: parseFloat(permanent_discount) }),
         ...(folder_id !== undefined && { folder_id: folder_id ? parseInt(folder_id) : null }),
         ...(is_active !== undefined && { is_active: Boolean(is_active) }),
         updated_at: new Date(),
@@ -179,7 +181,7 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
     res.json(updatedCustomer)
   } catch (error: any) {
     console.error('Update customer error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Müştəri yenilənərkən xəta baş verdi',
       error: error.message,
     })
@@ -208,7 +210,7 @@ export const deleteCustomer = async (req: AuthRequest, res: Response) => {
     res.json({ message: 'Müştəri uğurla silindi' })
   } catch (error: any) {
     console.error('Delete customer error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Müştəri silinərkən xəta baş verdi',
       error: error.message,
     })
@@ -248,13 +250,13 @@ export const moveCustomersToFolder = async (req: AuthRequest, res: Response) => 
       },
     })
 
-    res.json({ 
+    res.json({
       message: `${updatedCustomers.count} müştəri papkaya köçürüldü`,
       count: updatedCustomers.count,
     })
   } catch (error: any) {
     console.error('Move customers to folder error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Müştərilər köçürülərkən xəta baş verdi',
       error: error.message,
     })

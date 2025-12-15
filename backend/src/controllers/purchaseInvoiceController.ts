@@ -144,6 +144,8 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
               quantity: parseFloat(item.quantity),
               unit_price: parseFloat(item.unit_price),
               total_price: parseFloat(item.total_price),
+              discount_auto: item.discount_auto ? parseFloat(item.discount_auto) : 0,
+              discount_manual: item.discount_manual ? parseFloat(item.discount_manual) : 0,
             },
           })
         )
@@ -225,6 +227,8 @@ export const updatePurchaseInvoice = async (req: AuthRequest, res: Response) => 
               quantity: parseFloat(item.quantity),
               unit_price: parseFloat(item.unit_price),
               total_price: parseFloat(item.total_price),
+              discount_auto: item.discount_auto ? parseFloat(item.discount_auto) : 0,
+              discount_manual: item.discount_manual ? parseFloat(item.discount_manual) : 0,
             },
           })
         )

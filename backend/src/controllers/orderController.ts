@@ -28,7 +28,7 @@ export const getAllOrders = async (req: AuthRequest, res: Response) => {
     console.error('❌ [ERROR] Error code:', error.code)
     console.error('❌ [ERROR] Error stack:', error.stack)
     console.error('❌ [ERROR] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2))
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Sifarişlər yüklənərkən xəta baş verdi',
       error: error.message,
       code: error.code,
@@ -86,7 +86,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           id: 'desc'
         }
       })
-      
+
       let nextNumber = 1
       if (lastInvoice) {
         // Son qaimə nömrəsindən rəqəmi çıxar (SI-0000000001 və ya SI-1763327417457 -> rəqəm)
@@ -102,7 +102,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           }
         }
       }
-      
+
       // 10 rəqəmli format: SI-0000000001
       invoiceNumber = `SI-${String(nextNumber).padStart(10, '0')}`
     }
@@ -135,6 +135,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
             quantity: parseFloat(item.quantity),
             unit_price: parseFloat(item.unit_price),
             total_price: parseFloat(item.total_price),
+            discount_auto: item.discount_auto ? parseFloat(item.discount_auto) : 0,
+            discount_manual: item.discount_manual ? parseFloat(item.discount_manual) : 0,
           },
         })
       )
@@ -207,6 +209,8 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
               quantity: parseFloat(item.quantity),
               unit_price: parseFloat(item.unit_price),
               total_price: parseFloat(item.total_price),
+              discount_auto: item.discount_auto ? parseFloat(item.discount_auto) : 0,
+              discount_manual: item.discount_manual ? parseFloat(item.discount_manual) : 0,
             },
           })
         )

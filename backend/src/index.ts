@@ -15,8 +15,9 @@ import warehouseRoutes from './routes/warehouseRoutes'
 import testRoutes from './routes/testRoutes'
 import logsRoutes from './routes/logsRoutes'
 import adminRoutes from './routes/adminRoutes'
+import discountDocumentRoutes from './routes/discountDocumentRoutes'
 
-dotenv.config()
+
 
 // Production-də Prisma migration-ları avtomatik işə sal
 if (process.env.NODE_ENV === 'production') {
@@ -64,10 +65,10 @@ const corsOptions = {
       callback(null, true)
     } else {
       // Netlify domain-ləri üçün pattern match (netlify.app və ya custom domain)
-      const isNetlifyDomain = origin.includes('.netlify.app') || 
-                              origin.includes('netlify.com') ||
-                              (process.env.NETLIFY_DOMAIN && origin.includes(process.env.NETLIFY_DOMAIN))
-      
+      const isNetlifyDomain = origin.includes('.netlify.app') ||
+        origin.includes('netlify.com') ||
+        (process.env.NETLIFY_DOMAIN && origin.includes(process.env.NETLIFY_DOMAIN))
+
       if (isNetlifyDomain) {
         callback(null, true)
       } else if (process.env.NODE_ENV === 'development') {
@@ -111,6 +112,7 @@ app.use('/api/warehouses', warehouseRoutes)
 app.use('/api/test', testRoutes)
 app.use('/api/logs', logsRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/documents/discounts', discountDocumentRoutes)
 
 // 404 handler
 app.use((req, res) => {
