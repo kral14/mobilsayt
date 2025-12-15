@@ -25,11 +25,7 @@ services:
     staticPublishPath: public
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: mobilsayt-backend
-          property: host
-        suffix: /api
+        value: PLACEHOLDER_MUST_BE_SET_MANUALLY
     routes:
       - type: rewrite
         source: /mobil/*
