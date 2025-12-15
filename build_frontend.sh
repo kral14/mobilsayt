@@ -31,6 +31,8 @@ cat > public/index.html << 'EOF'
           const host = window.location.hostname.toLowerCase();
           const path = window.location.pathname;
           
+          console.log('[Redirect] Checking redirection...', { host, path, userAgent: navigator.userAgent });
+
           // Xüsusi domain-lər üçün məcburi yönləndirmə
           const isWebDomain = host.includes('mobilsayt-web');
           const isMobileDomain = host.includes('mobilsayt-mobil');
@@ -47,6 +49,8 @@ cat > public/index.html << 'EOF'
           const isSmallScreen = screenWidth > 0 && screenWidth <= 768;
           const isMobile = userAgentMobile || (isSmallScreen && screenHeight <= 1024);
           
+          console.log('[Redirect] Device detection:', { isMobile, isSmallScreen, userAgentMobile, screenWidth });
+
           // URL-dən versiya parametrini yoxla (manual seçim üçün)
           const urlParams = new URLSearchParams(window.location.search);
           const version = urlParams.get('v');
@@ -60,31 +64,45 @@ cat > public/index.html << 'EOF'
           };
 
           if (isMobileDomain) {
+            console.log('[Redirect] Mobile domain detected, redirecting to /mobil');
             window.location.href = buildUrl('/mobil');
             return;
           }
 
           if (isWebDomain) {
+             console.log('[Redirect] Web domain detected, redirecting to /web');
             window.location.href = buildUrl('/web');
             return;
           }
 
           if (isMobilePath) {
+             console.log('[Redirect] Already on mobile path');
             // Artıq mobil path-dədirsə, mobil versiyasına yönləndir
-            window.location.href = '/mobil' + path.replace('/mobil', '') + window.location.search + window.location.hash;
+             if (!path.endsWith('/') && path === '/mobil') {
+                window.location.href = '/mobil/';
+             }
+             // window.location.href = '/mobil' + path.replace('/mobil', '') + window.location.search + window.location.hash;
           } else if (isWebPath) {
+             console.log('[Redirect] Already on web path');
             // Artıq web path-dədirsə, web versiyasına yönləndir
-            window.location.href = '/web' + path.replace('/web', '') + window.location.search + window.location.hash;
+            if (!path.endsWith('/') && path === '/web') {
+                window.location.href = '/web/';
+             }
+             // window.location.href = '/web' + path.replace('/web', '') + window.location.search + window.location.hash;
           } else if (version === 'mobile' || version === 'mobil') {
+             console.log('[Redirect] Manual mobile version requested');
             // Manual olaraq mobil versiyası seçilib
             window.location.href = '/mobil' + path + window.location.search.replace(/[?&]v=(mobile|mobil)/, '') + window.location.hash;
           } else if (version === 'pc' || version === 'desktop') {
+             console.log('[Redirect] Manual pc version requested');
             // Manual olaraq PC versiyası seçilib
             window.location.href = '/web' + path + window.location.search.replace(/[?&]v=(pc|desktop)/, '') + window.location.hash;
           } else if (isMobile) {
+             console.log('[Redirect] Mobile device detected, redirecting to /mobil');
             // Mobil cihaz - mobil versiyasına yönləndir
             window.location.href = '/mobil' + path + window.location.search + window.location.hash;
           } else {
+             console.log('[Redirect] PC device detected, redirecting to /web');
             // PC - web versiyasına yönləndir (default)
             window.location.href = '/web' + path + window.location.search + window.location.hash;
           }
