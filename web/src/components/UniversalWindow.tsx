@@ -53,7 +53,7 @@ export default function UniversalWindow({
 
     // Snap Layout Menu (Deaktiv edilib - Istifadeci isteyi ile)
     const [showSnapMenu, setShowSnapMenu] = useState(false)
-    const snapMenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const snapMenuTimeoutRef = useRef<number | null>(null)
 
     // Settings modal ref - kənara kliklədikdə bağlamaq üçün
     const settingsRef = useRef<HTMLDivElement>(null)
