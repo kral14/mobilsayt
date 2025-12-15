@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { type LogLevel, type LogCategory } from '../store/logStore'
+import { API_BASE_URL } from '../utils/constants'
 
 
 interface User {
@@ -67,7 +68,7 @@ export default function Admin() {
         setLoadingUsers(true)
         try {
             const token = localStorage.getItem('token')
-            const response = await fetch('http://localhost:5000/api/admin/users', {
+            const response = await fetch(`${API_BASE_URL}/admin/users`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -90,7 +91,7 @@ export default function Admin() {
     const handleCreateUser = async () => {
         try {
             const token = localStorage.getItem('token')
-            const response = await fetch('http://localhost:5000/api/admin/users', {
+            const response = await fetch(`${API_BASE_URL}/admin/users`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -131,7 +132,7 @@ export default function Admin() {
                 updateData.password = userFormData.password
             }
 
-            const response = await fetch(`http://localhost:5000/api/admin/users/${editingUser.id}`, {
+            const response = await fetch(`${API_BASE_URL}/admin/users/${editingUser.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -161,7 +162,7 @@ export default function Admin() {
 
         try {
             const token = localStorage.getItem('token')
-            const response = await fetch(`http://localhost:5000/api/admin/users/${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -214,7 +215,7 @@ export default function Admin() {
                 params.append('level', levelFilter)
             }
 
-            const url = `http://localhost:5000/api/admin/logs?${params}`
+            const url = `${API_BASE_URL}/admin/logs?${params}`
             console.log('[ADMIN LOGS] Fetching from:', url)
 
             const response = await fetch(url, {
@@ -271,7 +272,7 @@ export default function Admin() {
 
         try {
             const token = localStorage.getItem('token')
-            const response = await fetch(`http://localhost:5000/api/logs/${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/logs/${userId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
