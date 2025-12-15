@@ -5,9 +5,15 @@ import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice,
 // API URL-i müəyyən et
 const getApiBaseUrl = () => {
   // 1. Environment variable (Netlify/Render üçün)
-  if (import.meta.env.VITE_API_URL) {
-    console.log('[API] Using configured VITE_API_URL:', import.meta.env.VITE_API_URL)
-    return import.meta.env.VITE_API_URL
+  let apiUrl = import.meta.env.VITE_API_URL
+
+  if (apiUrl) {
+    // Əgər protokol (http/https) yoxdursa, https:// əlavə et (Render 'host' property-si yalnız domain verir)
+    if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+      apiUrl = `https://${apiUrl}`
+    }
+    console.log('[API] Using configured VITE_API_URL:', apiUrl)
+    return apiUrl
   }
 
   // 2. Development: localhost check
@@ -18,8 +24,8 @@ const getApiBaseUrl = () => {
   }
 
   // 3. Digər hallar (Production amma env var yoxdur)
-  console.warn('[API] DİQQƏT! VITE_API_URL təyin edilməyib. Default olaraq "/api" istifadə edilir, bu Netlify-də işləməyəcək (əgər proxy yoxdursa).')
-  console.error('[API] Zəhmət olmasa Netlify Dashboard-da "VITE_API_URL" dəyişənini təyin edin. Nümunə: https://backend-url.onrender.com/api')
+  // Render-də Frontend və Backend eyni yerdədirsə, '/api' kifayətdir (proxy ilə)
+  console.log('[API] VITE_API_URL tapılmadı, relative path "/api" istifadə edilir.')
   return '/api'
 }
 

@@ -28,7 +28,7 @@ services:
         fromService:
           type: web
           name: mobilsayt-backend
-          property: url
+          property: host
         suffix: /api
     routes:
       - type: rewrite
