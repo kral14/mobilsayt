@@ -1,0 +1,31 @@
+# Netlify konfiqurasiyası - Web Frontend üçün
+[build]
+  # Build komandası
+  command = "cd web && npm install && npm run build"
+  # Build çıxış qovluğu
+  publish = "web/dist"
+
+# Environment variables (Netlify dashboard-dan da təyin edilə bilər)
+[build.environment]
+  NODE_VERSION = "18"
+
+# Redirects - SPA routing üçün
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers - CORS və təhlükəsizlik üçün
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+

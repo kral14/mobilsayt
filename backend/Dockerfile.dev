@@ -1,0 +1,21 @@
+# Development Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Dependencies quraşdır
+COPY package*.json ./
+RUN npm install
+
+# Prisma generate
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+# Source kodları kopyala (volume ilə override olunacaq)
+COPY . .
+
+EXPOSE 5000
+
+# Development serveri başlat (hot reload ilə)
+CMD ["npm", "run", "dev"]
+

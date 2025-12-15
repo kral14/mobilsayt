@@ -46,6 +46,12 @@ const allowedOrigins = [
   'http://127.0.0.1:3001'
 ]
 
+// Netlify URL-ləri üçün pattern (environment variable-dan gələ bilər)
+const netlifyUrl = process.env.NETLIFY_URL
+if (netlifyUrl) {
+  allowedOrigins.push(netlifyUrl)
+}
+
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Origin yoxdursa (məsələn, Postman, mobile app və s.), icazə ver
@@ -57,8 +63,15 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true)
     } else {
-      // Development mühitində bütün origin-lərə icazə ver
-      if (process.env.NODE_ENV === 'development') {
+      // Netlify domain-ləri üçün pattern match (netlify.app və ya custom domain)
+      const isNetlifyDomain = origin.includes('.netlify.app') || 
+                              origin.includes('netlify.com') ||
+                              (process.env.NETLIFY_DOMAIN && origin.includes(process.env.NETLIFY_DOMAIN))
+      
+      if (isNetlifyDomain) {
+        callback(null, true)
+      } else if (process.env.NODE_ENV === 'development') {
+        // Development mühitində bütün origin-lərə icazə ver
         callback(null, true)
       } else {
         callback(new Error('CORS policy: Origin not allowed'))
