@@ -17,6 +17,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 function App() {
   return (
     <BrowserRouter
+      basename="/mobil"
       future={{
         v7_startTransition: true,
         v7_relativeSplatPath: true,
