@@ -11,6 +11,8 @@ interface UniversalWindowProps {
     position: { x: number; y: number }
     size: { width: number; height: number }
     isMaximized: boolean
+    isPinned?: boolean
+    modalType?: string // 'confirm', 'invoice-edit', etc.
     zIndex: number
     isActive: boolean
     pageId?: string // Unique identifier for window type
@@ -26,6 +28,8 @@ export default function UniversalWindow({
     position,
     size,
     isMaximized,
+    isPinned,
+    modalType,
     zIndex,
     isActive,
     pageId,
@@ -37,6 +41,7 @@ export default function UniversalWindow({
         minimizeWindow,
         maximizeWindow,
         activateWindow,
+        togglePinWindow,
         startDrag,
         startResize
     } = useWindowStore()
@@ -48,7 +53,7 @@ export default function UniversalWindow({
 
     // Snap Layout Menu (Deaktiv edilib - Istifadeci isteyi ile)
     const [showSnapMenu, setShowSnapMenu] = useState(false)
-    const snapMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const snapMenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Settings modal ref - kənara kliklədikdə bağlamaq üçün
     const settingsRef = useRef<HTMLDivElement>(null)
@@ -147,7 +152,7 @@ export default function UniversalWindow({
         if (target.tagName === 'BUTTON' || target.closest('button')) {
             return
         }
-        
+
         // Settings modal-ına klikləyibsə, ignore et
         if (settingsRef.current && settingsRef.current.contains(target)) {
             return
@@ -202,6 +207,31 @@ export default function UniversalWindow({
                 <div className="window-controls" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
 
                     {/* Settings Button (New) */}
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                togglePinWindow(id)
+                            }}
+                            title={isPinned ? "Bərkitməni qaldır" : "Bərkit"}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: isPinned ? '#f1c40f' : '#555',
+                                cursor: 'pointer',
+                                fontSize: '16px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transform: isPinned ? 'rotate(45deg)' : 'none'
+                            }}
+                        >
+                            📌
+                        </button>
+                    </div>
+
                     <div style={{ position: 'relative' }}>
                         <button
                             onClick={(e) => {
@@ -410,35 +440,35 @@ export default function UniversalWindow({
                             <SnapLayoutMenu windowId={id} onClose={() => setShowSnapMenu(false)} />
                         </div>
                     )}
-                    <button
-                        className="btn-close"
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            if (onClose) {
-                                onClose()
-                            } else {
-                                closeWindow(id)
-                            }
-                        }}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: isActive ? 'white' : 'black',
-                            cursor: 'pointer',
-                            fontSize: '18px',
-                            padding: '0 8px',
-                            lineHeight: '1',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                        title="Close"
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#ff4444'; e.currentTarget.style.color = 'white'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = isActive ? 'white' : 'black'; }}
-                    >
-                        ×
-                    </button>
+                    {modalType !== 'confirm' && (
+                        <button
+                            className="btn-close"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (onClose) {
+                                    onClose()
+                                } else {
+                                    closeWindow(id)
+                                }
+                            }}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: isActive ? 'white' : 'black',
+                                cursor: 'pointer',
+                                fontSize: '16px',
+                                fontWeight: 'bold',
+                                padding: '0 8px',
+                                height: '24px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                opacity: isPinned ? 0.5 : 1
+                            }}
+                        >
+                            ×
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -458,19 +488,21 @@ export default function UniversalWindow({
 
             {/* Resize Handle */}
             {/* Resize Handles */}
-            {!isMaximized && (
-                <>
-                    <div className="resize-handle resize-handle-n" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'n'); }} />
-                    <div className="resize-handle resize-handle-s" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 's'); }} />
-                    <div className="resize-handle resize-handle-e" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'e'); }} />
-                    <div className="resize-handle resize-handle-w" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'w'); }} />
+            {
+                !isMaximized && (
+                    <>
+                        <div className="resize-handle resize-handle-n" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'n'); }} />
+                        <div className="resize-handle resize-handle-s" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 's'); }} />
+                        <div className="resize-handle resize-handle-e" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'e'); }} />
+                        <div className="resize-handle resize-handle-w" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'w'); }} />
 
-                    <div className="resize-handle resize-handle-ne" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'ne'); }} />
-                    <div className="resize-handle resize-handle-nw" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'nw'); }} />
-                    <div className="resize-handle resize-handle-se" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'se'); }} />
-                    <div className="resize-handle resize-handle-sw" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'sw'); }} />
-                </>
-            )}
-        </div>
+                        <div className="resize-handle resize-handle-ne" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'ne'); }} />
+                        <div className="resize-handle resize-handle-nw" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'nw'); }} />
+                        <div className="resize-handle resize-handle-se" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'se'); }} />
+                        <div className="resize-handle resize-handle-sw" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'sw'); }} />
+                    </>
+                )
+            }
+        </div >
     )
 }

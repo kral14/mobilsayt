@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 
 import DataTable, { ColumnConfig } from '../../components/DataTable'
 import InvoiceModal, { type InvoiceItem, type ModalData } from '../../components/InvoiceModal'
 import FilterModal, { FilterValue } from '../../components/FilterModal'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import { ordersAPI, productsAPI, customersAPI } from '../../services/api'
 import type { SaleInvoice, Product, Customer } from '@shared/types'
 import { formatDateDifference, calculateDaysDifference } from '../../utils/dateUtils'
@@ -94,12 +95,22 @@ export default function SatisQaimeleri() {
 
   // Modal state - çoxlu modal dəstəyi
   const [openModals, setOpenModals] = useState<Map<string, ModalData>>(new Map())
+  const openModalsRef = useRef<Map<string, ModalData>>(new Map())
+  const initialDataMap = useRef<Map<string, any>>(new Map()) // İlkin datanı saxlamaq üçün
+
+  // Ref-i update et
+  useEffect(() => {
+    openModalsRef.current = openModals
+  }, [openModals])
 
   // Aktiv modal ID (ən üstdə olan)
   const [activeModalId, setActiveModalId] = useState<string | null>(null)
 
   // Base z-index (hər yeni modal üçün artırılır)
   const [baseZIndex, setBaseZIndex] = useState(1000)
+
+  // Təsdiq dialoqu üçün state
+  const [confirmDialog, setConfirmDialog] = useState<{ modalId: string; currentModal: ModalData } | null>(null)
 
   // Global window store
   const { windows, addWindow, removeWindow, updateWindow, minimizeWindow } = useWindowStore()
@@ -144,6 +155,86 @@ export default function SatisQaimeleri() {
     }, 4000)
   }, [])
 
+  const handleDiscard = useCallback((modalId: string) => {
+    // Dəyişikliyi ləğv etmək (pəncərəni bağlamaq) üçün dirty check-i bypass etmək lazımdır
+    const currentModal = openModalsRef.current.get(modalId)
+    if (currentModal) {
+      initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(currentModal.data)))
+    }
+
+    // Təsdiq pəncərəsini bağla
+    removeWindow('confirm-dialog-' + modalId)
+
+    // Modalı sil (local state və store)
+    setOpenModals(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(modalId)
+
+      // activeModalId-ni yenilə
+      if (activeModalId === modalId) {
+        const remainingModals = Array.from(newMap.values())
+        if (remainingModals.length > 0) {
+          const topModal = remainingModals.reduce((prev, curr) =>
+            curr.zIndex > prev.zIndex ? curr : prev
+          )
+          setActiveModalId(topModal.id)
+        } else {
+          setActiveModalId(null)
+        }
+      }
+      return newMap
+    })
+
+    const windowId = `invoice-modal-${modalId}`
+    removeWindow(windowId)
+  }, [activeModalId, removeWindow])
+
+  const handleModalBeforeClose = useCallback((modalId: string): boolean => {
+    const currentModal = openModalsRef.current.get(modalId)
+    const initialData = initialDataMap.current.get(modalId)
+
+    if (!currentModal || !initialData) return true
+
+    const isDirty = JSON.stringify(currentModal.data) !== JSON.stringify(initialData)
+
+    if (isDirty) {
+      // Təsdiq dialogunu göstər (React state ilə, UniversalWindow-suz)
+      setConfirmDialog({ modalId, currentModal })
+      return false
+    }
+    return true
+  }, [])
+
+  const handleModalClose = useCallback((modalId: string) => {
+    // Yadda saxlanmamış dəyişiklikləri yoxla
+    if (!handleModalBeforeClose(modalId)) {
+      return
+    }
+
+    setOpenModals(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(modalId)
+
+      // activeModalId-ni yenilə
+      if (activeModalId === modalId) {
+        const remainingModals = Array.from(newMap.values())
+        if (remainingModals.length > 0) {
+          const topModal = remainingModals.reduce((prev, curr) =>
+            curr.zIndex > prev.zIndex ? curr : prev
+          )
+          setActiveModalId(topModal.id)
+        } else {
+          setActiveModalId(null)
+        }
+      }
+
+      return newMap
+    })
+
+    const windowId = `invoice-modal-${modalId}`
+    removeWindow(windowId)
+  }, [activeModalId, removeWindow, handleModalBeforeClose])
+
   // Müştəri və məhsul modal state
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
@@ -179,10 +270,11 @@ export default function SatisQaimeleri() {
           modalType: 'qaime',
           isVisible: true,
           isMinimized: false,
-          zIndex: modal.zIndex,
+          // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
           position: modal.position,
           size: modal.size,
           isMaximized: modal.isMaximized,
+          onBeforeClose: () => handleModalBeforeClose(modal.id),
           onActivate: () => {
             const newZIndex = baseZIndex + 1
             setBaseZIndex(newZIndex)
@@ -191,11 +283,11 @@ export default function SatisQaimeleri() {
               const newMap = new Map(prev)
               const currentModal = newMap.get(modal.id)
               if (currentModal) {
-                newMap.set(modal.id, { ...currentModal, zIndex: newZIndex })
+                newMap.set(modal.id, { ...currentModal }) // zIndex store tərəfindən
               }
               return newMap
             })
-            useWindowStore.getState().updateWindow(windowId, { zIndex: newZIndex, isVisible: true, isMinimized: false })
+            useWindowStore.getState().activateWindow(windowId)
           },
           onRestore: () => {
             setActiveModalId(modal.id)
@@ -208,27 +300,7 @@ export default function SatisQaimeleri() {
               return newMap
             })
           },
-          onClose: () => {
-            // Əvvəlcə modal state-lərini təmizlə
-            setOpenModals(prev => {
-              const newMap = new Map(prev)
-              newMap.delete(modal.id)
-              return newMap
-            })
-            if (activeModalId === modal.id) {
-              const remainingModals = Array.from(openModals.values()).filter(m => m.id !== modal.id)
-              if (remainingModals.length > 0) {
-                const topModal = remainingModals.reduce((prev, curr) =>
-                  curr.zIndex > prev.zIndex ? curr : prev
-                )
-                setActiveModalId(topModal.id)
-              } else {
-                setActiveModalId(null)
-              }
-            }
-            // Sonra store-dan sil
-            removeWindow(windowId)
-          }
+          onClose: () => handleModalClose(modal.id)
         })
       } else {
         // Mövcud window-u yenilə - yalnız həqiqətən dəyişiklik varsa
@@ -261,10 +333,10 @@ export default function SatisQaimeleri() {
           updateWindow(windowId, {
             isVisible: expectedIsVisible,
             isMinimized: storeIsMinimized,
-            zIndex: modal.zIndex,
-            position: modal.position,
-            size: modal.size,
-            isMaximized: modal.isMaximized
+            // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
+            // position və size burdan çıxarılır
+            isMaximized: modal.isMaximized,
+            onBeforeClose: () => handleModalBeforeClose(modal.id)
           })
         }
       }
@@ -498,6 +570,67 @@ export default function SatisQaimeleri() {
     setSearchTerm(term)
   }, [])
 
+  // Modal save handler
+  const handleModalSave = useCallback(async (modalId: string, modalData: ModalData['data']) => {
+    try {
+      const modal = openModalsRef.current.get(modalId)
+      if (!modal) throw new Error('Modal tapılmadı')
+
+      // Validation
+      if (!modalData.selectedCustomerId) {
+        alert('Zəhmət olmasa müştəri seçin')
+        return
+      }
+
+      if (modalData.invoiceItems.length === 0) {
+        alert('Zəhmət olmasa ən azı bir məhsul əlavə edin')
+        return
+      }
+
+      // Format data for API
+      const invoiceData = {
+        payment_date: modalData.paymentDate ? modalData.paymentDate : undefined,
+        notes: modalData.notes,
+        items: modalData.invoiceItems.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price
+        }))
+      }
+
+      let savedInvoice
+      if (modal.invoiceId) {
+        // Update
+        savedInvoice = await ordersAPI.update(modal.invoiceId.toString(), invoiceData)
+        showNotification('Qaimə yeniləndi', 'success')
+      } else {
+        // Create
+        savedInvoice = await ordersAPI.create(invoiceData)
+        showNotification('Qaimə yaradıldı', 'success')
+      }
+
+      // Initial datanı yenilə ki, subsequent save-lərdə dirty olmasın
+      initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(modalData)))
+
+      // InvoiceId yoxdursa (yeni yaradılıbsa), modalı update et
+      if (!modal.invoiceId && savedInvoice?.id) {
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const current = newMap.get(modalId)
+          if (current) {
+            newMap.set(modalId, { ...current, invoiceId: savedInvoice.id })
+          }
+          return newMap
+        })
+      }
+
+      loadInvoices()
+    } catch (err: any) {
+      console.error('Save error:', err)
+      throw new Error(err.response?.data?.message || 'Yadda saxlanılarkən xəta baş verdi')
+    }
+  }, [loadInvoices, showNotification])
+
   // Çoxlu modal açmaq üçün funksiya
   const openModalForInvoice = useCallback(async (invoiceId: number | null = null) => {
     try {
@@ -541,8 +674,8 @@ export default function SatisQaimeleri() {
       const newModal: ModalData = {
         id: modalId,
         invoiceId: invoiceId,
-        // position və size windowStore tərəfindən avtomatik təyin ediləcək
-        position: { x: 0, y: 0 }, // Placeholder - windowStore yeniləyəcək
+        // Modalı həmişə mərkəzdə aç
+        position: calculateCenteredPosition(modalWidth, modalHeight),
         size: {
           width: modalWidth,
           height: modalHeight
@@ -569,6 +702,10 @@ export default function SatisQaimeleri() {
         return newMap
       })
       setActiveModalId(modalId)
+
+      // İlk data-nı yadda saxla
+      initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(newModal.data)))
+
     } catch (err: any) {
       console.error('openModalForInvoice xətası:', err)
       showNotification(err.response?.data?.message || 'Qaimə yüklənərkən xəta baş verdi', 'error')
@@ -3610,6 +3747,30 @@ export default function SatisQaimeleri() {
           setActiveFilters([])
           setShowFilterModal(false)
         }}
+      />
+
+      {/* Təsdiq Dialoqu */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        modalZIndex={confirmDialog ? (useWindowStore.getState().windows.get(`invoice-modal-${confirmDialog.modalId}`)?.zIndex || 1000) : 1000}
+        onConfirm={async () => {
+          if (!confirmDialog) return
+          try {
+            await handleModalSave(confirmDialog.modalId, confirmDialog.currentModal.data)
+            initialDataMap.current.set(confirmDialog.modalId, JSON.parse(JSON.stringify(confirmDialog.currentModal.data)))
+            setConfirmDialog(null)
+            const wId = `invoice-modal-${confirmDialog.modalId}`
+            useWindowStore.getState().closeWindow(wId)
+          } catch (e) {
+            console.error(e)
+          }
+        }}
+        onDiscard={async () => {
+          if (!confirmDialog) return
+          setConfirmDialog(null)
+          handleDiscard(confirmDialog.modalId)
+        }}
+        onCancel={() => setConfirmDialog(null)}
       />
 
 

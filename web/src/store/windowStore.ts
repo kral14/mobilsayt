@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import React from 'react'
+import { logActivity } from './logStore'
 
 // Helper funksiyalar (köhnə kodlarla uyğunluq üçün)
 export const getLayoutConstraints = () => {
@@ -39,6 +40,7 @@ export interface WindowData {
   size: { width: number; height: number }
   isMinimized: boolean
   isMaximized: boolean
+  isPinned?: boolean // Pəncərə bərkidilib?
   normalState: { position: { x: number; y: number }; size: { width: number; height: number } } | null
   zIndex: number
   isVisible?: boolean
@@ -46,6 +48,7 @@ export interface WindowData {
   onRestore?: () => void // Pəncərə bərpa edildikdə
   snapDirection?: SnapDirection // Track snap state
   onClose?: () => void
+  onBeforeClose?: () => boolean // Bağlanmadan əvvəl yoxlama (true = bağla, false = ləğv et)
   onActivate?: () => void
 }
 
@@ -94,12 +97,14 @@ interface WindowStore {
   maximizeWindow: (id: string) => void
   activateWindow: (id: string) => void
   snapWindow: (id: string, direction: SnapDirection) => void
+  togglePinWindow: (id: string) => void // Pəncərəni bərkit/aç
   closeSnapAssist: () => void
 
   // Page window əməliyyatları
   openPageWindow: (pageId: string, title: string, icon: string, content: React.ReactNode, size?: { width: number; height: number }) => void
   isPageOpen: (pageId: string) => boolean
   focusPage: (pageId: string) => void
+  focusMainContent: () => number // Yeni metod: Main content-i önə gətirir
 
   // Köhnə metodlar (uyğunluq üçün)
   addWindow: (window: Partial<WindowData>) => void
@@ -141,6 +146,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       size: { width: 500, height: 400 },
       isMinimized: false,
       isMaximized: false,
+      isPinned: false,
       normalState: null,
       zIndex: newZIndex
     }
@@ -159,6 +165,26 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   // Pəncərəni bağla
   closeWindow: (id: string) => {
     const state = get()
+    const window = state.windows.get(id)
+
+    // Əgər bərkidilibsə bağlama
+    if (window?.isPinned) {
+      return
+    }
+
+    // onBeforeClose yoxlaması
+    if (window?.onBeforeClose) {
+      console.log(`[DEBUG] closeWindow: check onBeforeClose for ${id}`)
+      const shouldClose = window.onBeforeClose()
+      console.log(`[DEBUG] closeWindow: onBeforeClose result for ${id}: ${shouldClose}`)
+      if (!shouldClose) {
+        console.log(`[DEBUG] closeWindow: aborting close for ${id}`)
+        return
+      }
+    } else {
+      console.log(`[DEBUG] closeWindow: NO onBeforeClose handler for ${id}`)
+    }
+
     const newWindows = new Map(state.windows)
     newWindows.delete(id)
 
@@ -203,14 +229,34 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const window = state.windows.get(id)
     if (!window) return
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[windowStore] maximizeWindow çağırıldı', { id, isMaximized: window.isMaximized, normalState: window.normalState })
-    }
+    console.log('[SIZE_CHANGE] maximizeWindow çağırıldı', {
+      id,
+      currentSize: window.size,
+      currentPosition: window.position,
+      isMaximized: window.isMaximized,
+      normalState: window.normalState,
+      stack: new Error().stack
+    })
 
     const newWindows = new Map(state.windows)
 
     if (!window.isMaximized) {
       // Maximize et
+      console.log('[SIZE_CHANGE] Maximize edilir', {
+        id,
+        oldSize: window.size,
+        newSize: { width: 0, height: 0 },
+        reason: 'maximize'
+      })
+
+      logActivity(
+        'window',
+        'Pəncərə maximize edildi',
+        `Pəncərə "${window.title}" maksimum ölçüyə gətirildi`,
+        'info',
+        { windowId: id, title: window.title, action: 'maximize' }
+      )
+
       newWindows.set(id, {
         ...window,
         normalState: {
@@ -221,14 +267,26 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
         size: { width: 0, height: 0 }, // CSS-də 100% olacaq
         isMaximized: true
       })
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[windowStore] Pəncərə maximize edildi')
-      }
     } else {
       // Restore et
-      // Əgər normalState yoxdursa, cari position/size istifadə et (default ölçü)
       const restorePosition = window.normalState?.position || window.position
       const restoreSize = window.normalState?.size || { width: 900, height: 700 }
+
+      console.log('[SIZE_CHANGE] Restore edilir', {
+        id,
+        oldSize: window.size,
+        newSize: restoreSize,
+        reason: 'restore',
+        normalState: window.normalState
+      })
+
+      logActivity(
+        'window',
+        'Pəncərə restore edildi',
+        `Pəncərə "${window.title}" əvvəlki ölçüsünə qaytarıldı`,
+        'info',
+        { windowId: id, title: window.title, action: 'restore', size: restoreSize }
+      )
 
       newWindows.set(id, {
         ...window,
@@ -237,10 +295,19 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
         isMaximized: false,
         normalState: null
       })
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[windowStore] Pəncərə restore edildi', { restorePosition, restoreSize })
-      }
     }
+
+    set({ windows: newWindows })
+  },
+
+  // Pəncərəni bərkit/aç
+  togglePinWindow: (id: string) => {
+    const state = get()
+    const window = state.windows.get(id)
+    if (!window) return
+
+    const newWindows = new Map(state.windows)
+    newWindows.set(id, { ...window, isPinned: !window.isPinned })
 
     set({ windows: newWindows })
   },
@@ -396,6 +463,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     let newY = state.resizeData.initialTop
     const direction = state.resizeData.direction
 
+    const oldSize = { width: window.size.width, height: window.size.height }
+
     // Horizontal resize
     if (direction.includes('e')) {
       newWidth = Math.max(300, state.resizeData.initialWidth + dx)
@@ -427,6 +496,33 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     }
 
     const newWindows = new Map(state.windows)
+
+    console.log('[SIZE_CHANGE] Resize tətbiq edilir', {
+      id: state.resizeData.id,
+      oldSize,
+      newSize: { width: newWidth, height: newHeight },
+      oldPosition: window.position,
+      newPosition: { x: newX, y: newY },
+      direction,
+      dx,
+      dy,
+      reason: 'manual_resize'
+    })
+
+    logActivity(
+      'window',
+      'Pəncərə ölçüsü dəyişdirildi',
+      `Pəncərə manual resize edildi (${direction})`,
+      'info',
+      {
+        windowId: state.resizeData.id,
+        direction,
+        oldSize,
+        newSize: { width: newWidth, height: newHeight },
+        delta: { dx, dy }
+      }
+    )
+
     newWindows.set(state.resizeData.id, {
       ...window,
       size: { width: newWidth, height: newHeight },
@@ -448,6 +544,14 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const state = get()
     const window = state.windows.get(id)
     if (!window) return
+
+    console.log('[SIZE_CHANGE] snapWindow çağırıldı', {
+      id,
+      direction,
+      currentSize: window.size,
+      currentPosition: window.position,
+      stack: new Error().stack
+    })
 
     const constraints = getLayoutConstraints()
     const { availableWidth, availableHeight } = constraints
@@ -483,6 +587,31 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
 
     // Apply snap to current window
     const newWindows = new Map(state.windows)
+
+    console.log('[SIZE_CHANGE] Snap tətbiq edilir', {
+      id,
+      direction,
+      oldSize: window.size,
+      newSize: { width, height },
+      oldPosition: window.position,
+      newPosition: { x, y },
+      reason: 'snap'
+    })
+
+    logActivity(
+      'window',
+      `Pəncərə snap edildi: ${direction}`,
+      `Pəncərə "${window.title}" ekranın ${direction} tərəfinə snap edildi`,
+      'info',
+      {
+        windowId: id,
+        title: window.title,
+        direction,
+        newSize: { width, height },
+        newPosition: { x, y }
+      }
+    )
+
     newWindows.set(id, {
       ...window,
       position: { x, y },
@@ -528,6 +657,12 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     if (!workspace) return
 
     const { clientWidth, clientHeight } = workspace
+    console.log('[SIZE_CHANGE] handleScreenResize çağırıldı', {
+      workspaceSize: { width: clientWidth, height: clientHeight },
+      windowCount: state.windows.size,
+      stack: new Error().stack
+    })
+
     const newWindows = new Map(state.windows)
     let hasChanges = false
 
@@ -538,8 +673,12 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
 
       // 2. If Snapped, re-calculate based on new dimensions
       if (window.snapDirection) {
-        // Note: getLayoutConstraints uses window.innerWidth, but we can rely on workspace dims too. 
-        // Let's use clean math based on workspace client dimensions from checking explicitly.
+        console.log('[SIZE_CHANGE] Snapped window yenidən hesablanır', {
+          id,
+          direction: window.snapDirection,
+          oldSize: window.size,
+          workspaceSize: { width: clientWidth, height: clientHeight }
+        })
 
         let x = 0
         let y = 0
@@ -570,6 +709,14 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
           height = clientHeight / 2
         }
 
+        console.log('[SIZE_CHANGE] Snap yenidən tətbiq edildi', {
+          id,
+          direction,
+          newSize: { width, height },
+          newPosition: { x, y },
+          reason: 'screen_resize_snap'
+        })
+
         newWindows.set(id, {
           ...window,
           position: { x, y },
@@ -597,6 +744,15 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       }
 
       if (changed) {
+        console.log('[SIZE_CHANGE] Ekran ölçüsünə görə düzəliş', {
+          id,
+          oldSize: window.size,
+          newSize: { width, height },
+          oldPosition: window.position,
+          newPosition: { x, y },
+          reason: 'screen_resize_bounds_check'
+        })
+
         newWindows.set(id, {
           ...window,
           position: { x, y },
@@ -648,7 +804,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       console.error('Failed to load window preferences:', e)
     }
 
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       console.log('[windowStore] Opening page window:', { pageId, id, newCounter, windowCounter: state.windowCounter })
     }
 
@@ -695,6 +851,16 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     }
   },
 
+  focusMainContent: () => {
+    const state = get()
+    const newZIndex = state.zIndexCounter + 1
+    set({
+      zIndexCounter: newZIndex,
+      activeWindowId: 'main-content'
+    })
+    return newZIndex
+  },
+
   // Köhnə metodlar implementasiyası
   addWindow: (windowData: Partial<WindowData>) => {
     const state = get()
@@ -720,6 +886,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       size: windowData.size || { width: 500, height: 400 },
       isMinimized: windowData.isMinimized || false,
       isMaximized: windowData.isMaximized || false,
+      isPinned: windowData.isPinned || false,
       isVisible: windowData.isVisible !== undefined ? windowData.isVisible : true,
       normalState: null,
       zIndex: newZIndex,
@@ -745,6 +912,18 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const state = get()
     const window = state.windows.get(id)
     if (!window) return
+
+    // Size dəyişikliyi varsa log et
+    if (data.size && (data.size.width !== window.size.width || data.size.height !== window.size.height)) {
+      console.log('[SIZE_CHANGE] updateWindow - size dəyişikliyi', {
+        id,
+        oldSize: window.size,
+        newSize: data.size,
+        allUpdates: Object.keys(data),
+        reason: 'updateWindow_call',
+        stack: new Error().stack
+      })
+    }
 
     const newWindows = new Map(state.windows)
     newWindows.set(id, { ...window, ...data })

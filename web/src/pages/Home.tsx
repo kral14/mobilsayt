@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
@@ -23,14 +23,14 @@ export default function Home() {
       const invoices = await ordersAPI.getAll()
       const today = new Date()
       today.setHours(0, 0, 0, 0)
-      
+
       const overdue = invoices.filter(invoice => {
         if (!invoice.payment_date) return false
         const paymentDate = new Date(invoice.payment_date)
         paymentDate.setHours(0, 0, 0, 0)
         return calculateDaysDifference(today, paymentDate) < 0
       })
-      
+
       setOverdueInvoices(overdue)
     } catch (err) {
       console.error('Müddəti bitmiş ödənişlər yüklənərkən xəta:', err)
@@ -63,37 +63,20 @@ export default function Home() {
               Məhsullara bax
             </Link>
           ) : (
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <Link
-                to="/register"
-                style={{
-                  display: 'inline-block',
-                  padding: '1rem 2rem',
-                  background: '#1976d2',
-                  color: 'white',
-                  textDecoration: 'none',
-                  borderRadius: '4px',
-                  fontSize: '1.1rem'
-                }}
-              >
-                Qeydiyyat
-              </Link>
-              <Link
-                to="/login"
-                style={{
-                  display: 'inline-block',
-                  padding: '1rem 2rem',
-                  background: 'transparent',
-                  color: '#1976d2',
-                  textDecoration: 'none',
-                  border: '2px solid #1976d2',
-                  borderRadius: '4px',
-                  fontSize: '1.1rem'
-                }}
-              >
-                Giriş
-              </Link>
-            </div>
+            <Link
+              to="/login"
+              style={{
+                display: 'inline-block',
+                padding: '1rem 2rem',
+                background: '#1976d2',
+                color: 'white',
+                textDecoration: 'none',
+                borderRadius: '4px',
+                fontSize: '1.1rem'
+              }}
+            >
+              Giriş
+            </Link>
           )}
         </div>
 
@@ -106,19 +89,19 @@ export default function Home() {
             {loading ? (
               <p>Yüklənir...</p>
             ) : overdueInvoices.length === 0 ? (
-              <div style={{ 
-                padding: '2rem', 
-                background: '#d4edda', 
-                borderRadius: '8px', 
+              <div style={{
+                padding: '2rem',
+                background: '#d4edda',
+                borderRadius: '8px',
                 color: '#155724',
                 textAlign: 'center'
               }}>
                 Müddəti bitmiş ödəniş yoxdur
               </div>
             ) : (
-              <div style={{ 
-                background: '#fff3cd', 
-                borderRadius: '8px', 
+              <div style={{
+                background: '#fff3cd',
+                borderRadius: '8px',
                 padding: '1rem',
                 border: '2px solid #ffc107'
               }}>
@@ -142,7 +125,7 @@ export default function Home() {
                         paymentDate.setHours(0, 0, 0, 0)
                         daysOverdue = Math.abs(calculateDaysDifference(today, paymentDate))
                       }
-                      
+
                       return (
                         <tr key={invoice.id}>
                           <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}>{invoice.invoice_number}</td>

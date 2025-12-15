@@ -6,56 +6,173 @@
 }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   overflow: hidden;
   height: 100vh;
   margin: 0;
 }
 
-/* NAVBAR - Üst hissə */
+/* NAVBAR - Professional Dark Design */
 #navbar,
 nav {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
-  background: linear-gradient(to bottom, #4a90e2, #357abd);
+  height: 70px;
+  background: #1a1a1a;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   color: white;
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  justify-content: space-between;
+  padding: 0 40px;
   z-index: 1000;
 }
 
+/* Logo */
 #navbar h1,
-nav h1 {
-  font-size: 20px;
-  margin-right: 30px;
+nav h1,
+#navbar>a:first-child,
+nav>a:first-child {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 0;
+  color: #fff;
+  text-decoration: none;
+  letter-spacing: 2px;
 }
 
+/* Menyu düymələri və linklər */
 #navbar button,
-nav button {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+nav button,
+#navbar a,
+nav a {
+  background: transparent;
+  border: none;
   color: white;
-  padding: 4px 12px;
-  margin-right: 10px;
-  border-radius: 4px;
+  padding: 25px 20px;
+  margin: 0;
   cursor: pointer;
-  transition: background 0.2s;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  position: relative;
+  text-decoration: none;
+}
+
+/* Alt xətt hover effekti - SARI rəng */
+#navbar button::after,
+nav button::after,
+#navbar a::after,
+nav a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0%;
+  height: 3px;
+  background: #ffcc00;
+  transition: width 0.3s ease;
+}
+
+#navbar button:hover::after,
+nav button:hover::after,
+#navbar a:hover::after,
+nav a:hover::after {
+  width: 100%;
 }
 
 #navbar button:hover,
-nav button:hover {
-  background: rgba(255, 255, 255, 0.3);
+nav button:hover,
+#navbar a:hover,
+nav a:hover {
+  color: #ffcc00;
+}
+
+/* Chevron ox fırlanması - yalnız əsas düymədəki ox */
+#navbar button>span,
+nav button>span {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+#navbar div[style*="position: relative"]:hover>button>span,
+nav div[style*="position: relative"]:hover>button>span {
+  transform: rotate(180deg);
+}
+
+/* DROPDOWN MENYU - Avtomatik açılma */
+/* Dropdown container */
+#navbar div[style*="position: relative"],
+nav div[style*="position: relative"] {
+  position: relative;
+}
+
+/* Dropdown menyu özü */
+#navbar div[style*="position: absolute"],
+nav div[style*="position: absolute"] {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background: #242424;
+  list-style: none;
+  padding: 10px 0;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  border-top: 3px solid #ffcc00;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(20px);
+  transition: all 0.4s ease;
+  z-index: 1000;
+}
+
+/* Hover edəndə dropdown görünsün */
+#navbar div[style*="position: relative"]:hover>div[style*="position: absolute"],
+nav div[style*="position: relative"]:hover>div[style*="position: absolute"] {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* Dropdown içindəki düymələr */
+#navbar div[style*="position: absolute"] button,
+nav div[style*="position: absolute"] button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 20px;
+  font-size: 16px;
+  color: #ddd;
+  border-bottom: 1px solid #333;
+  transition: all 0.3s ease;
+}
+
+#navbar div[style*="position: absolute"] button:last-child,
+nav div[style*="position: absolute"] button:last-child {
+  border-bottom: none;
+}
+
+/* Dropdown düymə hover - SARI effekt */
+#navbar div[style*="position: absolute"] button:hover,
+nav div[style*="position: absolute"] button:hover {
+  background: #333;
+  color: #ffcc00;
+  padding-left: 25px;
+}
+
+/* Dropdown düymələrində alt xətt olmasın */
+#navbar div[style*="position: absolute"] button::after,
+nav div[style*="position: absolute"] button::after {
+  display: none;
 }
 
 /* WORKSPACE - Orta hissə (pəncərələr burada açılır) */
 #workspace {
   position: fixed;
-  top: 40px;
+  top: 70px;
   left: 0;
   right: 0;
   bottom: 40px;
@@ -199,7 +316,7 @@ nav button:hover {
 }
 
 .window-content {
-  padding: 20px;
+  padding: 0;
   overflow: auto;
   height: calc(100% - 50px);
 }

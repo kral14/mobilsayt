@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Products from './pages/Products'
 import Login from './pages/Login'
-import Register from './pages/Register'
+
 import Profile from './pages/Profile'
 import Hesablar from './pages/Hesablar'
 import Anbar from './pages/Anbar'
@@ -13,6 +13,7 @@ import KassaMexaric from './pages/Kassa/Mexaric'
 import Alicilar from './pages/Musteriler/Alici'
 import Saticilar from './pages/Musteriler/Satici'
 import WindowTest from './pages/WindowTest'
+import Admin from './pages/Admin'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -26,7 +27,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+
         <Route
           path="/products"
           element={
@@ -104,6 +105,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Saticilar />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <Admin />
             </ProtectedRoute>
           }
         />

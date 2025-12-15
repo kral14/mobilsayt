@@ -5,7 +5,7 @@ import { generateToken } from '../utils/generateToken'
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, name, phone } = req.body
+    const { email, password, name, phone, full_name } = req.body
 
     // Email yoxla
     const existingUser = await prisma.users.findUnique({
@@ -24,6 +24,10 @@ export const register = async (req: Request, res: Response) => {
       data: {
         email,
         password: hashedPassword,
+        full_name: full_name || name,
+        role: 'USER',
+        is_admin: false,
+        is_active: true,
       },
     })
 
@@ -47,6 +51,9 @@ export const register = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        is_admin: user.is_admin,
         createdAt: user.created_at,
       },
       customer: customer ? {
@@ -95,6 +102,10 @@ export const login = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        is_admin: user.is_admin,
+        is_active: user.is_active,
         createdAt: user.created_at,
       },
       customer: customer ? {

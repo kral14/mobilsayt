@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Layout from '../../components/Layout'
 
 import DataTable, { ColumnConfig } from '../../components/DataTable'
 import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
 import { purchaseInvoicesAPI, productsAPI, suppliersAPI, warehousesAPI } from '../../services/api'
 import type { PurchaseInvoice, Product, Supplier, WarehouseLocation } from '@shared/types'
 import { useWindowStore } from '../../store/windowStore'
+import { logActivity } from '../../store/logStore'
 
 // Development rejimində console.log üçün helper
 const devLog = (...args: any[]) => {
@@ -69,16 +71,18 @@ const defaultColumns: ColumnConfig[] = [
       return <span style={{ fontSize: '1.2rem' }}>📄</span>
     }
   },
-  { id: 'id', label: 'ID', visible: true, width: 80, order: 2 },
-  { id: 'invoice_number', label: 'Faktura №', visible: true, width: 150, order: 3 },
-  { id: 'supplier_name', label: 'Təchizatçı', visible: true, width: 200, order: 4 },
-  { id: 'invoice_date', label: 'Tarix', visible: true, width: 120, order: 5 },
+  { id: 'invoice_number', label: '№', visible: true, width: 140, order: 2 },
+  { id: 'supplier_name', label: 'Təchizatçı', visible: true, width: 220, order: 3 },
+  { id: 'invoice_date', label: 'Tarix', visible: true, width: 180, order: 4 },
+  { id: 'payment_date', label: 'Son ödəniş tarixi', visible: true, width: 180, order: 5 },
   { id: 'total_amount', label: 'Ümumi məbləğ', visible: true, width: 150, order: 6, align: 'right' },
-  { id: 'notes', label: 'Qeydlər', visible: true, width: 200, order: 7 },
-  { id: 'created_at', label: 'Yaradılma tarixi', visible: false, width: 150, order: 8 },
+  { id: 'notes', label: 'Qeydlər', visible: true, width: 250, order: 7 },
+  { id: 'created_at', label: 'Yaradılma tarixi', visible: true, width: 180, order: 8 },
 ]
 
-export default function AlisQaimeleri() {
+
+// Content component (The actual window content)
+export function AlisQaimeleriContent() {
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -89,7 +93,7 @@ export default function AlisQaimeleri() {
 
   // Bildiriş göstər funksiyası
   const showNotification = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-    const id = Date.now().toString()
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 9)
     setNotifications(prev => [...prev, { id, message, type }])
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id))
@@ -99,16 +103,22 @@ export default function AlisQaimeleri() {
   // Çoxlu modal state - Windows benzeri sistem
   const [openModals, setOpenModals] = useState<Map<string, ModalData>>(new Map())
   const openModalsRef = useRef<Map<string, ModalData>>(new Map())
+  const initialDataMap = useRef<Map<string, any>>(new Map()) // İlkin datanı saxlamaq üçün
   const [activeModalId, setActiveModalId] = useState<string | null>(null)
   const [baseZIndex, setBaseZIndex] = useState(1000)
-  
+
+  // Təsdiq dialoqu üçün state
+  const [confirmDialog, setConfirmDialog] = useState<{ modalId: string; currentModal: ModalData } | null>(null)
+
   // openModals state-i dəyişdikdə ref-i yenilə
   useEffect(() => {
     openModalsRef.current = openModals
   }, [openModals])
 
-  // Global window store
-  const { addWindow, removeWindow, updateWindow } = useWindowStore()
+  // Global window store actions (selectors to prevent re-renders)
+  const addWindow = useWindowStore(state => state.addWindow)
+  const removeWindow = useWindowStore(state => state.removeWindow)
+  const updateWindow = useWindowStore(state => state.updateWindow)
 
   // Data state
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -134,11 +144,23 @@ export default function AlisQaimeleri() {
     })
   }, [])
 
-  const handleModalClose = useCallback((modalId: string) => {
+
+
+  const handleDiscard = useCallback((modalId: string) => {
+    // Dəyişikliyi ləğv etmək (pəncərəni bağlamaq) üçün dirty check-i bypass etmək lazımdır
+    const currentModal = openModalsRef.current.get(modalId)
+    if (currentModal) {
+      initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(currentModal.data)))
+    }
+
+    // Təsdiq pəncərəsini bağla
+    useWindowStore.getState().closeWindow('confirm-dialog-' + modalId)
+
+    // Modalı sil (local state və store)
     setOpenModals(prev => {
       const newMap = new Map(prev)
       newMap.delete(modalId)
-      
+
       // activeModalId-ni yenilə
       if (activeModalId === modalId) {
         const remainingModals = Array.from(newMap.values())
@@ -151,13 +173,75 @@ export default function AlisQaimeleri() {
           setActiveModalId(null)
         }
       }
-      
       return newMap
     })
-    
+
+    const windowId = `purchase-invoice-modal-${modalId}`
+    useWindowStore.getState().closeWindow(windowId)
+  }, [activeModalId])
+
+  const handleModalBeforeClose = useCallback((modalId: string): boolean => {
+    const currentModal = openModalsRef.current.get(modalId)
+    const initialData = initialDataMap.current.get(modalId)
+
+    console.log(`[DEBUG] Check before close for ${modalId}`)
+    console.log('[DEBUG] Current Data:', currentModal?.data)
+    console.log('[DEBUG] Initial Data:', initialData)
+
+    if (!currentModal || !initialData) {
+      console.log('[DEBUG] Missing modal or initial data, closing allowed')
+      return true
+    }
+
+    const isDirty = JSON.stringify(currentModal.data) !== JSON.stringify(initialData)
+    console.log(`[DEBUG] Is Dirty: ${isDirty}`)
+
+    if (isDirty) {
+      logActivity(
+        'invoice',
+        'Qaimə bağlandı (yadda saxlanmadan)',
+        `Qaimə ${currentModal.data?.invoiceNumber ? currentModal.data.invoiceNumber : (currentModal.invoiceId ? '#' + currentModal.invoiceId : '(yeni)')} saxlanmadan bağlandı - təsdiq dialoqu göstərildi`,
+        'warning',
+        { modalId, invoiceId: currentModal.invoiceId, invoiceNumber: currentModal.data?.invoiceNumber }
+      )
+
+      // Təsdiq dialogunu göstər (React state ilə, UniversalWindow-suz)
+      setConfirmDialog({ modalId, currentModal })
+      return false // Stop closure
+    }
+
+    return true
+  }, [])
+
+  const handleModalClose = useCallback((modalId: string) => {
+    // Yadda saxlanmamış dəyişiklikləri yoxla
+    if (!handleModalBeforeClose(modalId)) {
+      return
+    }
+
+    setOpenModals(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(modalId)
+
+      // activeModalId-ni yenilə
+      if (activeModalId === modalId) {
+        const remainingModals = Array.from(newMap.values())
+        if (remainingModals.length > 0) {
+          const topModal = remainingModals.reduce((prev, curr) =>
+            curr.zIndex > prev.zIndex ? curr : prev
+          )
+          setActiveModalId(topModal.id)
+        } else {
+          setActiveModalId(null)
+        }
+      }
+
+      return newMap
+    })
+
     const windowId = `purchase-invoice-modal-${modalId}`
     removeWindow(windowId)
-  }, [activeModalId, removeWindow])
+  }, [activeModalId, removeWindow, handleModalBeforeClose])
 
   const handleModalActivate = useCallback((modalId: string) => {
     const newZIndex = baseZIndex + 1
@@ -167,12 +251,12 @@ export default function AlisQaimeleri() {
       const newMap = new Map(prev)
       const currentModal = newMap.get(modalId)
       if (currentModal) {
-        newMap.set(modalId, { ...currentModal, zIndex: newZIndex })
+        newMap.set(modalId, { ...currentModal }) // zIndex artıq store tərəfindən idarə olunur
       }
       return newMap
     })
     const windowId = `purchase-invoice-modal-${modalId}`
-    useWindowStore.getState().updateWindow(windowId, { zIndex: newZIndex, isVisible: true, isMinimized: false })
+    useWindowStore.getState().activateWindow(windowId) // updateWindow əvəzinə birbaşa activateWindow
   }, [baseZIndex])
 
   const handleModalPrint = useCallback(async (modalId: string, _modalData: ModalData['data']) => {
@@ -282,15 +366,13 @@ export default function AlisQaimeleri() {
   // Pəncərələri izlə və global store-a əlavə et
   useEffect(() => {
     // Qaimə modalları - global store-a əlavə et
-    devLog('[Alis.tsx] useEffect - Modallar yoxlanılır:', {
-      modalsCount: openModals.size,
-      modalIds: Array.from(openModals.keys())
-    })
-    
+    // Qaimə modalları - global store-a əlavə et
+    // devLog removed to reduce noise
+
     // Silinmiş modalları store-dan sil
     const store = useWindowStore.getState()
     const currentModalIds = new Set(Array.from(openModals.keys()))
-    
+
     // Köhnə window-ları təmizlə
     Array.from(store.windows.values())
       .filter(w => w.id.startsWith('purchase-invoice-modal-'))
@@ -301,48 +383,30 @@ export default function AlisQaimeleri() {
           store.closeWindow(window.id)
         }
       })
-    
+
     // Sonra mövcud modalları yarad və ya yenilə
     Array.from(openModals.values()).forEach((modal, index) => {
       const windowId = `purchase-invoice-modal-${modal.id}`
       const store = useWindowStore.getState()
       const existingWindow = store.windows.get(windowId)
 
-      devLog(`[Alis.tsx] useEffect - Modal ${index + 1}/${openModals.size}:`, {
-        modalId: modal.id,
-        invoiceId: modal.invoiceId,
-        windowId,
-        existingWindow: !!existingWindow
-      })
+      // devLog removed
 
       if (!existingWindow) {
-        devLog(`[Alis.tsx] useEffect - Yeni window yaradılır:`, {
-          windowId,
-          modalId: modal.id,
-          invoiceId: modal.invoiceId,
-          zIndex: modal.zIndex,
-          position: modal.position,
-          size: modal.size,
-          screenWidth: window.innerWidth,
-          screenHeight: window.innerHeight,
-          positionX: modal.position.x,
-          positionY: modal.position.y,
-          sizeWidth: modal.size.width,
-          sizeHeight: modal.size.height,
-          isMaximized: modal.isMaximized
-        })
+
         addWindow({
           id: windowId,
-          title: modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Alış Qaiməsi',
+          title: modal.data.invoiceNumber || (modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Alış Qaiməsi'),
           type: 'modal',
           modalType: 'invoice-edit',
           pageId: 'purchase-invoice-modal',
           isVisible: true,
           isMinimized: false,
-          zIndex: modal.zIndex,
+          // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
           position: modal.position,
           size: modal.size,
           isMaximized: modal.isMaximized,
+          onBeforeClose: () => handleModalBeforeClose(modal.id),
           content: (
             <InvoiceModal
               modal={modal}
@@ -359,6 +423,28 @@ export default function AlisQaimeleri() {
               windowId={windowId}
               isEmbedded={true}
               warehouses={warehouses}
+              activeConfirmDialog={confirmDialog?.modalId === modal.id ? {
+                isOpen: true,
+                modalZIndex: 1000,
+                onConfirm: async () => {
+                  if (!confirmDialog) return
+                  try {
+                    await handleModalSave(confirmDialog.modalId, confirmDialog.currentModal.data)
+                    initialDataMap.current.set(confirmDialog.modalId, JSON.parse(JSON.stringify(confirmDialog.currentModal.data)))
+                    setConfirmDialog(null)
+                    const wId = `purchase-invoice-modal-${confirmDialog.modalId}`
+                    useWindowStore.getState().closeWindow(wId)
+                  } catch (e) {
+                    console.error(e)
+                  }
+                },
+                onDiscard: async () => {
+                  if (!confirmDialog) return
+                  setConfirmDialog(null)
+                  handleDiscard(confirmDialog.modalId)
+                },
+                onCancel: () => setConfirmDialog(null)
+              } : undefined}
             />
           ),
           onRestore: () => {
@@ -377,38 +463,36 @@ export default function AlisQaimeleri() {
             handleModalClose(modal.id)
           }
         })
-        
+
         // Window yaradıldıqdan sonra yoxla
-        setTimeout(() => {
+
+        /* setTimeout(() => {
           const checkStore = useWindowStore.getState()
           const createdWindow = checkStore.windows.get(windowId)
-          devLog(`[Alis.tsx] useEffect - Window yaradıldıqdan sonra yoxlama:`, {
-            windowId,
-            created: !!createdWindow,
-            isVisible: createdWindow?.isVisible,
-            isMinimized: createdWindow?.isMinimized,
-            hasContent: !!createdWindow?.content
-          })
-        }, 100)
+           devLog removed
+        }, 100) */
       } else {
         const storeWindow = existingWindow
         const storeIsMinimized = storeWindow.isMinimized || false
-        
-        devLog(`[Alis.tsx] useEffect - Mövcud window yenilənir:`, {
-          windowId,
-          isVisible: storeWindow.isVisible,
-          isMinimized: storeIsMinimized
-        })
-        
+
+
+
+        // devLog removed
+
         // Content-i həmişə yenilə ki, prop-lar düzgün ötürülsün (modal data, suppliers, products və s. dəyişə bilər)
         // Əmin ol ki, window görünürdür (isVisible: true)
         updateWindow(windowId, {
           isVisible: true, // Həmişə görünür olmalıdır (minimize edilməmişdirsə)
           isMinimized: storeIsMinimized,
-          zIndex: modal.zIndex,
-          position: modal.position,
-          size: modal.size,
-          isMaximized: modal.isMaximized,
+          title: modal.data.invoiceNumber || (modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Alış Qaiməsi'),
+          // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
+          // position və size burdan çıxarılır ki, istifadəçi dəyişiklikləri qorunsun
+          // position və size burdan çıxarılır ki, istifadəçi dəyişiklikləri qorunsun
+          // position: modal.position,
+          // size: modal.size,
+          // isMaximized: modal.isMaximized, // Store tərəfindən idarə olunur, burdan göndərmə
+
+          onBeforeClose: () => handleModalBeforeClose(modal.id),
           content: (
             <InvoiceModal
               modal={modal}
@@ -425,6 +509,28 @@ export default function AlisQaimeleri() {
               windowId={windowId}
               isEmbedded={true}
               warehouses={warehouses}
+              activeConfirmDialog={confirmDialog?.modalId === modal.id ? {
+                isOpen: true,
+                modalZIndex: 1000,
+                onConfirm: async () => {
+                  if (!confirmDialog) return
+                  try {
+                    await handleModalSave(confirmDialog.modalId, confirmDialog.currentModal.data)
+                    initialDataMap.current.set(confirmDialog.modalId, JSON.parse(JSON.stringify(confirmDialog.currentModal.data)))
+                    setConfirmDialog(null)
+                    const wId = `purchase-invoice-modal-${confirmDialog.modalId}`
+                    useWindowStore.getState().closeWindow(wId)
+                  } catch (e) {
+                    console.error(e)
+                  }
+                },
+                onDiscard: async () => {
+                  if (!confirmDialog) return
+                  setConfirmDialog(null)
+                  handleDiscard(confirmDialog.modalId)
+                },
+                onCancel: () => setConfirmDialog(null)
+              } : undefined}
             />
           ),
           onClose: () => {
@@ -525,7 +631,7 @@ export default function AlisQaimeleri() {
         useWindowStore.getState().updateWindow('item-settings-modal', { isVisible: false })
       }
     }
-  }, [openModals, activeModalId, showSupplierModal, showProductModal, showItemSettingsModal, suppliers, products, warehouses, handleModalClose, handleModalUpdate, handleModalActivate, handleModalPrint])
+  }, [openModals, activeModalId, showSupplierModal, showProductModal, showItemSettingsModal, suppliers, products, warehouses, handleModalClose, handleModalUpdate, handleModalActivate, handleModalPrint, confirmDialog])
 
   useEffect(() => {
     loadInvoices()
@@ -595,22 +701,22 @@ export default function AlisQaimeleri() {
         const existingModal = Array.from(openModalsRef.current.values()).find(
           modal => modal.invoiceId === invoiceId
         )
-        
+
         if (existingModal) {
           devLog('[Alis.tsx] Eyni qaimə artıq açıqdır, fokuslanır:', invoiceId)
           const windowId = `purchase-invoice-modal-${existingModal.id}`
           const store = useWindowStore.getState()
           const windowInfo = store.windows.get(windowId)
-          
+
           // Əgər minimize edilmişdirsə, restore et
           if (windowInfo?.isMinimized) {
             store.restoreWindow(windowId)
           }
-          
+
           // Fokusla (z-index artır və aktiv et)
           store.activateWindow(windowId)
           setActiveModalId(existingModal.id)
-          
+
           showNotification('Qaimə artıq açıqdır', 'info')
           return
         }
@@ -639,37 +745,22 @@ export default function AlisQaimeleri() {
 
       const screenWidth = window.innerWidth
       const screenHeight = window.innerHeight
-      
+
       // Əgər saxlanılan ayarlar varsa, onları istifadə et
       const modalWidth = savedPrefs?.size?.width || Math.min(900, Math.floor((screenWidth - 60) / 2))
       const modalHeight = savedPrefs?.size?.height || Math.min(700, screenHeight - 80)
 
-      // Yeni modalın pozisiyasını hesabla (yan-yana yerləşdirmək üçün)
-      // Mövcud açıq modalların sayını hesabla (yeni modal daxil olmadan)
-      const visibleModalsCount = Array.from(openModals.values()).filter(m => {
-        const windowId = `purchase-invoice-modal-${m.id}`
-        const store = useWindowStore.getState()
-        const windowInfo = store.windows.get(windowId)
-        return !windowInfo?.isMinimized
-      }).length
-
-      // Yeni modal üçün say (mövcud modallar + yeni modal)
-      const modalCount = visibleModalsCount
-      
-      devLog('[Alis.tsx] Position hesablaması:', {
-        visibleModalsCount,
-        modalCount,
-        screenWidth,
-        screenHeight,
-        modalHeight,
-        calculatedX: modalCount % 2 === 0 ? 20 : Math.floor(screenWidth / 2) + 10,
-        calculatedY: Math.floor(modalCount / 2) * (modalHeight + 20) + 50
-      })
+      // Modalı həmişə mərkəzdə aç
+      const positionX = Math.max(0, (screenWidth - modalWidth) / 2)
+      const positionY = Math.max(0, (screenHeight - modalHeight) / 2)
 
       // Invoice date formatla - saat, dəqiqə, saniyə ilə
       let invoiceDateStr = ''
       if (fullInvoice?.invoice_date) {
         const date = new Date(fullInvoice.invoice_date)
+        invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+      } else if (!invoiceId) {
+        const date = new Date()
         invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
       }
 
@@ -690,8 +781,8 @@ export default function AlisQaimeleri() {
         id: modalId,
         invoiceId: invoiceId,
         position: {
-          x: modalCount % 2 === 0 ? 20 : Math.floor(screenWidth / 2) + 10,
-          y: Math.floor(modalCount / 2) * (modalHeight + 20) + 50
+          x: positionX,
+          y: positionY
         },
         size: {
           width: modalWidth,
@@ -716,15 +807,32 @@ export default function AlisQaimeleri() {
       setOpenModals(prev => {
         const newMap = new Map(prev)
         newMap.set(modalId, newModal)
-        devLog('[Alis.tsx] openModalForInvoice - openModals yeniləndi:', { 
-          modalId, 
+        devLog('[Alis.tsx] openModalForInvoice - openModals yeniləndi:', {
+          modalId,
           mapSize: newMap.size,
           mapKeys: Array.from(newMap.keys())
         })
         return newMap
       })
+      // Initial datanı saxla
+      const initialSnapshot = JSON.parse(JSON.stringify(newModal.data))
+      initialDataMap.current.set(modalId, initialSnapshot)
+      console.log(`[DEBUG] Initial data set for ${modalId}`, initialSnapshot)
+
       setActiveModalId(modalId)
       devLog('[Alis.tsx] openModalForInvoice - Modal yaradıldı və state yeniləndi:', modalId)
+
+      // Log invoice open
+      logActivity(
+        'invoice',
+        invoiceId ? 'Qaimə redaktə edildi' : 'Yeni qaimə açıldı',
+        invoiceId
+          ? `Qaimə ${fullInvoice?.invoice_number || ('#' + invoiceId)} redaktə üçün açıldı (${items.length} məhsul)`
+          : `Yeni alış qaiməsi yaradıldı`,
+        'info',
+        { invoiceId, itemCount: items.length, supplierId: fullInvoice?.supplier_id, invoiceNumber: fullInvoice?.invoice_number }
+      )
+
       // Window useEffect-də avtomatik yaradılacaq
     } catch (err: any) {
       console.error('Modal açılarkən xəta:', err)
@@ -800,67 +908,43 @@ export default function AlisQaimeleri() {
 
   const handleModalSave = useCallback(async (modalId: string, modalData: ModalData['data']) => {
     devLog('[Alis.tsx] ========== handleModalSave FUNKSİYASI ÇAĞIRILDI ==========')
-    devLog('[Alis.tsx] handleModalSave çağırıldı', { 
-      modalId, 
+    devLog('[Alis.tsx] handleModalSave çağırıldı', {
+      modalId,
       modalData,
       modalDataKeys: Object.keys(modalData),
       invoiceItemsCount: modalData.invoiceItems?.length || 0
     })
-    
-    // Promise istifadə edirik ki, callback-dəki modal-ı callback-dən sonra istifadə edə bilək
-    const modalPromise = new Promise<ModalData | undefined>((resolve) => {
-      setOpenModals(currentModals => {
-        devLog('[Alis.tsx] handleModalSave - setOpenModals callback çağırıldı')
-        devLog('[Alis.tsx] handleModalSave - openModals Map-dəki ID-lər:', Array.from(currentModals.keys()))
-        devLog('[Alis.tsx] handleModalSave - openModals Map ölçüsü:', currentModals.size)
-        devLog('[Alis.tsx] handleModalSave - Axtarılan modalId:', modalId)
-        devLog('[Alis.tsx] handleModalSave - Modal ID uyğunluğu:', {
-          searchedId: modalId,
-          mapKeys: Array.from(currentModals.keys()),
-          exactMatch: currentModals.has(modalId),
-          allEntries: Array.from(currentModals.entries()).map(([id, m]) => ({
-            id,
-            invoiceId: m.invoiceId,
-            idType: typeof id,
-            searchedIdType: typeof modalId,
-            idsMatch: id === modalId
-          }))
-        })
-        const foundModal = currentModals.get(modalId)
-        if (!foundModal) {
-          console.error('[Alis.tsx] handleModalSave - XƏTA: Modal tapılmadı!', modalId)
-          devLog('[Alis.tsx] handleModalSave - Mövcud modallar:', Array.from(currentModals.entries()).map(([id, m]) => ({ id, invoiceId: m.invoiceId })))
-          resolve(undefined)
-        } else {
-          devLog('[Alis.tsx] handleModalSave - Modal tapıldı:', { id: foundModal.id, invoiceId: foundModal.invoiceId })
-          // Modal-ı dərin kopyalayırıq və Promise-də qaytarırıq
-          const modalCopy = JSON.parse(JSON.stringify(foundModal))
-          devLog('[Alis.tsx] handleModalSave - Modal kopyalandı:', { id: modalCopy.id, invoiceId: modalCopy.invoiceId })
-          resolve(modalCopy)
-        }
-        return currentModals // State-i dəyişdirmirik, sadəcə oxuyuruq
-      })
-    })
-    
+
+    // Modalı ref-dən oxu (state-dən asılılığı aradan qaldırır)
+    const modal = openModalsRef.current.get(modalId)
+
+    if (!modal) {
+      console.error('[Alis.tsx] handleModalSave - XƏTA: Modal tapılmadı!', modalId)
+      return
+    }
+
+    const modalDataToUse = modal.data
+    // modalData arqumenti varsa, onu istifadə et (ən son dəyişikliklər)
+    const finalData = modalData ? { ...modalDataToUse, ...modalData } : modalDataToUse
+
+    devLog('[Alis.tsx] handleModalSave - Modal tapıldı:', { id: modal.id, invoiceId: modal.invoiceId })
+
     // Promise-dən modal-ı alırıq
-    const modal = await modalPromise
+
     devLog('[Alis.tsx] handleModalSave - Promise-dən modal alındı:', modal)
-    
+
     if (!modal) {
       console.error('[Alis.tsx] handleModalSave - XƏTA: Modal tapılmadı, funksiya dayandırılır')
       return
     }
-    
+
     devLog('[Alis.tsx] handleModalSave - Modal istifadəyə hazırdır:', { id: modal.id, invoiceId: modal.invoiceId })
-    devLog('[Alis.tsx] handleModalSave - modalData:', modalData)
-    devLog('[Alis.tsx] handleModalSave - modalData.invoiceItems:', modalData.invoiceItems)
-    devLog('[Alis.tsx] handleModalSave - modalData.invoiceItems length:', modalData.invoiceItems?.length || 0)
-    
-    const validItems = modalData.invoiceItems.filter(item => item.product_id !== null)
+    devLog('[Alis.tsx] handleModalSave - modalData:', finalData)
+
+    const validItems = finalData.invoiceItems.filter(item => item.product_id !== null)
     devLog('[Alis.tsx] handleModalSave - Valid items:', validItems.length)
     devLog('[Alis.tsx] handleModalSave - Valid items details:', validItems)
-    devLog('[Alis.tsx] handleModalSave - All items:', modalData.invoiceItems.map(item => ({ product_id: item.product_id, product_name: item.product_name })))
-    
+
     // Yadda saxla düyməsi üçün validasiya yoxdur - boş qaimə yarada bilər
     // Validasiya yalnız OK düyməsi üçün InvoiceModal komponentindədir
 
@@ -871,7 +955,7 @@ export default function AlisQaimeleri() {
         unit_price: item.unit_price,
         total_price: item.total_price,
       }))
-      
+
       devLog('[Alis.tsx] handleModalSave - Items hazırlandı:', items)
       devLog('[Alis.tsx] handleModalSave - Modal invoiceId:', modal.invoiceId)
 
@@ -881,48 +965,72 @@ export default function AlisQaimeleri() {
         console.log('[Alis.tsx] Mövcud qaimə yenilənir:', modal.invoiceId)
         console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.update')
         console.log('[Alis.tsx] Request data:', {
-          supplier_id: modalData.selectedSupplierId || undefined,
+          supplier_id: finalData.selectedSupplierId || undefined,
           items,
-          notes: modalData.notes || undefined,
+          notes: finalData.notes || undefined,
         })
-        
+
         const updateResult = await purchaseInvoicesAPI.update(modal.invoiceId.toString(), {
-          supplier_id: modalData.selectedSupplierId || undefined,
+          supplier_id: finalData.selectedSupplierId || undefined,
           items,
-          notes: modalData.notes || undefined,
+          notes: finalData.notes || undefined,
+          invoice_date: finalData.invoiceDate || undefined,
+          payment_date: finalData.paymentDate || undefined,
         })
-        
+
         console.log('[Alis.tsx] API cavabı (update):', updateResult)
-        
+
+        // Change saved: update initial data to prevent unsaved changes warning
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(finalData)))
+
         // Vəziyyəti dəyişdirmə - mövcud vəziyyəti saxla
         if (modal.isActive !== undefined) {
           console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus')
           console.log('[Alis.tsx] Status update:', { id: modal.invoiceId, isActive: modal.isActive })
           const statusResult = await purchaseInvoicesAPI.updateStatus(modal.invoiceId.toString(), modal.isActive)
-          console.log('[Alis.tsx] API cavabı (updateStatus):', statusResult)
+          console.log('[Alis.tsx] API cavabı (updateStatus - confirm):', statusResult)
         }
+
+        logActivity(
+          'invoice',
+          'Qaimə təsdiqləndi',
+          `Qaimə ${finalData.invoiceNumber || ('#' + modal.invoiceId)} təsdiqləndi və yadda saxlanıldı`,
+          'success',
+          { invoiceId: modal.invoiceId, itemCount: validItems.length, invoiceNumber: finalData.invoiceNumber }
+        )
+
         console.log('[Alis.tsx] Qaimə yeniləndi')
         showNotification('Qaimə uğurla yeniləndi', 'success')
+
+        logActivity(
+          'invoice',
+          'Qaimə yadda saxlanıldı',
+          `Qaimə ${finalData.invoiceNumber || ('#' + modal.invoiceId)} yeniləndi (${validItems.length} məhsul)`,
+          'success',
+          { invoiceId: modal.invoiceId, itemCount: validItems.length, supplierId: finalData.selectedSupplierId, invoiceNumber: finalData.invoiceNumber }
+        )
       } else {
         // Yeni qaimə - yarad, amma tesdiqsiz saxla
         console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR ==========')
         console.log('[Alis.tsx] Yeni qaimə yaradılır (təsdiqsiz)...')
         console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.create')
         console.log('[Alis.tsx] Request data:', {
-          supplier_id: modalData.selectedSupplierId || undefined,
+          supplier_id: finalData.selectedSupplierId || undefined,
           items,
-          notes: modalData.notes || undefined,
+          notes: finalData.notes || undefined,
         })
-        
+
         const newInvoice = await purchaseInvoicesAPI.create({
-          supplier_id: modalData.selectedSupplierId || undefined,
+          supplier_id: finalData.selectedSupplierId || undefined,
           items,
-          notes: modalData.notes || undefined,
+          notes: finalData.notes || undefined,
+          invoice_date: finalData.invoiceDate || undefined,
+          payment_date: finalData.paymentDate || undefined,
         })
-        
+
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
         console.log('[Alis.tsx] Yeni qaimə ID:', newInvoice.id)
-        
+
         // Tesdiqsiz saxla (default olaraq tesdiqsizdir, amma açıq şəkildə təyin edək)
         if (newInvoice.id) {
           console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus (false)')
@@ -948,6 +1056,7 @@ export default function AlisQaimeleri() {
               isActive: false,
               data: {
                 ...currentModal.data,
+                ...modalData, // Ensure validItems and other changes are preserved
                 invoiceNumber: newInvoice.invoice_number || '',
                 invoiceDate: invoiceDateStr
               }
@@ -956,7 +1065,28 @@ export default function AlisQaimeleri() {
           return newMap
         })
 
+        console.log('[Alis.tsx] API cavabı (create):', newInvoice)
+
+        showNotification('Qaimə uğurla yaradıldı', 'success')
+
+        logActivity(
+          'invoice',
+          'Yeni qaimə yaradıldı',
+          `Yeni alış qaiməsi ${newInvoice.invoice_number || ('#' + newInvoice.id)} yaradıldı (${validItems.length} məhsul)`,
+          'success',
+          { invoiceId: newInvoice.id, itemCount: validItems.length, supplierId: finalData.selectedSupplierId, invoiceNumber: newInvoice.invoice_number }
+        )
+
+        // Modal-ı yenilə - invoiceId-ni set et.
         console.log('[Alis.tsx] Yeni qaimə yaradıldı:', newInvoice.id)
+
+        // Change saved: update initial data to prevent unsaved changes warning
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify({
+          ...finalData,
+          invoiceNumber: newInvoice.invoice_number || '',
+          invoiceDate: invoiceDateStr
+        })))
+
         showNotification('Qaimə uğurla yaradıldı (təsdiqsiz)', 'success')
       }
 
@@ -979,67 +1109,42 @@ export default function AlisQaimeleri() {
 
   const handleModalSaveAndConfirm = useCallback(async (modalId: string, modalData: ModalData['data']) => {
     console.log('[Alis.tsx] ========== handleModalSaveAndConfirm FUNKSİYASI ÇAĞIRILDI ==========')
-    devLog('[Alis.tsx] handleModalSaveAndConfirm çağırıldı', { 
-      modalId, 
+    devLog('[Alis.tsx] handleModalSaveAndConfirm çağırıldı', {
+      modalId,
       modalData,
       modalDataKeys: Object.keys(modalData),
       invoiceItemsCount: modalData.invoiceItems?.length || 0
     })
-    
-    // Promise istifadə edirik ki, callback-dəki modal-ı callback-dən sonra istifadə edə bilək
-    const modalPromise = new Promise<ModalData | undefined>((resolve) => {
-      setOpenModals(currentModals => {
-        devLog('[Alis.tsx] handleModalSaveAndConfirm - setOpenModals callback çağırıldı')
-        devLog('[Alis.tsx] handleModalSaveAndConfirm - openModals Map-dəki ID-lər:', Array.from(currentModals.keys()))
-        devLog('[Alis.tsx] handleModalSaveAndConfirm - openModals Map ölçüsü:', currentModals.size)
-        devLog('[Alis.tsx] handleModalSaveAndConfirm - Axtarılan modalId:', modalId)
-        devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal ID uyğunluğu:', {
-          searchedId: modalId,
-          mapKeys: Array.from(currentModals.keys()),
-          exactMatch: currentModals.has(modalId),
-          allEntries: Array.from(currentModals.entries()).map(([id, m]) => ({
-            id,
-            invoiceId: m.invoiceId,
-            idType: typeof id,
-            searchedIdType: typeof modalId,
-            idsMatch: id === modalId
-          }))
-        })
-        const foundModal = currentModals.get(modalId)
-        if (!foundModal) {
-          console.error('[Alis.tsx] handleModalSaveAndConfirm - XƏTA: Modal tapılmadı!', modalId)
-          devLog('[Alis.tsx] handleModalSaveAndConfirm - Mövcud modallar:', Array.from(currentModals.entries()).map(([id, m]) => ({ id, invoiceId: m.invoiceId })))
-          resolve(undefined)
-        } else {
-          devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal tapıldı:', { id: foundModal.id, invoiceId: foundModal.invoiceId })
-          // Modal-ı dərin kopyalayırıq və Promise-də qaytarırıq
-          const modalCopy = JSON.parse(JSON.stringify(foundModal))
-          devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal kopyalandı:', { id: modalCopy.id, invoiceId: modalCopy.invoiceId })
-          resolve(modalCopy)
-        }
-        return currentModals // State-i dəyişdirmirik, sadəcə oxuyuruq
-      })
-    })
-    
+
+    // Modalı ref-dən oxu
+    const modal = openModalsRef.current.get(modalId)
+
+    if (!modal) {
+      console.error('[Alis.tsx] handleModalSaveAndConfirm - XƏTA: Modal tapılmadı!', modalId)
+      return
+    }
+
+    const modalDataToUse = modal.data
+    const finalData = modalData ? { ...modalDataToUse, ...modalData } : modalDataToUse
+
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal tapıldı:', { id: modal.id, invoiceId: modal.invoiceId })
+
     // Promise-dən modal-ı alırıq
-    const modal = await modalPromise
+
     devLog('[Alis.tsx] handleModalSaveAndConfirm - Promise-dən modal alındı:', modal)
-    
+
     if (!modal) {
       console.error('[Alis.tsx] handleModalSaveAndConfirm - XƏTA: Modal tapılmadı, funksiya dayandırılır')
       return
     }
-    
+
     devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal istifadəyə hazırdır:', { id: modal.id, invoiceId: modal.invoiceId })
-    devLog('[Alis.tsx] handleModalSaveAndConfirm - modalData:', modalData)
-    devLog('[Alis.tsx] handleModalSaveAndConfirm - modalData.invoiceItems:', modalData.invoiceItems)
-    devLog('[Alis.tsx] handleModalSaveAndConfirm - modalData.invoiceItems length:', modalData.invoiceItems?.length || 0)
-    
-    const validItems = modalData.invoiceItems.filter(item => item.product_id !== null)
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - modalData:', finalData)
+
+    const validItems = finalData.invoiceItems.filter(item => item.product_id !== null)
     devLog('[Alis.tsx] handleModalSaveAndConfirm - Valid items:', validItems.length)
     devLog('[Alis.tsx] handleModalSaveAndConfirm - Valid items details:', validItems)
-    devLog('[Alis.tsx] handleModalSaveAndConfirm - All items:', modalData.invoiceItems.map(item => ({ product_id: item.product_id, product_name: item.product_name })))
-    
+
     if (validItems.length === 0) {
       console.log('[Alis.tsx] Validasiya xətası: məhsul seçilməyib')
       showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
@@ -1053,7 +1158,7 @@ export default function AlisQaimeleri() {
         unit_price: item.unit_price,
         total_price: item.total_price,
       }))
-      
+
       devLog('[Alis.tsx] handleModalSaveAndConfirm - Items hazırlandı:', items)
       devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal invoiceId:', modal.invoiceId)
 
@@ -1067,21 +1172,27 @@ export default function AlisQaimeleri() {
           items,
           notes: modalData.notes || undefined,
         })
-        
+
         const updateResult = await purchaseInvoicesAPI.update(modal.invoiceId.toString(), {
           supplier_id: modalData.selectedSupplierId || undefined,
           items,
           notes: modalData.notes || undefined,
+          invoice_date: modalData.invoiceDate || undefined,
+          payment_date: modalData.paymentDate || undefined,
         })
-        
+
         console.log('[Alis.tsx] API cavabı (update):', updateResult)
-        
+
         // Təsdiqlə
         console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus (true)')
         const statusResult = await purchaseInvoicesAPI.updateStatus(modal.invoiceId.toString(), true)
         console.log('[Alis.tsx] API cavabı (updateStatus):', statusResult)
-        
+
         console.log('[Alis.tsx] Qaimə yeniləndi və təsdiq edildi')
+
+        // Change saved: update initial data
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(finalData)))
+
         showNotification('Qaimə uğurla yeniləndi və təsdiq edildi', 'success')
       } else {
         // Yeni qaimə - yarad və təsdiqlə
@@ -1093,16 +1204,18 @@ export default function AlisQaimeleri() {
           items,
           notes: modalData.notes || undefined,
         })
-        
+
         const newInvoice = await purchaseInvoicesAPI.create({
           supplier_id: modalData.selectedSupplierId || undefined,
           items,
           notes: modalData.notes || undefined,
+          invoice_date: modalData.invoiceDate || undefined,
+          payment_date: modalData.paymentDate || undefined,
         })
-        
+
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
         console.log('[Alis.tsx] Yeni qaimə ID:', newInvoice.id)
-        
+
         // Təsdiqlə
         if (newInvoice.id) {
           console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus (true)')
@@ -1128,6 +1241,7 @@ export default function AlisQaimeleri() {
               isActive: true,
               data: {
                 ...currentModal.data,
+                ...modalData, // Ensure validItems and other changes are preserved
                 invoiceNumber: newInvoice.invoice_number || '',
                 invoiceDate: invoiceDateStr
               }
@@ -1137,6 +1251,14 @@ export default function AlisQaimeleri() {
         })
 
         console.log('[Alis.tsx] Yeni qaimə yaradıldı və təsdiq edildi:', newInvoice.id)
+
+        // Change saved: update initial data
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify({
+          ...finalData,
+          invoiceNumber: newInvoice.invoice_number || '',
+          invoiceDate: invoiceDateStr
+        })))
+
         showNotification('Qaimə uğurla yaradıldı və təsdiq edildi', 'success')
       }
 
@@ -1279,10 +1401,40 @@ export default function AlisQaimeleri() {
     ...invoice,
     is_active_status: invoice.is_active ? '✓' : '',
     supplier_name: invoice.suppliers?.name || '-',
-    invoice_date: invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString('az-AZ') : '-',
+    invoice_date: invoice.invoice_date ? (() => {
+      const date = new Date(invoice.invoice_date)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    })() : '-',
+    payment_date: invoice.payment_date ? (() => {
+      const date = new Date(invoice.payment_date)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    })() : '-',
     total_amount: invoice.total_amount ? `${Number(invoice.total_amount).toFixed(2)} ₼` : '0.00 ₼',
-    created_at: invoice.created_at ? new Date(invoice.created_at).toLocaleDateString('az-AZ') : '-',
+    created_at: invoice.created_at ? (() => {
+      const date = new Date(invoice.created_at)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    })() : '-',
   }))
+
+
 
   return (
     <div>
@@ -1367,6 +1519,34 @@ export default function AlisQaimeleri() {
           onDelete: handleDelete,
           onCopy: handleCopy,
           onPrint: handlePrint,
+          onActivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              alert('Qaimə seçilməyib')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), true)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              showNotification('Qaimələr təsdiq edildi', 'success')
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+            }
+          },
+          onDeactivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              alert('Qaimə seçilməyib')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), false)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              showNotification('Qaimələr ləğv edildi', 'success')
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+            }
+          },
         }}
         contextMenuActions={{
           onSettings: () => { },
@@ -1521,8 +1701,39 @@ export default function AlisQaimeleri() {
         ]}
       />
 
+      {/* Təsdiq Dialoqu */}
+
 
       {/* Çoxlu Purchase Invoice Modalları - REMOVED (Handled by UniversalWindow) */}
     </div>
+  )
+}
+
+// Page component (The route handler)
+export default function AlisQaimeleriPage() {
+  const { openPageWindow } = useWindowStore()
+
+  useEffect(() => {
+    const { isPageOpen, focusPage } = useWindowStore.getState()
+    if (isPageOpen('qaimeler-alis')) {
+      focusPage('qaimeler-alis')
+      return
+    }
+
+    openPageWindow(
+      'qaimeler-alis',
+      'Alış Qaimələri',
+      '📋',
+      <AlisQaimeleriContent />
+    )
+  }, []) // Mount-da bir dəfə aç
+
+  // Arxa fonda Layout (Navbar və Taskbar)
+  return (
+    <Layout>
+      <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
+        {/* Boş sahə - pəncərə üstə açılacaq */}
+      </div>
+    </Layout>
   )
 }

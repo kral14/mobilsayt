@@ -144,6 +144,7 @@ export interface PurchaseInvoice {
   supplier_id: number | null
   total_amount: number | null
   invoice_date: Date | null
+  payment_date: Date | null
   notes: string | null
   is_active: boolean | null
   created_at: Date | null

@@ -1,8 +1,11 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWindowStore } from '../store/windowStore'
+import { formatDateInput } from '../utils/dateUtils'
 import type { Customer, Product, Supplier, WarehouseLocation } from '@shared/types'
 import TableSettingsModal, { type ColumnConfig as TableColumnConfig, type FunctionSettings } from './TableSettingsModal'
+import ConfirmDialog from './ConfirmDialog'
+import { purchaseInvoicesAPI } from '../services/api'
 
 const COLUMN_DRAG_STORAGE_KEY = 'invoice-modal-column-drag-enabled'
 const TABLE_COLUMNS_STORAGE_KEY = 'invoice-modal-table-columns'
@@ -84,12 +87,12 @@ interface InvoiceModalProps {
   onPrint?: (modalId: string, modalData: ModalData['data']) => void // Çap funksiyası
   isEmbedded?: boolean
   warehouses?: WarehouseLocation[]
+  activeConfirmDialog?: any // ConfirmDialogProps, but imported implicitly or we use 'any' to avoid circular ref if types are mixed. Best to import component.
 }
 
 const InvoiceModal: React.FC<InvoiceModalProps> = ({
   modal,
   customers = [],
-
   suppliers = [],
   products,
   isActive,
@@ -100,15 +103,24 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   onActivate,
   windowId,
   onPrint,
-
   isEmbedded = false,
-  warehouses = []
+  warehouses = [],
+  activeConfirmDialog
 }) => {
   const navigate = useNavigate()
   const invoiceType = modal.invoiceType || 'sale' // Default satış
   const isPurchase = invoiceType === 'purchase'
 
   const [localData, setLocalData] = useState(modal.data)
+
+  // Sync state from props when parent updates it (e.g. after save)
+  useEffect(() => {
+    setLocalData(prev => ({
+      ...prev,
+      ...modal.data
+    }))
+  }, [modal.data])
+
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
@@ -145,7 +157,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showInvoiceDatePicker, setShowInvoiceDatePicker] = useState(false)
-  const [invoiceDateInputFocused, setInvoiceDateInputFocused] = useState(false)
+
   const [notesFocused, setNotesFocused] = useState(false)
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -383,17 +395,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setDraggedColumnKey(null)
   }
 
-  // Cari tarix və saatı raw formatda qaytarır (YYYY-MM-DD HH:MM:SS)
-  const getCurrentDateTimeRaw = (): string => {
-    const now = new Date()
-    const day = String(now.getDate()).padStart(2, '0')
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const year = now.getFullYear()
-    const hours = String(now.getHours()).padStart(2, '0')
-    const minutes = String(now.getMinutes()).padStart(2, '0')
-    const seconds = String(now.getSeconds()).padStart(2, '0')
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-  }
+
 
   // Display formatını raw formata çevirir (DD.MM.YYYY HH:MM:SS -> YYYY-MM-DD HH:MM:SS)
   const convertDisplayToRaw = (displayString: string): string => {
@@ -421,18 +423,18 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       const seconds = String(now.getSeconds()).padStart(2, '0')
       return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
     }
-    
+
     // Əgər artıq display formatındadırsa (tam və ya qismən), olduğu kimi qaytar (yazmaq üçün)
     // Qismən formatlar: "12", "12.1", "12.10", "12.10.2025", "12.10.2025 10", və s.
     if (/^[\d. :]*$/.test(dateString) && !dateString.includes('-')) {
       return dateString
     }
-    
+
     // Əgər raw formatdırsa (YYYY-MM-DD HH:MM:SS), display formatına çevir
     try {
       const date = new Date(dateString)
       if (isNaN(date.getTime())) return dateString
-      
+
       const day = String(date.getDate()).padStart(2, '0')
       const month = String(date.getMonth() + 1).padStart(2, '0')
       const year = date.getFullYear()
@@ -457,7 +459,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
     // Təmizlə: yalnız rəqəmlər və nöqtələr
     const cleaned = input.replace(/[^\d.]/g, '').trim()
-    
+
     if (!cleaned) {
       // Boşdursa, cari tarix və saatı qaytar
       const day = String(currentDay).padStart(2, '0')
@@ -526,7 +528,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     const newItems = [...localData.invoiceItems, {
       product_id: null,
       product_name: '',
-      quantity: 1,
+      quantity: 0,
       unit_price: 0,
       total_price: 0,
     }]
@@ -661,13 +663,34 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   }
 
   // Modal açılanda məlumatları yenilə
+  // Modal açılanda məlumatları yenilə - Downward Sync
+  const isSyncingFromProps = React.useRef(false)
+
+  // Modal açılanda məlumatları yenilə - Downward Sync
   useEffect(() => {
-    setLocalData(modal.data)
+    // Yalnız fərqli olduqda yenilə (Loop-un qarşısını almaq üçün)
+    if (JSON.stringify(modal.data) !== JSON.stringify(localData)) {
+      isSyncingFromProps.current = true
+      setLocalData(modal.data)
+    }
 
     if (modal.data.selectedSupplier) {
       setSupplierSearchTerm('')
     }
   }, [modal.data])
+
+  // Local data dəyişdikdə parent-ə bildir - Upward Sync
+  useEffect(() => {
+    if (isSyncingFromProps.current) {
+      isSyncingFromProps.current = false
+      return
+    }
+
+    // Yalnız fərqli olduqda parent-i yenilə
+    if (JSON.stringify(localData) !== JSON.stringify(modal.data)) {
+      onUpdate(modal.id, { data: localData })
+    }
+  }, [localData, modal.data, modal.id, onUpdate])
 
   // Scope fixes: Define handleResizeStart and renderCell here or before usage
   const handleResizeStart = (e: React.MouseEvent, _columnId: string) => {
@@ -861,6 +884,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               value={item.quantity}
               onChange={(e) => handleUpdateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
               onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => e.target.select()}
               style={{
                 width: '100%',
                 padding: '0.25rem',
@@ -882,6 +906,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               value={item.unit_price}
               onChange={(e) => handleUpdateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
               onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => e.target.select()}
               style={{
                 width: '100%',
                 padding: '0.25rem',
@@ -1000,8 +1025,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   // Yadda Saxla düyməsi funksiyası - yadda saxla, amma təsdiqləmə və modal açıq qalır
   const handleSave = async () => {
     console.log('[InvoiceModal] ========== handleSave FUNKSİYASI ÇAĞIRILDI ==========')
-    console.log('[InvoiceModal] handleSave çağırıldı', { 
-      modalId: modal.id, 
+    console.log('[InvoiceModal] handleSave çağırıldı', {
+      modalId: modal.id,
       modalInvoiceId: modal.invoiceId,
       localData,
       modalObject: modal
@@ -1009,20 +1034,20 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     console.log('[InvoiceModal] onSave prop-u mövcuddur:', !!onSave)
     console.log('[InvoiceModal] onSave prop-u tipi:', typeof onSave)
     console.log('[InvoiceModal] onSave prop-u funksiyadır:', typeof onSave === 'function')
-    
+
     if (!onSave) {
       console.error('[InvoiceModal] XƏTA: onSave prop-u mövcud deyil!')
       return
     }
-    
+
     if (typeof onSave !== 'function') {
       console.error('[InvoiceModal] XƏTA: onSave prop-u funksiya deyil!', { type: typeof onSave, value: onSave })
       return
     }
-    
+
     try {
-      console.log('[InvoiceModal] onSave çağırılır...', { 
-        modalId: modal.id, 
+      console.log('[InvoiceModal] onSave çağırılır...', {
+        modalId: modal.id,
         localDataKeys: Object.keys(localData),
         invoiceItemsCount: localData.invoiceItems?.length || 0,
         invoiceItems: localData.invoiceItems,
@@ -1045,10 +1070,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   // OK düyməsi funksiyası - yadda saxla, təsdiqlə və bağla
   const handleOK = async () => {
     console.log('[InvoiceModal] ========== handleOK FUNKSİYASI ÇAĞIRILDI ==========')
-    console.log('[InvoiceModal] handleOK çağırıldı', { 
-      modalId: modal.id, 
+    console.log('[InvoiceModal] handleOK çağırıldı', {
+      modalId: modal.id,
       modalInvoiceId: modal.invoiceId,
-      localData, 
+      localData,
       hasOnSaveAndConfirm: !!onSaveAndConfirm,
       modalObject: modal
     })
@@ -1058,7 +1083,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     console.log('[InvoiceModal] onSaveAndConfirm prop-u mövcuddur:', !!onSaveAndConfirm)
     console.log('[InvoiceModal] onSaveAndConfirm prop-u tipi:', typeof onSaveAndConfirm)
     console.log('[InvoiceModal] onSaveAndConfirm prop-u funksiyadır:', typeof onSaveAndConfirm === 'function')
-    
+
     // OK düyməsi üçün validasiya - təchizatçı və məhsul seçilməlidir
     if (isPurchase) {
       // Alış qaiməsi üçün təchizatçı seçilməlidir
@@ -1073,19 +1098,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         return
       }
     }
-    
+
     // Ən azı bir məhsul seçilməlidir
     const validItems = localData.invoiceItems.filter(item => item.product_id !== null)
     if (validItems.length === 0) {
       alert('Məhsul seçilməyib')
       return
     }
-    
+
     try {
       if (onSaveAndConfirm) {
         // OK düyməsi - yadda saxla və təsdiqlə
-        console.log('[InvoiceModal] onSaveAndConfirm çağırılır...', { 
-          modalId: modal.id, 
+        console.log('[InvoiceModal] onSaveAndConfirm çağırılır...', {
+          modalId: modal.id,
           localDataKeys: Object.keys(localData),
           invoiceItemsCount: localData.invoiceItems?.length || 0,
           invoiceItems: localData.invoiceItems,
@@ -1119,33 +1144,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   }
 
   // Prop validation - onSave və onSaveAndConfirm prop-larının mövcudluğunu yoxla
-  useEffect(() => {
-    console.log('[InvoiceModal] ========== PROP VALIDATION ==========')
-    console.log('[InvoiceModal] onSave prop-u:', {
-      exists: !!onSave,
-      type: typeof onSave,
-      isFunction: typeof onSave === 'function',
-      value: onSave
-    })
-    console.log('[InvoiceModal] onSaveAndConfirm prop-u:', {
-      exists: !!onSaveAndConfirm,
-      type: typeof onSaveAndConfirm,
-      isFunction: typeof onSaveAndConfirm === 'function',
-      value: onSaveAndConfirm
-    })
-    console.log('[InvoiceModal] handleSave funksiyası:', {
-      exists: typeof handleSave !== 'undefined',
-      type: typeof handleSave,
-      isFunction: typeof handleSave === 'function'
-    })
-    console.log('[InvoiceModal] handleOK funksiyası:', {
-      exists: typeof handleOK !== 'undefined',
-      type: typeof handleOK,
-      isFunction: typeof handleOK === 'function'
-    })
-    console.log('[InvoiceModal] Modal ID:', modal.id)
-    console.log('[InvoiceModal] ======================================')
-  }, [onSave, onSaveAndConfirm, modal.id])
+
 
   // OK düyməsi üçün disabled vəziyyəti - təchizatçı və məhsul seçilməlidir
   const isOKDisabled = useMemo(() => {
@@ -1160,28 +1159,23 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         return true
       }
     }
-    
+
     // Ən azı bir məhsul seçilməlidir
     const validItems = localData.invoiceItems.filter(item => item.product_id !== null)
     if (validItems.length === 0) {
       return true
     }
-    
+
     return false
   }, [localData, isPurchase])
 
   // Modal içində qısa yollar
   useEffect(() => {
-    console.log('[InvoiceModal] useEffect - isVisible:', isVisible, 'isMinimized:', isMinimized, 'isActive:', isActive)
     if (!isVisible || isMinimized || !isActive) {
-      console.log('[InvoiceModal] useEffect - Skipping keyboard handler setup')
       return
     }
 
-    console.log('[InvoiceModal] Setting up keyboard handler')
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      console.log('[InvoiceModal] Key pressed:', e.key, 'keyCode:', e.keyCode, 'code:', e.code, 'target:', e.target)
 
       // ESC: Modalı bağla (hər yerdə işləsin, ən əvvəl yoxla)
       // ESC key-in müxtəlif formatlarını yoxla
@@ -1303,362 +1297,323 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          padding: '10px'
+          padding: '5px',
+          position: 'relative'
         }}
       >
+        {activeConfirmDialog && (
+          <ConfirmDialog {...activeConfirmDialog} />
+        )}
         {/* Header Form - Compact Layout */}
         <div style={{
-          display: 'flex',
-          gap: '20px',
-          padding: '10px 0',
-          marginBottom: '5px'
+          display: 'grid',
+          gridTemplateColumns: 'minmax(250px, 1.5fr) minmax(180px, 1fr) minmax(220px, 1.2fr)',
+          columnGap: '15px',
+          rowGap: '8px',
+          alignItems: 'start',
+          padding: '0 2px'
         }}>
-          {/* Sol sütun: Təchizatçı və Anbar */}
-          <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {/* Təchizatçı Row */}
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <label style={{ width: '90px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
-                Təchizatçı:
-              </label>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                  <input
-                    type="text"
-                    data-supplier-input="true"
-                    placeholder="Təchizatçı adını yazın..."
-                    value={localData.selectedSupplier ? localData.selectedSupplier.name : supplierSearchTerm}
-                    onChange={(e) => {
-                      console.log('[SUPPLIER SEARCH] onChange:', e.target.value)
-                      setSupplierSearchTerm(e.target.value)
-                      setShowSupplierDropdown(true)
-                      console.log('[SUPPLIER SEARCH] Dropdown açıldı: true')
-                      // Əgər seçilmiş təchizatçı varsa və yazı dəyişirsə, seçimi təmizlə
-                      if (localData.selectedSupplier) {
-                        setLocalData(prev => ({
-                          ...prev,
-                          selectedSupplierId: null,
-                          selectedSupplier: null
-                        }))
-                      }
-                    }}
-                    onFocus={() => {
-                      console.log('[SUPPLIER SEARCH] onFocus')
-                      // Əgər seçilmiş təchizatçı varsa, onun adını axtarış termində göstər
-                      if (localData.selectedSupplier) {
-                        setSupplierSearchTerm(localData.selectedSupplier.name)
-                        setShowSupplierDropdown(true) // Seçilmiş təchizatçı varsa dropdown aç
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '4px 8px',
-                      border: '1px solid #ced4da',
-                      borderRadius: '4px',
-                      fontSize: '0.9rem',
-                      height: '30px'
-                    }}
-                  />
-                  {localData.selectedSupplier && (
-                    <button
-                      onClick={() => {
-                        setLocalData(prev => ({
-                          ...prev,
-                          selectedSupplierId: null,
-                          selectedSupplier: null
-                        }))
-                        setSupplierSearchTerm('')
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '5px',
-                        background: 'none',
-                        border: 'none',
-                        color: '#dc3545',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
-                        padding: '0'
-                      }}
-                      title="Təmizlə"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-
-
-
-                {/* Təchizatçı dropdown */}
-                {showSupplierDropdown && filteredSuppliers.length > 0 && (
-                  <div
-                    data-supplier-dropdown="true"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: 'white',
-                      border: '2px solid #4a90e2',
-                      borderRadius: '4px',
-                      marginTop: '2px',
-                      maxHeight: '300px',
-                      overflowY: 'auto',
-                      zIndex: 1000,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                    }}
-                  >
-                    {filteredSuppliers.map(supplier => (
-                      <div
-                        key={supplier.id}
-                        style={{
-                          padding: '8px 12px',
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #eee',
-                          fontSize: '0.9rem'
-                        }}
-                        onClick={() => {
-                          setLocalData(prev => ({
-                            ...prev,
-                            selectedSupplierId: supplier.id,
-                            selectedSupplier: supplier
-                          }))
-                          setSupplierSearchTerm(supplier.name)
-                          setShowSupplierDropdown(false)
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4a90e2', e.currentTarget.style.color = 'white')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white', e.currentTarget.style.color = '#333')}
-                      >
-                        <div style={{ fontWeight: '500' }}>{supplier.name} (x{String(supplier.id).padStart(8, '0')})</div>
-                        {supplier.phone && <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>{supplier.phone}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Anbar Row */}
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <label style={{ width: '90px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
-                Anbar:
-              </label>
-              <select
-                value={selectedWarehouseId || ''}
-                onChange={(e) => setSelectedWarehouseId(Number(e.target.value) || null)}
-                style={{
-                  flex: 1,
-                  padding: '4px 8px',
-                  border: '1px solid #ced4da',
-                  borderRadius: '4px',
-                  fontSize: '0.9rem',
-                  height: '30px',
-                  background: 'white'
-                }}
-              >
-                <option value="">Anbar seçin</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Sağ sütun: Qaimə № və Tarix */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {/* Qaimə № Row */}
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
-                Qaimə №:
-              </label>
-              <input
-                type="text"
-                placeholder="Avtomatik"
-                value={localData.invoiceNumber || ''}
-                readOnly
-                style={{
-                  flex: 1,
-                  padding: '4px 8px',
-                  border: '1px solid #ced4da',
-                  borderRadius: '4px',
-                  fontSize: '0.9rem',
-                  height: '30px',
-                  background: '#e9ecef',
-                  color: '#495057'
-                }}
-              />
-            </div>
-
-            {/* Tarix Row */}
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057' }}>
-                Tarix:
-              </label>
-              <div style={{ flex: 1, position: 'relative' }}>
+          {/* 1. Təchizatçı (Row 1, Col 1) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0 }}>
+              Təchizatçı:
+            </label>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                 <input
                   type="text"
-                  value={formatDateToDisplay(localData.invoiceDate)}
+                  data-supplier-input="true"
+                  placeholder="Seçin..."
+                  value={localData.selectedSupplier ? localData.selectedSupplier.name : supplierSearchTerm}
                   onChange={(e) => {
-                    // Yalnız rəqəmlər, nöqtələr, boşluq və iki nöqtəyə icazə ver
-                    const value = e.target.value.replace(/[^\d. :]/g, '')
-                    // Birbaşa yazılan dəyəri saxla (display formatında)
-                    setLocalData({ ...localData, invoiceDate: value })
-                  }}
-                  onFocus={(e) => {
-                    setInvoiceDateInputFocused(true)
-                    setShowInvoiceDatePicker(false)
-                    // Əgər localData.invoiceDate boşdursa, cari tarixi təyin et
-                    if (!localData.invoiceDate) {
-                      const displayValue = formatDateToDisplay(null)
-                      const rawValue = convertDisplayToRaw(displayValue)
-                      setLocalData({ ...localData, invoiceDate: rawValue })
-                    }
-                    // Bütün mətn seç (yalnız birinci focus-da, cursor yoxdursa)
-                    const input = e.target as HTMLInputElement
-                    setTimeout(() => {
-                      // Əgər cursor yoxdursa (yəni yeni focus), bütün mətn seç
-                      if (input.selectionStart === input.selectionEnd && input.selectionStart === 0) {
-                        input.select()
-                      }
-                    }, 0)
-                  }}
-                  onMouseDown={(e) => {
-                    // İkinci kliklə seçimi ləğv et (cursor qoymağa icazə ver)
-                    const input = e.currentTarget
-                    if (input.selectionStart === 0 && input.selectionEnd === input.value.length) {
-                      // Əgər bütün mətn seçilmişdirsə, seçimi ləğv et və cursor qoy
-                      e.preventDefault()
-                      const rect = input.getBoundingClientRect()
-                      const clickPosition = e.clientX - rect.left
-                      const textWidth = input.scrollWidth
-                      const charWidth = textWidth / input.value.length
-                      const charIndex = Math.max(0, Math.min(input.value.length, Math.floor(clickPosition / charWidth)))
-                      setTimeout(() => {
-                        input.setSelectionRange(charIndex, charIndex)
-                        input.focus()
-                      }, 0)
+                    setSupplierSearchTerm(e.target.value)
+                    setShowSupplierDropdown(true)
+                    if (localData.selectedSupplier) {
+                      setLocalData(prev => ({ ...prev, selectedSupplierId: null, selectedSupplier: null }))
                     }
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      const displayValue = e.currentTarget.value
-                      const parsed = parseSmartDate(displayValue)
-                      // Əgər parse uğurlu oldusa, raw formata çevir
-                      const rawValue = convertDisplayToRaw(parsed)
-                      setLocalData({ ...localData, invoiceDate: rawValue || parsed })
-                      setInvoiceDateInputFocused(false)
+                  onFocus={() => {
+                    if (localData.selectedSupplier) {
+                      setSupplierSearchTerm(localData.selectedSupplier.name)
+                      setShowSupplierDropdown(true)
                     }
-                    // Rəqəm yazıldıqda seçilmiş mətn dəyişir (default davranış)
-                  }}
-                  onBlur={(e) => {
-                    // Focus itirdikdə parse et və raw formata çevir
-                    const displayValue = e.target.value
-                    const parsed = parseSmartDate(displayValue)
-                    // Əgər parse uğurlu oldusa, raw formata çevir
-                    const rawValue = convertDisplayToRaw(parsed)
-                    setLocalData({ ...localData, invoiceDate: rawValue || parsed })
-                    setInvoiceDateInputFocused(false)
-                    // Date picker bağlanması üçün kiçik gecikmə
-                    setTimeout(() => setShowInvoiceDatePicker(false), 200)
                   }}
                   style={{
                     width: '100%',
-                    padding: '4px 8px',
-                    paddingRight: '30px',
-                    border: '1px solid #ced4da',
+                    padding: '4px 24px 4px 8px', // Right padding for clear button
+                    border: '1px solid #e0e0e0',
+                    outline: 'none',
+                    boxShadow: 'none',
                     borderRadius: '4px',
                     fontSize: '0.9rem',
-                    height: '30px',
-                    background: 'white',
-                    color: '#495057'
+                    height: '28px'
                   }}
-                  placeholder={localData.invoiceDate ? '' : 'DD.MM.YYYY HH:MM:SS'}
                 />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setShowInvoiceDatePicker(!showInvoiceDatePicker)
-                    setInvoiceDateInputFocused(false)
-                  }}
-                  style={{
-                    position: 'absolute',
-                    right: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#6c757d',
-                    padding: '2px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  title="Kalendar"
-                >
-                  📅
-                </button>
-                {showInvoiceDatePicker && (
-                  <div
+                {localData.selectedSupplier && (
+                  <button
+                    onClick={() => {
+                      setLocalData(prev => ({ ...prev, selectedSupplierId: null, selectedSupplier: null }))
+                      setSupplierSearchTerm('')
+                    }}
                     style={{
                       position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: '0.25rem',
-                      background: 'white',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      padding: '0.5rem',
-                      zIndex: 1000,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      right: '4px',
+                      background: 'none',
+                      border: 'none',
+                      color: '#dc3545',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      padding: '0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '100%'
                     }}
-                    onMouseDown={(e) => e.preventDefault()}
+                    title="Təmizlə"
                   >
-                    <input
-                      type="date"
-                      value={localData.invoiceDate ? localData.invoiceDate.split(' ')[0] : ''}
-                      onChange={(e) => {
-                        const dateValue = e.target.value
-                        if (dateValue) {
-                          const timePart = localData.invoiceDate?.split(' ')[1] || '00:00:00'
-                          setLocalData({ ...localData, invoiceDate: `${dateValue} ${timePart}` })
-                        } else {
-                          const now = new Date()
-                          const day = String(now.getDate()).padStart(2, '0')
-                          const month = String(now.getMonth() + 1).padStart(2, '0')
-                          const year = now.getFullYear()
-                          const hours = String(now.getHours()).padStart(2, '0')
-                          const minutes = String(now.getMinutes()).padStart(2, '0')
-                          const seconds = String(now.getSeconds()).padStart(2, '0')
-                          setLocalData({ ...localData, invoiceDate: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}` })
-                        }
-                        setShowInvoiceDatePicker(false)
-                      }}
-                      style={{
-                        padding: '0.25rem',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem'
-                      }}
-                      autoFocus
-                    />
-                  </div>
+                    ×
+                  </button>
                 )}
               </div>
+
+              {/* Təchizatçı dropdown */}
+              {showSupplierDropdown && filteredSuppliers.length > 0 && (
+                <div
+                  data-supplier-dropdown="true"
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: 'white',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    marginTop: '2px',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    zIndex: 1000,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  }}
+                >
+                  {filteredSuppliers.map(supplier => (
+                    <div
+                      key={supplier.id}
+                      style={{
+                        padding: '6px 10px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #f0f0f0',
+                        fontSize: '0.9rem'
+                      }}
+                      onClick={() => {
+                        setLocalData(prev => ({ ...prev, selectedSupplierId: supplier.id, selectedSupplier: supplier }))
+                        setSupplierSearchTerm(supplier.name)
+                        setShowSupplierDropdown(false)
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9fa')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
+                    >
+                      <div style={{ fontWeight: '500', color: '#333' }}>{supplier.name}</div>
+                      {supplier.phone && <div style={{ fontSize: '0.8rem', color: '#666' }}>{supplier.phone}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* 2. Qaimə № (Row 1, Col 2) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <label style={{ width: '70px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0 }}>
+              Qaimə №:
+            </label>
+            <input
+              type="text"
+              placeholder="Avtomatik"
+              value={localData.invoiceNumber || ''}
+              readOnly
+              style={{
+                flex: 1,
+                padding: '4px 8px',
+                border: '1px solid #e0e0e0',
+                outline: 'none',
+                boxShadow: 'none',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                height: '28px',
+                background: '#f8f9fa',
+                color: '#6c757d',
+                minWidth: 0
+              }}
+            />
+          </div>
+
+          {/* 3. Tarix (Row 1, Col 3) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <label style={{ width: '50px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0 }}>
+              Tarix:
+            </label>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <input
+                type="text"
+                value={formatDateToDisplay(localData.invoiceDate)}
+                onChange={(e) => setLocalData({ ...localData, invoiceDate: e.target.value.replace(/[^\d. :]/g, '') })}
+                onFocus={(e) => {
+                  setShowInvoiceDatePicker(false)
+                  if (!localData.invoiceDate) {
+                    const now = formatDateToDisplay(null)
+                    setLocalData({ ...localData, invoiceDate: convertDisplayToRaw(now) })
+                  }
+                  e.target.select()
+                }}
+                onBlur={(e) => {
+                  const parsed = parseSmartDate(e.target.value)
+                  setLocalData({ ...localData, invoiceDate: convertDisplayToRaw(parsed) || parsed })
+                  setTimeout(() => setShowInvoiceDatePicker(false), 200)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const parsed = parseSmartDate(e.currentTarget.value)
+                    setLocalData({ ...localData, invoiceDate: convertDisplayToRaw(parsed) || parsed })
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '4px 28px 4px 8px',
+                  border: '1px solid #e0e0e0',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  height: '28px',
+                  color: '#495057'
+                }}
+                placeholder="DD.MM.YYYY HH:MM:SS"
+              />
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowInvoiceDatePicker(!showInvoiceDatePicker) }}
+                style={{
+                  position: 'absolute',
+                  right: '4px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: '#6c757d',
+                  padding: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  width: '24px'
+                }}
+                title="Kalendar"
+              >
+                📅
+              </button>
+              {showInvoiceDatePicker && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '2px',
+                  background: 'white',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  padding: '5px',
+                  zIndex: 1000,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                }} onMouseDown={e => e.preventDefault()}>
+                  <input
+                    type="date"
+                    value={localData.invoiceDate ? localData.invoiceDate.split(' ')[0] : ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const time = localData.invoiceDate?.split(' ')[1] || '00:00:00';
+                        setLocalData({ ...localData, invoiceDate: `${e.target.value} ${time}` });
+                      }
+                      setShowInvoiceDatePicker(false)
+                    }}
+                    style={{ border: '1px solid #ddd', borderRadius: '3px', padding: '2px' }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 4. Anbar (Row 2, Col 1) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <label style={{ width: '80px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0 }}>
+              Anbar:
+            </label>
+            <select
+              value={selectedWarehouseId || ''}
+              onChange={(e) => setSelectedWarehouseId(Number(e.target.value) || null)}
+              style={{
+                flex: 1,
+                padding: '4px 8px',
+                border: '1px solid #e0e0e0',
+                outline: 'none',
+                boxShadow: 'none',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                height: '28px',
+                background: 'white',
+                minWidth: 0
+              }}
+            >
+              <option value="">Seçin...</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 5. Son Ödəniş Tarixi (Row 2, Col 2) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <label style={{ width: '70px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              Son Öd.:
+            </label>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <input
+                type="text"
+                value={formatDateToDisplay(localData.paymentDate)}
+                onChange={(e) => setLocalData({ ...localData, paymentDate: e.target.value.replace(/[^\d. :]/g, '') })}
+                onBlur={(e) => {
+                  const parsed = parseSmartDate(e.target.value)
+                  setLocalData({ ...localData, paymentDate: convertDisplayToRaw(parsed) || parsed })
+                }}
+                style={{
+                  width: '100%',
+                  padding: '4px 8px',
+                  border: '1px solid #e0e0e0',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  height: '28px',
+                  background: 'white',
+                  color: '#495057'
+                }}
+                placeholder="DD.MM.YYYY"
+              />
+            </div>
+          </div>
+
+          {/* Empty cell for Row 2, Col 3 - or could be used for notes if desired later */}
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #dee2e6' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1px', marginBottom: '0', borderBottom: '1px solid #e0e0e0' }}>
           <button
             onClick={() => setActiveTab('items')}
             style={{
               padding: '0.75rem 1.5rem',
               background: activeTab === 'items' ? '#fff' : '#f8f9fa',
-              border: '1px solid #dee2e6',
+              border: '1px solid #e0e0e0',
               borderBottom: activeTab === 'items' ? '1px solid transparent' : '1px solid #dee2e6',
               marginBottom: '-1px',
               borderRadius: '6px 6px 0 0',
@@ -1690,7 +1645,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         </div>
 
         {activeTab === 'items' ? (
-          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0.5rem', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
 
 
             {/* Main Table */}
@@ -1708,7 +1663,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                */}
               {/* Toolbar */}
               <div style={{ background: '#f8f9fa', padding: '0.5rem', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>Məhsullar ({localData.invoiceItems.length})</div>
                 <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                   {/* Add icon */}
                   <button
@@ -2016,18 +1970,127 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       <path d="M12.5 8C12.5 7.5 12.7 7 12.9 6.6L13.8 5.1C14 4.7 13.9 4.2 13.5 3.9L12.1 2.9C11.7 2.6 11.2 2.6 10.8 2.9L9.8 3.5C9.4 3.3 9 3.1 8.5 3.1H7.5C7 3.1 6.6 3.3 6.2 3.5L5.2 2.9C4.8 2.6 4.3 2.6 3.9 2.9L2.5 3.9C2.1 4.2 2 4.7 2.2 5.1L3.1 6.6C3.3 7 3.1 7.5 3.1 8C3.1 8.5 3.3 9 3.1 9.4L2.2 10.9C2 11.3 2.1 11.8 2.5 12.1L3.9 13.1C4.3 13.4 4.8 13.4 5.2 13.1L6.2 12.5C6.6 12.7 7 12.9 7.5 12.9H8.5C9 12.9 9.4 12.7 9.8 12.5L10.8 13.1C11.2 13.4 11.7 13.4 12.1 13.1L13.5 12.1C13.9 11.8 14 11.3 13.8 10.9L12.9 9.4C12.7 9 12.5 8.5 12.5 8Z" stroke="currentColor" strokeWidth="1.5" />
                     </svg>
                   </button>
+
+                  {/* Inactive document icon - bright when not active, dim when active */}
+                  {modal.invoiceId && (
+                    <button
+                      onClick={async () => {
+                        if (modal.invoiceId && modal.isActive) {
+                          try {
+                            await purchaseInvoicesAPI.updateStatus(modal.invoiceId.toString(), false)
+                            onUpdate(modal.id, { isActive: false })
+                            alert('Qaimə ləğv edildi')
+                          } catch (err: any) {
+                            alert(err.response?.data?.message || 'Xəta baş verdi')
+                          }
+                        }
+                      }}
+                      disabled={!modal.isActive}
+                      onMouseEnter={(e) => {
+                        if (modal.isActive) {
+                          e.currentTarget.style.background = '#f8d7da'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                      }}
+                      style={{
+                        padding: '0.5rem',
+                        background: 'transparent',
+                        color: '#6c757d',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: modal.isActive ? 'pointer' : 'default',
+                        fontSize: '1.2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '32px',
+                        height: '32px',
+                        transition: 'background-color 0.2s ease',
+                        opacity: modal.isActive ? 0.5 : 1
+                      }}
+                      title={modal.isActive ? "Təsdiqlənmiş (ləğv etmək üçün klik edin)" : "Təsdiqlənməmiş"}
+                    >
+                      📄
+                    </button>
+                  )}
+
+                  {/* Active document icon - bright when active, dim when not active */}
+                  {modal.invoiceId && (
+                    <button
+                      onClick={async () => {
+                        if (modal.invoiceId && !modal.isActive) {
+                          try {
+                            await purchaseInvoicesAPI.updateStatus(modal.invoiceId.toString(), true)
+                            onUpdate(modal.id, { isActive: true })
+                            alert('Qaimə təsdiq edildi')
+                          } catch (err: any) {
+                            alert(err.response?.data?.message || 'Xəta baş verdi')
+                          }
+                        }
+                      }}
+                      disabled={modal.isActive}
+                      onMouseEnter={(e) => {
+                        if (!modal.isActive) {
+                          e.currentTarget.style.background = '#d4edda'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                      }}
+                      style={{
+                        padding: '0.5rem',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: !modal.isActive ? 'pointer' : 'default',
+                        fontSize: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '32px',
+                        height: '32px',
+                        transition: 'background-color 0.2s ease',
+                        opacity: modal.isActive ? 1 : 0.5,
+                        position: 'relative'
+                      }}
+                      title={modal.isActive ? "Təsdiqlənmiş" : "Təsdiq et (klik edin)"}
+                    >
+                      <span style={{ position: 'relative', display: 'inline-block', fontSize: '1.2rem' }}>
+                        📄
+                        <span style={{
+                          position: 'absolute',
+                          top: '-2px',
+                          right: '-2px',
+                          color: '#28a745',
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold',
+                          backgroundColor: 'white',
+                          borderRadius: '50%',
+                          width: '14px',
+                          height: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: '1'
+                        }}>✓</span>
+                      </span>
+                    </button>
+                  )}
                 </div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>Məhsullar ({localData.invoiceItems.length})</div>
               </div>
               <div style={{ flex: 1, overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f1f3f5' }}>
                     <tr>
-                      <th style={{ padding: '8px', borderBottom: '2px solid #dee2e6', width: '40px', textAlign: 'center' }}>№</th>
+                      <th style={{ padding: '8px', borderBottom: '1px solid #e0e0e0', width: '40px', textAlign: 'center' }}>№</th>
                       {tableColumns.filter(c => c.visible).map((column, _index) => (
                         <th key={column.id}
                           style={{
                             padding: '8px',
-                            borderBottom: '2px solid #dee2e6',
+                            borderBottom: '1px solid #e0e0e0',
                             textAlign: column.align as any || 'left',
                             width: column.width,
                             cursor: enableColumnDrag ? 'move' : 'default',
@@ -2055,7 +2118,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           />
                         </th>
                       ))}
-                      <th style={{ padding: '8px', borderBottom: '2px solid #dee2e6', width: '50px' }}></th>
+                      <th style={{ padding: '8px', borderBottom: '1px solid #e0e0e0', width: '50px' }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2509,7 +2572,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     setLocalData({ ...localData, invoiceDate: value })
                   }}
                   onFocus={(e) => {
-                    setInvoiceDateInputFocused(true)
+
                     setShowInvoiceDatePicker(false)
                     // Əgər localData.invoiceDate boşdursa, cari tarixi təyin et
                     if (!localData.invoiceDate) {
@@ -2551,7 +2614,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       // Əgər parse uğurlu oldusa, raw formata çevir
                       const rawValue = convertDisplayToRaw(parsed)
                       setLocalData({ ...localData, invoiceDate: rawValue || parsed })
-                      setInvoiceDateInputFocused(false)
+
                     }
                     // Rəqəm yazıldıqda seçilmiş mətn dəyişir (default davranış)
                   }}
@@ -2562,7 +2625,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     // Əgər parse uğurlu oldusa, raw formata çevir
                     const rawValue = convertDisplayToRaw(parsed)
                     setLocalData({ ...localData, invoiceDate: rawValue || parsed })
-                    setInvoiceDateInputFocused(false)
+
                     // Date picker bağlanması üçün kiçik gecikmə
                     setTimeout(() => setShowInvoiceDatePicker(false), 200)
                   }}
@@ -2582,7 +2645,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     e.preventDefault()
                     e.stopPropagation()
                     setShowInvoiceDatePicker(!showInvoiceDatePicker)
-                    setInvoiceDateInputFocused(false)
+
                   }}
                   style={{
                     position: 'absolute',
@@ -3755,6 +3818,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
             showFunctionsTab={true}
             customFunctionContent={functionTabContent}
           />
+        )}
+
+        {/* Təsdiq Dialoqu - Qaimə daxilində render olunur */}
+        {activeConfirmDialog && (
+          <ConfirmDialog {...activeConfirmDialog} />
         )}
       </div>
     </div>

@@ -167,6 +167,8 @@ export const purchaseInvoicesAPI = {
       total_price: number
     }[]
     notes?: string
+    invoice_date?: string
+    payment_date?: string
   }): Promise<PurchaseInvoice> => {
     console.log('[API] purchaseInvoicesAPI.create çağırıldı')
     console.log('[API] Request URL:', '/purchase-invoices')
@@ -185,7 +187,7 @@ export const purchaseInvoicesAPI = {
     }
   },
 
-  update: async (id: string, data: { supplier_id?: number; items?: any[]; notes?: string; is_active?: boolean }): Promise<PurchaseInvoice> => {
+  update: async (id: string, data: { supplier_id?: number; items?: any[]; notes?: string; is_active?: boolean; invoice_date?: string; payment_date?: string }): Promise<PurchaseInvoice> => {
     console.log('[API] purchaseInvoicesAPI.update çağırıldı')
     console.log('[API] Request URL:', `/purchase-invoices/${id}`)
     console.log('[API] Request method: PATCH')

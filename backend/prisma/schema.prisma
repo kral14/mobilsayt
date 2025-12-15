@@ -2,27 +2,25 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Schema updated to include production_date, expiry_date, payment_date, and is_active fields for both sale and purchase invoices - trigger db push - v4 - restart backend
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model customers {
-  id            Int             @id @default(autoincrement())
-  code          String?         @db.VarChar(50)
-  name          String          @db.VarChar(255)
-  phone         String?         @db.VarChar(50)
-  email         String?         @db.VarChar(255)
+  id            Int               @id @default(autoincrement())
+  name          String            @db.VarChar(255)
+  phone         String?           @db.VarChar(50)
+  email         String?           @db.VarChar(255)
   address       String?
-  created_at    DateTime?       @default(now()) @db.Timestamp(6)
-  updated_at    DateTime?       @default(now()) @db.Timestamp(6)
-  balance       Decimal?        @default(0) @db.Decimal(10, 2)
+  created_at    DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?         @default(now()) @db.Timestamp(6)
+  balance       Decimal?          @default(0) @db.Decimal(10, 2)
   folder_id     Int?
-  is_active     Boolean?        @default(true)
+  code          String?           @db.VarChar(50)
+  is_active     Boolean?          @default(true)
+  folder        customer_folders? @relation(fields: [folder_id], references: [id], onUpdate: NoAction)
   sale_invoices sale_invoices[]
-  folder        customer_folders? @relation(fields: [folder_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
 }
 
 model password_reset_tokens {
@@ -35,14 +33,14 @@ model password_reset_tokens {
 }
 
 model categories {
-  id          Int        @id @default(autoincrement())
-  name        String     @db.VarChar(255)
-  parent_id   Int?
-  created_at  DateTime?  @default(now()) @db.Timestamp(6)
-  updated_at  DateTime?  @default(now()) @db.Timestamp(6)
-  parent      categories? @relation("CategoryTree", fields: [parent_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  children    categories[] @relation("CategoryTree")
-  products    products[]
+  id         Int          @id @default(autoincrement())
+  name       String       @db.VarChar(255)
+  parent_id  Int?
+  created_at DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at DateTime?    @default(now()) @db.Timestamp(6)
+  parent     categories?  @relation("CategoryTree", fields: [parent_id], references: [id], onUpdate: NoAction)
+  children   categories[] @relation("CategoryTree")
+  products   products[]
 }
 
 model products {
@@ -56,9 +54,6 @@ model products {
   created_at             DateTime?                @default(now()) @db.Timestamp(6)
   updated_at             DateTime?                @default(now()) @db.Timestamp(6)
   code                   String?                  @db.VarChar(20)
-  purchase_invoice_items purchase_invoice_items[]
-  sale_invoice_items     sale_invoice_items[]
-  warehouse              warehouse[]
   article                String?                  @db.VarChar(100)
   category_id            Int?
   type                   String?                  @db.VarChar(100)
@@ -70,13 +65,16 @@ model products {
   country                String?                  @db.VarChar(100)
   manufacturer           String?                  @db.VarChar(255)
   warranty_period        Int?
-  production_date        DateTime?                @db.Timestamp(6)
-  expiry_date            DateTime?                @db.Timestamp(6)
   min_stock              Decimal?                 @default(0) @db.Decimal(10, 2)
   max_stock              Decimal?                 @db.Decimal(10, 2)
   tax_rate               Decimal?                 @default(0) @db.Decimal(5, 2)
   is_active              Boolean?                 @default(true)
-  category               categories?              @relation(fields: [category_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  production_date        DateTime?                @db.Timestamp(6)
+  expiry_date            DateTime?                @db.Timestamp(6)
+  category               categories?              @relation(fields: [category_id], references: [id], onUpdate: NoAction)
+  purchase_invoice_items purchase_invoice_items[]
+  sale_invoice_items     sale_invoice_items[]
+  warehouse              warehouse[]
 }
 
 model purchase_invoice_items {
@@ -96,9 +94,10 @@ model purchase_invoices {
   supplier_id            Int?
   total_amount           Decimal?                 @default(0) @db.Decimal(10, 2)
   invoice_date           DateTime?                @default(now()) @db.Timestamp(6)
+  payment_date           DateTime?                @db.Timestamp(6)
   notes                  String?
-  is_active              Boolean?                 @default(true) // Active status for purchase invoices
   created_at             DateTime?                @default(now()) @db.Timestamp(6)
+  is_active              Boolean?                 @default(true)
   purchase_invoice_items purchase_invoice_items[]
   suppliers              suppliers?               @relation(fields: [supplier_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -120,10 +119,10 @@ model sale_invoices {
   customer_id        Int?
   total_amount       Decimal?             @default(0) @db.Decimal(10, 2)
   invoice_date       DateTime?            @default(now()) @db.Timestamp(6)
-  payment_date       DateTime?            @db.Timestamp(6)
   notes              String?
-  is_active          Boolean?             @default(true) // Active status for invoices
   created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  payment_date       DateTime?            @db.Timestamp(6)
+  is_active          Boolean?             @default(true)
   sale_invoice_items sale_invoice_items[]
   customers          customers?           @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -146,6 +145,11 @@ model users {
   password              String                  @db.VarChar(255)
   created_at            DateTime?               @default(now()) @db.Timestamp(6)
   updated_at            DateTime?               @default(now()) @db.Timestamp(6)
+  full_name             String?                 @db.VarChar(255)
+  role                  String?                 @default("USER") @db.VarChar(50)
+  is_admin              Boolean?                @default(false)
+  is_active             Boolean?                @default(true)
+  activity_logs         activity_logs[]
   password_reset_tokens password_reset_tokens[]
 }
 
@@ -158,12 +162,34 @@ model warehouse {
 }
 
 model customer_folders {
-  id          Int                @id @default(autoincrement())
-  name        String             @db.VarChar(255)
-  parent_id   Int?
-  created_at  DateTime?          @default(now()) @db.Timestamp(6)
-  updated_at  DateTime?          @default(now()) @db.Timestamp(6)
-  parent      customer_folders?  @relation("CustomerFolderTree", fields: [parent_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  children    customer_folders[] @relation("CustomerFolderTree")
-  customers   customers[]
+  id         Int                @id @default(autoincrement())
+  name       String             @db.VarChar(255)
+  parent_id  Int?
+  created_at DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at DateTime?          @default(now()) @db.Timestamp(6)
+  parent     customer_folders?  @relation("CustomerFolderTree", fields: [parent_id], references: [id], onUpdate: NoAction)
+  children   customer_folders[] @relation("CustomerFolderTree")
+  customers  customers[]
+}
+
+model activity_logs {
+  id         Int       @id @default(autoincrement())
+  log_id     String    @unique @db.VarChar(255)
+  user_id    Int?
+  timestamp  DateTime  @db.Timestamp(6)
+  level      String    @db.VarChar(20)
+  category   String    @db.VarChar(50)
+  action     String
+  details    String?
+  metadata   Json?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  user       users?    @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([category], map: "idx_activity_logs_category")
+  @@index([timestamp], map: "idx_activity_logs_timestamp")
+  @@index([user_id], map: "idx_activity_logs_user_id")
+  @@index([category], map: "idx_logs_category")
+  @@index([level], map: "idx_logs_level")
+  @@index([log_id], map: "idx_logs_log_id")
+  @@index([user_id, timestamp(sort: Desc)], map: "idx_logs_user_timestamp")
 }

@@ -35,6 +35,8 @@ export interface DataTableProps<T = any> {
     onSearch?: () => void
     onFilter?: () => void
     onPrint?: () => void
+    onActivate?: (selectedIds: (number | string)[]) => void
+    onDeactivate?: (selectedIds: (number | string)[]) => void
     customActions?: React.ReactNode[]
   }
   // Əlavə toolbar elementləri (sol tərəf)
@@ -95,11 +97,8 @@ export default function DataTable<T = any>({
   onActiveSearchColumnChange,
   onColumnHeaderClick
 }: DataTableProps<T>) {
-  // Debug helper - yalnız development mode-da log yazır
   const debugLog = (...args: any[]) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(...args)
-    }
+    // Logging disabled
   }
   // localStorage-dan columns yüklə
   const loadColumnsFromStorage = useCallback((): ColumnConfig[] => {

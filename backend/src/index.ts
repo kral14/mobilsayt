@@ -13,6 +13,8 @@ import supplierRoutes from './routes/supplierRoutes'
 import purchaseInvoiceRoutes from './routes/purchaseInvoiceRoutes'
 import warehouseRoutes from './routes/warehouseRoutes'
 import testRoutes from './routes/testRoutes'
+import logsRoutes from './routes/logsRoutes'
+import adminRoutes from './routes/adminRoutes'
 
 dotenv.config()
 
@@ -20,7 +22,7 @@ dotenv.config()
 if (process.env.NODE_ENV === 'production') {
   try {
     console.log('🔄 [PRISMA] Database schema sinxronizasiya edilir...')
-    execSync('npx prisma db push --accept-data-loss', { 
+    execSync('npx prisma db push --accept-data-loss', {
       stdio: 'inherit',
       cwd: __dirname + '/..'
     })
@@ -50,7 +52,7 @@ const corsOptions = {
     if (!origin) {
       return callback(null, true)
     }
-    
+
     // Allowed origins siyahısında varsa, icazə ver
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true)
@@ -94,6 +96,8 @@ app.use('/api/suppliers', supplierRoutes)
 app.use('/api/purchase-invoices', purchaseInvoiceRoutes)
 app.use('/api/warehouses', warehouseRoutes)
 app.use('/api/test', testRoutes)
+app.use('/api/logs', logsRoutes)
+app.use('/api/admin', adminRoutes)
 
 // 404 handler
 app.use((req, res) => {
@@ -109,8 +113,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   console.error('❌ [ERROR] Request path:', req.path)
   console.error('❌ [ERROR] Request method:', req.method)
   console.error('❌ [ERROR] Full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err), 2))
-  
-  res.status(500).json({ 
+
+  res.status(500).json({
     message: 'Server xətası',
     error: err.message,
     code: err.code,
