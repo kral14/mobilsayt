@@ -71,7 +71,9 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         // Activity log
         await prisma.activity_logs.create({
             data: {
-                user_id: req.user?.id,
+                user_id: req.user!.id,
+                log_id: `LOG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: new Date(),
                 action: 'İstifadəçi yaradıldı',
                 category: 'user',
                 level: 'success',
@@ -125,7 +127,9 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         // Activity log
         await prisma.activity_logs.create({
             data: {
-                user_id: req.user?.id,
+                user_id: req.user!.id,
+                log_id: `LOG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: new Date(),
                 action: 'İstifadəçi yeniləndi',
                 category: 'user',
                 level: 'info',
@@ -166,7 +170,9 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
         // Activity log
         await prisma.activity_logs.create({
             data: {
-                user_id: req.user?.id,
+                user_id: req.user!.id,
+                log_id: `LOG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: new Date(),
                 action: 'İstifadəçi silindi',
                 category: 'user',
                 level: 'warning',
