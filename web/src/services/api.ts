@@ -2,25 +2,29 @@ import axios from 'axios'
 import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier, WarehouseLocation } from '@shared/types'
 
 // API URL-i müəyyən et
+// API URL-i müəyyən et
 const getApiBaseUrl = () => {
-  // Əgər environment variable varsa, onu istifadə et (Render üçün)
+  // 1. Environment variable (Netlify/Render üçün)
   if (import.meta.env.VITE_API_URL) {
+    console.log('[API] Using configured VITE_API_URL:', import.meta.env.VITE_API_URL)
     return import.meta.env.VITE_API_URL
   }
 
-  // Development üçün: localhost və ya proxy
+  // 2. Development: localhost check
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-
   if (isLocalhost) {
-    // Development: birbaşa API
+    console.log('[API] Using localhost fallback')
     return 'http://localhost:5000/api'
   }
 
-  // Production: eyni domain-dən API (proxy ilə)
+  // 3. Digər hallar (Production amma env var yoxdur)
+  console.warn('[API] DİQQƏT! VITE_API_URL təyin edilməyib. Default olaraq "/api" istifadə edilir, bu Netlify-də işləməyəcək (əgər proxy yoxdursa).')
+  console.error('[API] Zəhmət olmasa Netlify Dashboard-da "VITE_API_URL" dəyişənini təyin edin. Nümunə: https://backend-url.onrender.com/api')
   return '/api'
 }
 
 const API_BASE_URL = getApiBaseUrl()
+console.log('[API] Final API Base URL:', API_BASE_URL)
 
 const api = axios.create({
   baseURL: API_BASE_URL,
