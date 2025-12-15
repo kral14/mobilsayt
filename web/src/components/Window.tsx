@@ -39,7 +39,7 @@ export default function Window({
 
     const handleResizeMouseDown = (e: React.MouseEvent) => {
         if (isMaximized) return
-        startResize(id, e)
+        startResize(id, e, 'se') // Default direction: southeast
         e.preventDefault()
         e.stopPropagation()
     }

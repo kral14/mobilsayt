@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier, WarehouseLocation } from '../../shared/types'
+import type { LoginRequest, RegisterRequest, AuthResponse, Product, SaleInvoice, CreateOrderRequest, User, Customer, PurchaseInvoice, Supplier, WarehouseLocation } from '@shared/types'
 
 // API URL-i müəyyən et
 const getApiBaseUrl = () => {
@@ -77,6 +77,10 @@ export const productsAPI = {
     purchase_price?: number
     sale_price?: number
     code?: string
+    warranty_period?: number
+    production_date?: string
+    expiry_date?: string
+    is_active?: boolean
   }): Promise<Product> => {
     const response = await api.post<Product>('/products', data)
     return response.data

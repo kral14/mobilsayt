@@ -23,7 +23,7 @@ export default function ConfirmDialog({
     onDiscard,
     onCancel,
     showDiscard = true,
-    modalZIndex = 1000
+    modalZIndex: _modalZIndex = 1000
 }: ConfirmDialogProps) {
     if (!isOpen) return null
 

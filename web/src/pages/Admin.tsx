@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
-import { useLogStore, type LogLevel, type LogCategory } from '../store/logStore'
-import { useLogSync } from '../hooks/useLogSync'
+import { useState, useEffect } from 'react'
+import { type LogLevel, type LogCategory } from '../store/logStore'
+
 
 interface User {
     id: number
@@ -23,8 +23,7 @@ interface UserFormData {
 
 export default function Admin() {
     const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'logs'>('users')
-    const { logs, clearLogs, isSyncing } = useLogStore()
-    const { manualSync } = useLogSync()
+    // const { manualSync } = useLogSync() // Removed unused log sync
 
     // User Management State
     const [users, setUsers] = useState<User[]>([])
@@ -48,11 +47,6 @@ export default function Admin() {
     // Log filters
     const [categoryFilter, setCategoryFilter] = useState<LogCategory | 'all'>('all')
     const [levelFilter, setLevelFilter] = useState<LogLevel | 'all'>('all')
-    const [searchQuery, setSearchQuery] = useState('')
-    const [autoScroll, setAutoScroll] = useState(true)
-    const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
-
-    const logsEndRef = useRef<HTMLDivElement>(null)
 
     // Load users when users tab is active
     useEffect(() => {
@@ -67,13 +61,6 @@ export default function Admin() {
             loadAdminLogs()
         }
     }, [activeTab, selectedUserId, categoryFilter, levelFilter])
-
-    // Auto-scroll to bottom when new logs arrive
-    useEffect(() => {
-        if (autoScroll && logsEndRef.current) {
-            logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
-        }
-    }, [logs, autoScroll])
 
     // User Management Functions
     const loadUsers = async () => {
@@ -314,59 +301,7 @@ export default function Admin() {
         setEditingUser(null)
     }
 
-    // Filter logs
-    const filteredLogs = logs.filter(log => {
-        if (categoryFilter !== 'all' && log.category !== categoryFilter) return false
-        if (levelFilter !== 'all' && log.level !== levelFilter) return false
-        if (searchQuery) {
-            const query = searchQuery.toLowerCase()
-            return (
-                log.action.toLowerCase().includes(query) ||
-                log.details.toLowerCase().includes(query) ||
-                log.user?.toLowerCase().includes(query)
-            )
-        }
-        return true
-    })
 
-    const getLevelEmoji = (level: LogLevel) => {
-        switch (level) {
-            case 'info': return 'ℹ️'
-            case 'success': return '✅'
-            case 'warning': return '⚠️'
-            case 'error': return '❌'
-        }
-    }
-
-    const getCategoryEmoji = (category: LogCategory) => {
-        switch (category) {
-            case 'window': return '🪟'
-            case 'invoice': return '📋'
-            case 'user': return '👤'
-            case 'system': return '⚙️'
-            case 'data': return '💾'
-        }
-    }
-
-    const formatTimestamp = (date: Date) => {
-        return new Date(date).toLocaleString('az-AZ', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        })
-    }
-
-    const handleManualSync = async () => {
-        const result = await manualSync()
-        if (result.success) {
-            alert(`${result.count} log serverə göndərildi`)
-        } else {
-            alert('Sync uğursuz oldu')
-        }
-    }
 
 
 

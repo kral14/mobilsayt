@@ -385,7 +385,7 @@ export function AlisQaimeleriContent() {
       })
 
     // Sonra mövcud modalları yarad və ya yenilə
-    Array.from(openModals.values()).forEach((modal, index) => {
+    Array.from(openModals.values()).forEach((modal) => {
       const windowId = `purchase-invoice-modal-${modal.id}`
       const store = useWindowStore.getState()
       const existingWindow = store.windows.get(windowId)

@@ -605,7 +605,19 @@ export default function SatisQaimeleri() {
         showNotification('Qaimə yeniləndi', 'success')
       } else {
         // Create
-        savedInvoice = await ordersAPI.create(invoiceData)
+        // Add total_price to each item and filter out null product_ids
+        const invoiceDataWithTotals = {
+          ...invoiceData,
+          items: invoiceData.items
+            .filter(item => item.product_id !== null)
+            .map(item => ({
+              product_id: item.product_id!,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              total_price: item.quantity * item.unit_price
+            }))
+        }
+        savedInvoice = await ordersAPI.create(invoiceDataWithTotals)
         showNotification('Qaimə yaradıldı', 'success')
       }
 

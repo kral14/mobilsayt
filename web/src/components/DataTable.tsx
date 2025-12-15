@@ -97,7 +97,7 @@ export default function DataTable<T = any>({
   onActiveSearchColumnChange,
   onColumnHeaderClick
 }: DataTableProps<T>) {
-  const debugLog = (...args: any[]) => {
+  const debugLog = (..._args: any[]) => {
     // Logging disabled
   }
   // localStorage-dan columns yüklə

@@ -3,7 +3,12 @@
 export interface User {
   id: number
   email: string
+  full_name?: string
+  role?: string
+  is_admin?: boolean
+  is_active?: boolean
   created_at: Date | null
+  updated_at?: Date | null
 }
 
 export interface Customer {
@@ -52,8 +57,8 @@ export interface Product {
   country: string | null
   manufacturer: string | null
   warranty_period: number | null
-  production_date: Date | null
-  expiry_date: Date | null
+  production_date: Date | string | null
+  expiry_date: Date | string | null
   min_stock: number | null
   max_stock: number | null
   tax_rate: number | null

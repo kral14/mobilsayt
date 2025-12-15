@@ -1,27 +1,6 @@
 import { create } from 'zustand'
 import { authAPI } from '../services/api'
-
-// Local type definitions
-export interface User {
-  id: number
-  email: string
-  full_name?: string
-  role: string
-  is_admin: boolean
-  is_active: boolean
-  created_at: string
-  updated_at?: string
-}
-
-export interface Customer {
-  id: number
-  name: string
-  email?: string
-  phone?: string
-  address?: string
-  created_at: string
-  updated_at?: string
-}
+import type { User, Customer } from '@shared/types'
 
 interface AuthState {
   user: User | null
@@ -35,7 +14,7 @@ interface AuthState {
   setCustomer: (customer: Customer) => void
 }
 
-export const useAuthStore = create<AuthState>((set, get) => {
+export const useAuthStore = create<AuthState>((set) => {
   // localStorage-dan ilkin dəyərləri yüklə
   const storedToken = localStorage.getItem('token')
   const storedUser = localStorage.getItem('user')
