@@ -12,6 +12,21 @@ const getApiBaseUrl = () => {
     if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
       apiUrl = `https://${apiUrl}`
     }
+
+    // Sondakı '/' işarəsini sil
+    if (apiUrl.endsWith('/')) {
+      apiUrl = apiUrl.slice(0, -1)
+    }
+
+    // Əgər istifadəçi '/api' yazıbsa, onu sil ki, biz təkrar əlavə etməyək (və ya əksinə, varsa saxla)
+    // Amma ən etibarlısı: həmişə təmiz domain götürüb '/api' əlavə etməkdir
+    if (apiUrl.endsWith('/api')) {
+      // Olduğu kimi saxla, düzgündür
+    } else {
+      // '/api' yoxdursa əlavə et
+      apiUrl = `${apiUrl}/api`
+    }
+
     console.log('[API] Using configured VITE_API_URL:', apiUrl)
     return apiUrl
   }
