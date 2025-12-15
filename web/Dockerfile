@@ -3,12 +3,18 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Build argument - API URL
+ARG VITE_API_URL=http://localhost:5000/api
+
 # Dependencies quraşdır
 COPY package*.json ./
 RUN npm ci
 
 # Source kodları kopyala
 COPY . .
+
+# Environment variable təyin et (Vite build üçün)
+ENV VITE_API_URL=$VITE_API_URL
 
 # Build et
 RUN npm run build
