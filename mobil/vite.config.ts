@@ -6,26 +6,9 @@ export default defineConfig({
   plugins: [
     react(),
     // PWA plugin-i əlavə etmək istəsəniz: npm install -D vite-plugin-pwa
-    // VitePWA({
-    //   registerType: 'autoUpdate',
-    //   includeAssets: ['favicon.svg'],
-    //   manifest: {
-    //     name: 'MobilSayt',
-    //     short_name: 'MobilSayt',
-    //     description: 'Mobil üçün optimizasiya edilmiş alış-satış idarəetmə sistemi',
-    //     theme_color: '#1976d2',
-    //     background_color: '#ffffff',
-    //     display: 'standalone',
-    //     icons: [
-    //       {
-    //         src: '/favicon.svg',
-    //         sizes: 'any',
-    //         type: 'image/svg+xml'
-    //       }
-    //     ]
-    //   }
-    // })
+    // VitePWA({...})
   ],
+  base: '/mobil/', // Production build üçün base path
   resolve: {
     alias: {
       '@shared': path.resolve(__dirname, '../shared'),
