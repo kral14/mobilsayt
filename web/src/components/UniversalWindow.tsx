@@ -404,7 +404,7 @@ export default function UniversalWindow({
                             maximizeWindow(id)
                         }}
                         onMouseEnter={() => {
-                            snapMenuTimeoutRef.current = setTimeout(() => {
+                            snapMenuTimeoutRef.current = window.setTimeout(() => {
                                 setShowSnapMenu(true)
                             }, 1000)
                         }}
