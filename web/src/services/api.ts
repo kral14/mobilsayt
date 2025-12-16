@@ -63,6 +63,28 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// 401 xətası üçün response interceptor
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // 401 Unauthorized - token yoxdur və ya etibarsızdır
+    if (error.response?.status === 401) {
+      console.log('[API] 401 Unauthorized - logging out and redirecting to login')
+
+      // Token və user məlumatlarını sil
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      localStorage.removeItem('customer')
+
+      // Login səhifəsinə yönləndir
+      // window.location.href istifadə edirik ki, React Router state-i də təmizlənsin
+      window.location.href = '/login'
+    }
+
+    return Promise.reject(error)
+  }
+)
+
 // Auth API
 export const authAPI = {
   login: async (data: LoginRequest): Promise<AuthResponse> => {
