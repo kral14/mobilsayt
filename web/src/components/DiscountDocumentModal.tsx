@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useWindow } from '../context/WindowContext'
 import { DiscountDocumentItem, Supplier, Product } from '@shared/types'
 import { discountDocumentsAPI, productsAPI, suppliersAPI } from '../services/api'
+import SmartDateInput from './SmartDateInput'
 
 interface DiscountDocumentModalProps {
     type: 'SUPPLIER' | 'PRODUCT'
@@ -28,6 +29,7 @@ export default function DiscountDocumentModal({
     const [notes, setNotes] = useState('')
     const [isActive, setIsActive] = useState(true)
     const [items, setItems] = useState<Partial<DiscountDocumentItem>[]>([])
+    const [originalDocDate, setOriginalDocDate] = useState<string | null>(null) // Track original creation date
 
     // Selection Data
     const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -51,6 +53,7 @@ export default function DiscountDocumentModal({
                 if (documentId) {
                     const doc = await discountDocumentsAPI.getById(documentId)
                     setDocNumber(doc.document_number)
+                    setOriginalDocDate(typeof doc.document_date === 'string' ? doc.document_date : new Date(doc.document_date).toISOString()) // Preserve original creation date
                     // Try to use start_date/end_date if available, else fallback
                     const sDate = doc.start_date ? new Date(doc.start_date) : new Date(doc.document_date)
                     let eDate = doc.end_date ? new Date(doc.end_date) : new Date(doc.document_date)
@@ -111,7 +114,8 @@ export default function DiscountDocumentModal({
             setSaving(true)
             const docData = {
                 document_number: docNumber || `DOC-${Date.now()}`,
-                document_date: new Date().toISOString(), // Current date as creation date
+                // Preserve original document_date for edits, use current time for new documents
+                document_date: originalDocDate || new Date().toISOString(),
                 start_date: new Date(startDate).toISOString(),
                 end_date: new Date(endDate).toISOString(),
                 type,
@@ -148,19 +152,17 @@ export default function DiscountDocumentModal({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', padding: '1rem', background: '#f5f5f5', borderRadius: '8px' }}>
                 <div>
                     <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Başlama Tarixi</label>
-                    <input
-                        type="datetime-local"
+                    <SmartDateInput
                         value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
+                        onDateChange={setStartDate}
                         style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
                 </div>
                 <div>
                     <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Bitmə Tarixi</label>
-                    <input
-                        type="datetime-local"
+                    <SmartDateInput
                         value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
+                        onDateChange={setEndDate}
                         style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
                 </div>

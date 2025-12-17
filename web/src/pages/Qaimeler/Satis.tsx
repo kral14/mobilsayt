@@ -594,7 +594,10 @@ export default function SatisQaimeleri() {
         items: modalData.invoiceItems.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
-          unit_price: item.unit_price
+          unit_price: item.unit_price,
+          discount_manual: item.discount_manual || 0,
+          discount_auto: item.discount_auto || 0,
+          vat_rate: item.vat_rate || 0,
         }))
       }
 
@@ -603,6 +606,8 @@ export default function SatisQaimeleri() {
         // Update
         savedInvoice = await ordersAPI.update(modal.invoiceId.toString(), invoiceData)
         showNotification('Qaimə yeniləndi', 'success')
+        // Global event dispatch
+        window.dispatchEvent(new Event('invoice-update'))
       } else {
         // Create
         // Add total_price to each item and filter out null product_ids
@@ -614,27 +619,38 @@ export default function SatisQaimeleri() {
               product_id: item.product_id!,
               quantity: item.quantity,
               unit_price: item.unit_price,
-              total_price: item.quantity * item.unit_price
+              total_price: item.quantity * item.unit_price,
+              discount_manual: item.discount_manual || 0,
+              discount_auto: item.discount_auto || 0,
+              vat_rate: item.vat_rate || 0,
             }))
         }
         savedInvoice = await ordersAPI.create(invoiceDataWithTotals)
         showNotification('Qaimə yaradıldı', 'success')
+        // Global event dispatch
+        window.dispatchEvent(new Event('invoice-update'))
       }
 
       // Initial datanı yenilə ki, subsequent save-lərdə dirty olmasın
       initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(modalData)))
 
-      // InvoiceId yoxdursa (yeni yaradılıbsa), modalı update et
-      if (!modal.invoiceId && savedInvoice?.id) {
-        setOpenModals(prev => {
-          const newMap = new Map(prev)
-          const current = newMap.get(modalId)
-          if (current) {
-            newMap.set(modalId, { ...current, invoiceId: savedInvoice.id })
+      // Modalı update et (həm ID, həm də data)
+      setOpenModals(prev => {
+        const newMap = new Map(prev)
+        const current = newMap.get(modalId)
+        if (current) {
+          const updates: any = {
+            data: modalData // Yadda saxlanmış datanı state-ə yaz ki, dirty check düzgün işləsin
           }
-          return newMap
-        })
-      }
+
+          if (!modal.invoiceId && savedInvoice?.id) {
+            updates.invoiceId = savedInvoice.id
+          }
+
+          newMap.set(modalId, { ...current, ...updates })
+        }
+        return newMap
+      })
 
       loadInvoices()
     } catch (err: any) {
@@ -679,6 +695,9 @@ export default function SatisQaimeleri() {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
         total_price: Number(item.total_price),
+        discount_manual: Number(item.discount_manual || 0),
+        discount_auto: Number(item.discount_auto || 0),
+        vat_rate: Number(item.vat_rate || 0),
       }))
 
       const newZIndex = baseZIndex + 1
@@ -881,6 +900,17 @@ export default function SatisQaimeleri() {
       } catch (e) {
         console.error('Modal ölçüsü yüklənərkən xəta:', e)
       }
+    }
+
+    // Global event listener
+    const handleInvoiceUpdate = () => {
+      console.log('[Satis.tsx] invoice-update event received')
+      loadInvoices()
+    }
+    window.addEventListener('invoice-update', handleInvoiceUpdate)
+
+    return () => {
+      window.removeEventListener('invoice-update', handleInvoiceUpdate)
     }
   }, [loadInvoices])
 

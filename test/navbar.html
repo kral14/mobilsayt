@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="az">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Navbar</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            /* Nümunə fon rəngi */
+            height: 100vh;
+        }
+
+        /* --- NAVBAR OSAS STİL --- */
+        .navbar {
+            background: #1a1a1a;
+            /* Tünd premium rəng */
+            height: 80px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 50px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            position: fixed;
+            /* Yuxarıda sabit qalması üçün */
+            top: 0;
+            z-index: 999;
+        }
+
+        /* Logo Stili */
+        .navbar .logo {
+            color: #fff;
+            font-size: 30px;
+            font-weight: 600;
+            text-decoration: none;
+            letter-spacing: 2px;
+            transition: 0.3s;
+        }
+
+        .navbar .logo span {
+            color: #ffcc00;
+            /* Qızılı rəng - Memarlıq üçün uyğundur */
+        }
+
+        /* Menyu Elementləri */
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+
+        .nav-links li {
+            position: relative;
+            margin: 0 20px;
+        }
+
+        .nav-links li a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 18px;
+            font-weight: 500;
+            padding: 10px 0;
+            display: block;
+            transition: color 0.3s ease;
+        }
+
+        /* HOVER EFFEKTİ (Alt xəttin gəlməsi) */
+        .nav-links li a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0%;
+            height: 3px;
+            background: #ffcc00;
+            transition: width 0.3s ease;
+        }
+
+        .nav-links li a:hover::after {
+            width: 100%;
+        }
+
+        .nav-links li a:hover {
+            color: #ffcc00;
+        }
+
+        /* --- DROPDOWN (ALT MENYU) STİLİ --- */
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            /* Əsas elementin tam altında */
+            left: 0;
+            width: 220px;
+            background: #242424;
+            list-style: none;
+            padding: 10px 0;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+
+            /* Gizlətmək üçün ilkin dəyərlər */
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(20px);
+            /* Aşağıdan yuxarı çıxma effekti üçün */
+            transition: all 0.4s ease;
+            z-index: 100;
+            border-top: 3px solid #ffcc00;
+        }
+
+        /* Dropdown içindəki linklər */
+        .dropdown-menu li {
+            margin: 0;
+        }
+
+        .dropdown-menu li a {
+            padding: 12px 20px;
+            font-size: 16px;
+            color: #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Alt menyu linklərinin hover effekti */
+        .dropdown-menu li a:hover {
+            background: #333;
+            color: #ffcc00;
+            padding-left: 25px;
+            /* Yazının sağa sürüşməsi */
+        }
+
+        .dropdown-menu li a::after {
+            display: none;
+            /* Alt menyuda alt xətt olmasın */
+        }
+
+        /* --- MENYUNU GÖSTƏRMƏK --- */
+        /* Parent li-yə hover edəndə içindəki dropdown görünsün */
+        .nav-links li:hover .dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        /* Kiçik ox işarəsi (Dropdown olduğunu bildirmək üçün) */
+        .fa-chevron-down {
+            font-size: 12px;
+            margin-left: 5px;
+            transition: transform 0.3s;
+        }
+
+        .nav-links li:hover .fa-chevron-down {
+            transform: rotate(180deg);
+            /* Ox tərsinə fırlanır */
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav class="navbar">
+        <a href="#" class="logo">MEMAR<span>.AZ</span></a>
+
+        <ul class="nav-links">
+            <li><a href="#">Ana Səhifə</a></li>
+
+            <li>
+                <a href="#">Layihələr <i class="fas fa-chevron-down"></i></a>
+                <ul class="dropdown-menu">
+                    <li><a href="#">Eksteryer Dizayn <i class="fas fa-arrow-right"></i></a></li>
+                    <li><a href="#">İnteryer Dizayn <i class="fas fa-arrow-right"></i></a></li>
+                    <li><a href="#">Landşaft <i class="fas fa-arrow-right"></i></a></li>
+                    <li><a href="#">Restavrasiya <i class="fas fa-arrow-right"></i></a></li>
+                </ul>
+            </li>
+
+            <li>
+                <a href="#">Xidmətlər <i class="fas fa-chevron-down"></i></a>
+                <ul class="dropdown-menu">
+                    <li><a href="#">Layihələndirmə</a></li>
+                    <li><a href="#">Təmir-Tikinti</a></li>
+                    <li><a href="#">Məsləhət</a></li>
+                </ul>
+            </li>
+
+            <li><a href="#">Haqqımızda</a></li>
+            <li><a href="#">Əlaqə</a></li>
+        </ul>
+    </nav>
+
+    <div style="padding: 150px 50px; text-align: center;">
+        <h1>Xoş Gəldiniz</h1>
+        <p>Mouse ilə menyunun üzərinə gəlib effektləri yoxlayın.</p>
+    </div>
+
+</body>
+
+</html>

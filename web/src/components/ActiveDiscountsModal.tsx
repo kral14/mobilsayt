@@ -1,59 +1,138 @@
 import { useState, useEffect } from 'react'
 import { useWindow } from '../context/WindowContext'
-import { useWindowStore } from '../store/windowStore'
-import { discountDocumentsAPI } from '../services/api'
-import { DiscountDocument } from '@shared/types'
-import DiscountDocumentModal from './DiscountDocumentModal'
+import { discountDocumentsAPI, suppliersAPI } from '../services/api' // Added suppliersAPI
+import { DiscountDocument, Supplier } from '@shared/types'
 
-export default function ActiveDiscountsModal() {
+interface ActiveDiscountsModalProps {
+    type?: 'PRODUCT' | 'SUPPLIER'
+}
+
+export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscountsModalProps) {
     const { close } = useWindow()
     const [loading, setLoading] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
 
     // Effective Discount List
-    // Structure: { productId, productName, code, percent, docNumber, startDate, endDate }
+    // For Product: { productId, productName, code, percent, docNumber, startDate, endDate }
+    // For Supplier: { supplierId, supplierName, productId, productName, code, percent, docNumber, startDate, endDate }
     const [effectiveDiscounts, setEffectiveDiscounts] = useState<any[]>([])
 
     useEffect(() => {
         loadReport()
-    }, [])
+    }, [type])
 
     const loadReport = async () => {
         try {
             setLoading(true)
-            // Fetch all active PRODUCT documents
-            // We assume logical flow for Supplier docs is separate (per supplier)
-            // This report is mainly for "Product Discounts" (Global Layered)
-            const docs = await discountDocumentsAPI.getAllActive('PRODUCT')
 
-            // Sort by Date DESC (Newest First)
-            // Note: API might sort by proper date, checking controller it sorts by document_date desc.
-            // But let's be safe.
-            const sortedDocs = docs.sort((a, b) => new Date(b.document_date).getTime() - new Date(a.document_date).getTime())
+            // 1. Fetch Documents
+            const docs = await discountDocumentsAPI.getAllActive(type)
 
-            const productMap = new Map<number, any>()
-            const now = new Date()
+            // 2. Fetch Suppliers if needed
+            let supplierMap = new Map<number, Supplier>()
+            if (type === 'SUPPLIER') {
+                try {
+                    const suppliers = await suppliersAPI.getAll()
+                    suppliers.forEach(s => supplierMap.set(s.id, s))
+                } catch (e) {
+                    console.error('Failed to load suppliers', e)
+                }
+            }
 
-            for (const doc of sortedDocs) {
-                if (!doc.items) continue
+            // Sort by start_date DESC (or document_date if start_date is null)
+            // This prioritizes documents by their validity period, not when they were last saved
+            const sortedDocs = docs.sort((a, b) => {
+                const aDate = new Date(a.start_date || a.document_date).getTime()
+                const bDate = new Date(b.start_date || b.document_date).getTime()
+                return bDate - aDate
+            })
 
-                // Check Doc Validity
-                let docValid = true
-                if (doc.start_date && now < new Date(doc.start_date)) docValid = false
-                if (doc.end_date && now > new Date(doc.end_date)) docValid = false
-                if (!docValid) continue
+            const list: any[] = []
 
-                for (const item of doc.items) {
-                    if (!item.product) continue // Skip if no product relation (shouldn't happen for items)
+            // For Product Type: We want strict "Active Rule" per product (One per product)
+            // For Supplier Type: We want "Active Rule" per Supplier+Product combo? 
+            // Actually, for Supplier, a user wants to see "What is the active discount for Product X from Supplier Y?"
+            // So we should list ALL active rules.
 
-                    // Specific Product Logic
-                    if (item.product_id) {
-                        // If we haven't found a newer rule for this product, use this one
-                        if (!productMap.has(item.product_id)) {
-                            productMap.set(item.product_id, {
-                                productId: item.product_id,
-                                productName: item.product.name,
-                                code: item.product.code,
+            if (type === 'PRODUCT') {
+                const productMap = new Map<number, any>()
+                const now = new Date()
+
+                for (const doc of sortedDocs) {
+                    if (!doc.items) continue
+
+                    // Check validity
+                    let docValid = true
+                    if (doc.start_date && now < new Date(doc.start_date)) docValid = false
+                    if (doc.end_date && now > new Date(doc.end_date)) docValid = false
+                    if (!docValid) continue
+
+                    for (const item of doc.items) {
+                        if (!item.product) continue
+
+                        // Specific Product
+                        if (item.product_id) {
+                            if (!productMap.has(item.product_id)) {
+                                productMap.set(item.product_id, {
+                                    id: `${doc.id}-${item.id}`,
+                                    productName: item.product.name,
+                                    code: item.product.code,
+                                    percent: Number(item.discount_percent),
+                                    docNumber: doc.document_number,
+                                    docId: doc.id,
+                                    startDate: doc.start_date,
+                                    endDate: doc.end_date
+                                })
+                            }
+                        }
+                    }
+                }
+                list.push(...Array.from(productMap.values()))
+            } else {
+                // SUPPLIER TYPE
+                // We list all active connections. 
+                // A supplier might have multiple docs? 
+                // Usually "Newest Valid Doc" per Supplier is the rule.
+
+                // Group by Supplier
+                const now = new Date()
+                const supplierDocMap = new Map<number, DiscountDocument[]>()
+
+                for (const doc of sortedDocs) {
+                    if (!doc.entity_id) continue
+                    const existing = supplierDocMap.get(doc.entity_id) || []
+                    existing.push(doc)
+                    supplierDocMap.set(doc.entity_id, existing)
+                }
+
+                // For each supplier, process docs newest to oldest
+                for (const [supplierId, sDocs] of supplierDocMap.entries()) {
+                    const supplier = supplierMap.get(supplierId)
+                    const supplierName = supplier ? supplier.name : `Təchizatçı #${supplierId}`
+
+                    // Helper to track which products we found a rule for THIS supplier
+                    const productFound = new Set<number | string>() // use string 'general' for null
+
+                    for (const doc of sDocs) {
+                        if (!doc.items) continue
+
+                        // Check validity
+                        let docValid = true
+                        if (doc.start_date && now < new Date(doc.start_date)) docValid = false
+                        if (doc.end_date && now > new Date(doc.end_date)) docValid = false
+                        if (!docValid) continue
+
+                        for (const item of doc.items) {
+                            const key = item.product_id ? item.product_id : 'general'
+                            if (productFound.has(key)) continue // Already found newer rule for this product/general
+
+                            productFound.add(key)
+
+                            list.push({
+                                id: `${doc.id}-${item.id}`,
+                                supplierName,
+                                productName: item.product ? item.product.name : 'Bütün Məhsullar (Ümumi)',
+                                code: item.product ? item.product.code : '-',
                                 percent: Number(item.discount_percent),
                                 docNumber: doc.document_number,
                                 docId: doc.id,
@@ -65,8 +144,7 @@ export default function ActiveDiscountsModal() {
                 }
             }
 
-            // Convert to array
-            setEffectiveDiscounts(Array.from(productMap.values()))
+            setEffectiveDiscounts(list)
 
         } catch (err) {
             console.error(err)
@@ -76,18 +154,19 @@ export default function ActiveDiscountsModal() {
         }
     }
 
-    const filteredList = effectiveDiscounts.filter(d =>
-        d.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        d.code.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const filteredList = effectiveDiscounts.filter(d => {
+        const text = searchTerm.toLowerCase()
+        return (
+            (d.productName && d.productName.toLowerCase().includes(text)) ||
+            (d.code && d.code.toLowerCase().includes(text)) ||
+            (d.supplierName && d.supplierName.toLowerCase().includes(text))
+        )
+    })
 
     const handleOpenDocument = (docId: number, docNumber: string) => {
-        const { openPageWindow } = useWindow() // Wait, useWindow only provides close, openPageWindow might not be there?
-        // useWindow is from context/WindowContext. Let's check context.
-        // Actually, existing code uses `useWindow` but only descructs `close`.
-        // I should check WindowContext.tsx if openPageWindow is available.
-        // But store is global. I can use `useWindowStore`.
-        // Let's import useWindowStore instead of relying on context for opening.
+        // Placeholder: We need a way to open edit window. 
+        // Since this modal is inside a window, we can try to use windowStore if available globally or passed
+        // This is a view-only helper for now or basic link.
     }
 
     return (
@@ -112,6 +191,9 @@ export default function ActiveDiscountsModal() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead style={{ position: 'sticky', top: 0, background: '#f5f5f5' }}>
                         <tr>
+                            {type === 'SUPPLIER' && (
+                                <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Təchizatçı</th>
+                            )}
                             <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Məhsul</th>
                             <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Kod</th>
                             <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Faiz %</th>
@@ -121,12 +203,15 @@ export default function ActiveDiscountsModal() {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center' }}>Yüklənir...</td></tr>
+                            <tr><td colSpan={type === 'SUPPLIER' ? 6 : 5} style={{ padding: '2rem', textAlign: 'center' }}>Yüklənir...</td></tr>
                         ) : filteredList.length === 0 ? (
-                            <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center' }}>Hec bir aktiv endirim tapılmadı</td></tr>
+                            <tr><td colSpan={type === 'SUPPLIER' ? 6 : 5} style={{ padding: '2rem', textAlign: 'center' }}>Hec bir aktiv endirim tapılmadı</td></tr>
                         ) : (
                             filteredList.map(item => (
-                                <tr key={item.productId} style={{ borderBottom: '1px solid #eee' }}>
+                                <tr key={item.id} style={{ borderBottom: '1px solid #eee' }}>
+                                    {type === 'SUPPLIER' && (
+                                        <td style={{ padding: '0.75rem', fontWeight: '500' }}>{item.supplierName}</td>
+                                    )}
                                     <td style={{ padding: '0.75rem' }}>{item.productName}</td>
                                     <td style={{ padding: '0.75rem' }}>{item.code}</td>
                                     <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#4caf50' }}>{item.percent}%</td>

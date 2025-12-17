@@ -708,17 +708,25 @@ export function AlisQaimeleriContent() {
           const store = useWindowStore.getState()
           const windowInfo = store.windows.get(windowId)
 
-          // Əgər minimize edilmişdirsə, restore et
-          if (windowInfo?.isMinimized) {
-            store.restoreWindow(windowId)
+          if (!windowInfo) {
+            console.warn('[Alis.tsx] Modal openModals-da var amma windowStore-da yoxdur (phantom). Təmizlənir...', existingModal.id)
+            // Phantom modal - təmizlə və yenidən açmağa icazə ver
+            setOpenModals(prev => {
+              const newMap = new Map(prev)
+              newMap.delete(existingModal.id)
+              return newMap
+            })
+            // Return etmə - funksiya davam edəcək və yeni modal yaradacaq
+          } else {
+            // Normal hal - pəncərə var, aktiv et
+            if (windowInfo.isMinimized) {
+              store.restoreWindow(windowId)
+            }
+            store.activateWindow(windowId)
+            setActiveModalId(existingModal.id)
+            showNotification('Qaimə artıq açıqdır', 'info')
+            return
           }
-
-          // Fokusla (z-index artır və aktiv et)
-          store.activateWindow(windowId)
-          setActiveModalId(existingModal.id)
-
-          showNotification('Qaimə artıq açıqdır', 'info')
-          return
         }
       }
 
@@ -772,6 +780,9 @@ export function AlisQaimeleriContent() {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
         total_price: Number(item.total_price),
+        discount_manual: Number(item.discount_manual || 0),
+        discount_auto: Number(item.discount_auto || 0),
+        vat_rate: Number(item.vat_rate || 0),
       }))
 
       const newZIndex = baseZIndex + 1
@@ -954,6 +965,9 @@ export function AlisQaimeleriContent() {
         quantity: item.quantity,
         unit_price: item.unit_price,
         total_price: item.total_price,
+        discount_manual: item.discount_manual || 0,
+        discount_auto: item.discount_auto || 0,
+        vat_rate: item.vat_rate || 0,
       }))
 
       devLog('[Alis.tsx] handleModalSave - Items hazırlandı:', items)
@@ -982,6 +996,19 @@ export function AlisQaimeleriContent() {
 
         // Change saved: update initial data to prevent unsaved changes warning
         initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(finalData)))
+
+        // Modalı yenilə ki, dirty check düzgün işləsin (data-nı yenilə)
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const current = newMap.get(modalId)
+          if (current) {
+            newMap.set(modalId, {
+              ...current,
+              data: { ...current.data, ...finalData }
+            })
+          }
+          return newMap
+        })
 
         // Vəziyyəti dəyişdirmə - mövcud vəziyyəti saxla
         if (modal.isActive !== undefined) {
@@ -1157,6 +1184,9 @@ export function AlisQaimeleriContent() {
         quantity: item.quantity,
         unit_price: item.unit_price,
         total_price: item.total_price,
+        discount_manual: item.discount_manual || 0,
+        discount_auto: item.discount_auto || 0,
+        vat_rate: item.vat_rate || 0,
       }))
 
       devLog('[Alis.tsx] handleModalSaveAndConfirm - Items hazırlandı:', items)
@@ -1192,6 +1222,20 @@ export function AlisQaimeleriContent() {
 
         // Change saved: update initial data
         initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(finalData)))
+
+        // Modalı yenilə (data və status)
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const current = newMap.get(modalId)
+          if (current) {
+            newMap.set(modalId, {
+              ...current,
+              isActive: true,
+              data: { ...current.data, ...finalData }
+            })
+          }
+          return newMap
+        })
 
         showNotification('Qaimə uğurla yeniləndi və təsdiq edildi', 'success')
       } else {
