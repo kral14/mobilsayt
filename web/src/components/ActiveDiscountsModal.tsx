@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useWindow } from '../context/WindowContext'
 import { discountDocumentsAPI, suppliersAPI } from '../services/api' // Added suppliersAPI
 import { DiscountDocument, Supplier } from '@shared/types'
+import { useWindowStore } from '../store/windowStore'
+import DiscountDocumentModal from './DiscountDocumentModal'
 
 interface ActiveDiscountsModalProps {
     type?: 'PRODUCT' | 'SUPPLIER'
@@ -9,6 +11,7 @@ interface ActiveDiscountsModalProps {
 
 export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscountsModalProps) {
     const { close } = useWindow()
+    const { openPageWindow } = useWindowStore()
     const [loading, setLoading] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
 
@@ -27,6 +30,9 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
 
             // 1. Fetch Documents
             const docs = await discountDocumentsAPI.getAllActive(type)
+            console.log('[ActiveDiscountsModal] Fetched documents:', docs)
+            console.log('[ActiveDiscountsModal] Document count:', docs.length)
+            console.log('[ActiveDiscountsModal] Type:', type)
 
             // 2. Fetch Suppliers if needed
             let supplierMap = new Map<number, Supplier>()
@@ -57,23 +63,49 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
             if (type === 'PRODUCT') {
                 const productMap = new Map<number, any>()
                 const now = new Date()
+                // Set to start of day for date-only comparison
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
                 for (const doc of sortedDocs) {
-                    if (!doc.items) continue
+                    console.log('[ActiveDiscountsModal] Processing doc:', doc.id, 'items:', doc.items)
 
-                    // Check validity
+                    if (!doc.items) {
+                        console.log('[ActiveDiscountsModal] Doc has no items, skipping:', doc.id)
+                        continue
+                    }
+
+                    // Check validity - compare dates only, not time
                     let docValid = true
-                    if (doc.start_date && now < new Date(doc.start_date)) docValid = false
-                    if (doc.end_date && now > new Date(doc.end_date)) docValid = false
-                    if (!docValid) continue
+                    if (doc.start_date) {
+                        const startDate = new Date(doc.start_date)
+                        const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+                        if (today < startDay) docValid = false
+                    }
+                    if (doc.end_date) {
+                        const endDate = new Date(doc.end_date)
+                        const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+                        if (today > endDay) docValid = false
+                    }
+
+                    console.log('[ActiveDiscountsModal] Doc validity:', doc.id, 'valid:', docValid, 'start:', doc.start_date, 'end:', doc.end_date, 'today:', today)
+
+                    if (!docValid) {
+                        console.log('[ActiveDiscountsModal] Doc not valid, skipping:', doc.id)
+                        continue
+                    }
 
                     for (const item of doc.items) {
-                        if (!item.product) continue
+                        console.log('[ActiveDiscountsModal] Processing item:', item.id, 'product:', item.product, 'product_id:', item.product_id)
+
+                        if (!item.product) {
+                            console.log('[ActiveDiscountsModal] Item has no product, skipping:', item.id)
+                            continue
+                        }
 
                         // Specific Product
                         if (item.product_id) {
                             if (!productMap.has(item.product_id)) {
-                                productMap.set(item.product_id, {
+                                const entry = {
                                     id: `${doc.id}-${item.id}`,
                                     productName: item.product.name,
                                     code: item.product.code,
@@ -82,7 +114,9 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
                                     docId: doc.id,
                                     startDate: doc.start_date,
                                     endDate: doc.end_date
-                                })
+                                }
+                                console.log('[ActiveDiscountsModal] Adding product to map:', entry)
+                                productMap.set(item.product_id, entry)
                             }
                         }
                     }
@@ -96,6 +130,7 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
 
                 // Group by Supplier
                 const now = new Date()
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
                 const supplierDocMap = new Map<number, DiscountDocument[]>()
 
                 for (const doc of sortedDocs) {
@@ -116,10 +151,18 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
                     for (const doc of sDocs) {
                         if (!doc.items) continue
 
-                        // Check validity
+                        // Check validity - compare dates only, not time
                         let docValid = true
-                        if (doc.start_date && now < new Date(doc.start_date)) docValid = false
-                        if (doc.end_date && now > new Date(doc.end_date)) docValid = false
+                        if (doc.start_date) {
+                            const startDate = new Date(doc.start_date)
+                            const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+                            if (today < startDay) docValid = false
+                        }
+                        if (doc.end_date) {
+                            const endDate = new Date(doc.end_date)
+                            const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+                            if (today > endDay) docValid = false
+                        }
                         if (!docValid) continue
 
                         for (const item of doc.items) {
@@ -144,10 +187,12 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
                 }
             }
 
+            console.log('[ActiveDiscountsModal] Effective discounts list:', list)
+            console.log('[ActiveDiscountsModal] Total count:', list.length)
             setEffectiveDiscounts(list)
 
         } catch (err) {
-            console.error(err)
+            console.error('[ActiveDiscountsModal] Load error:', err)
             alert('Yükləmə xətası')
         } finally {
             setLoading(false)
@@ -164,9 +209,25 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
     })
 
     const handleOpenDocument = (docId: number, docNumber: string) => {
-        // Placeholder: We need a way to open edit window. 
-        // Since this modal is inside a window, we can try to use windowStore if available globally or passed
-        // This is a view-only helper for now or basic link.
+        const windowId = `discount-doc-edit-${docId}`
+
+        const title = type === 'SUPPLIER'
+            ? `Təchizatçı Faiz Sənədi (${docNumber})`
+            : `Məhsul Faiz Sənədi (${docNumber})`
+
+        openPageWindow(
+            windowId,
+            title,
+            '📄',
+            <DiscountDocumentModal
+                type={type}
+                documentId={docId}
+                onSuccess={() => {
+                    loadReport()
+                }}
+            />,
+            { width: 900, height: 600 }
+        )
     }
 
     return (

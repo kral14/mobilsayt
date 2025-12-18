@@ -771,24 +771,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   openPageWindow: (pageId: string, title: string, icon: string, content: React.ReactNode, size = { width: 900, height: 600 }) => {
     const state = get()
 
-    // Əgər artıq açıqdırsa, fokus ver
-    // Əgər artıq açıqdırsa, fokus ver (BU HİSSƏNİ SİLİRİK Kİ ÇOXLU PƏNCƏRƏ AÇILSIN)
-    // if (get().isPageOpen(pageId)) {
-    //   get().focusPage(pageId)
-    //   return
-    // }
-
-    const newCounter = state.windowCounter + 1
-    // Unique ID for multiple instances: page-{pageId}-{counter}
-    const id = `page-${pageId}-${newCounter}`
-    const newZIndex = state.zIndexCounter + 1
-
-    // Mərkəzi pozisiya hesabla + offset
-    const centered = calculateCenteredPosition(size.width, size.height)
-    const offset = (newCounter % 10) * 30 // Cascade effect
-    let position = { x: centered.x + offset, y: centered.y + offset }
-
-    // Load saved preferences
+    // Load saved preferences first to check allowMultipleInstances
+    let allowMultipleInstances = false // Default: yalnız 1 dəfə açıla bilər
     let initialSize = size
     let initialIsMaximized = false
 
@@ -796,13 +780,31 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       const stored = localStorage.getItem(`window-pref-${pageId}`)
       if (stored) {
         const prefs = JSON.parse(stored)
+        if (prefs.allowMultipleInstances !== undefined) {
+          allowMultipleInstances = prefs.allowMultipleInstances
+        }
         if (prefs.size) initialSize = prefs.size
         if (prefs.isMaximized) initialIsMaximized = prefs.isMaximized
-        // Saved position logic could be added here if desired, but centering is usually safer for new sessions
       }
     } catch (e) {
       console.error('Failed to load window preferences:', e)
     }
+
+    // Əgər allowMultipleInstances false-dursa və artıq açıqdırsa, fokus ver
+    if (!allowMultipleInstances && get().isPageOpen(pageId)) {
+      get().focusPage(pageId)
+      return
+    }
+
+    const newCounter = state.windowCounter + 1
+    // Unique ID for multiple instances: page-{pageId}-{counter}
+    const id = `page-${pageId}-${newCounter}`
+    const newZIndex = state.zIndexCounter + 1
+
+    // Mərkəzi pozisiya hesabla + offset
+    const centered = calculateCenteredPosition(initialSize.width, initialSize.height)
+    const offset = (newCounter % 10) * 30 // Cascade effect
+    let position = { x: centered.x + offset, y: centered.y + offset }
 
     if (import.meta.env.MODE === 'development') {
       console.log('[windowStore] Opening page window:', { pageId, id, newCounter, windowCounter: state.windowCounter })

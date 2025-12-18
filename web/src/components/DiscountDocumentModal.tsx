@@ -65,8 +65,19 @@ export default function DiscountDocumentModal({
                         eDate = new Date(sDate.getTime() + 365 * 24 * 60 * 60 * 1000)
                     }
 
-                    setStartDate(sDate.toISOString().slice(0, 16))
-                    setEndDate(eDate.toISOString().slice(0, 16))
+                    // Convert to local datetime-local format (YYYY-MM-DDTHH:mm)
+                    // Don't use toISOString() as it converts to UTC
+                    const formatLocalDateTime = (date: Date) => {
+                        const year = date.getFullYear()
+                        const month = String(date.getMonth() + 1).padStart(2, '0')
+                        const day = String(date.getDate()).padStart(2, '0')
+                        const hours = String(date.getHours()).padStart(2, '0')
+                        const minutes = String(date.getMinutes()).padStart(2, '0')
+                        return `${year}-${month}-${day}T${hours}:${minutes}`
+                    }
+
+                    setStartDate(formatLocalDateTime(sDate))
+                    setEndDate(formatLocalDateTime(eDate))
 
                     setEntityId(doc.entity_id)
                     setNotes(doc.notes || '')
@@ -157,6 +168,26 @@ export default function DiscountDocumentModal({
                         onDateChange={setStartDate}
                         style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
+                    {docNumber && (
+                        <div style={{ marginTop: '0.5rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>Sənəd Nömrəsi</label>
+                            <input
+                                type="text"
+                                value={docNumber}
+                                readOnly
+                                style={{
+                                    width: '100%',
+                                    padding: '0.4rem',
+                                    borderRadius: '4px',
+                                    border: '1px solid #ddd',
+                                    background: '#f9f9f9',
+                                    color: '#333',
+                                    fontSize: '0.85rem',
+                                    cursor: 'default'
+                                }}
+                            />
+                        </div>
+                    )}
                 </div>
                 <div>
                     <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Bitmə Tarixi</label>

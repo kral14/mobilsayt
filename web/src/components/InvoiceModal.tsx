@@ -6,6 +6,7 @@ import type { Customer, Product, Supplier, WarehouseLocation, DiscountDocument }
 import TableSettingsModal, { type ColumnConfig as TableColumnConfig, type FunctionSettings } from './TableSettingsModal'
 import ConfirmDialog from './ConfirmDialog'
 import { purchaseInvoicesAPI, productDiscountsAPI } from '../services/api'
+import SmartDateInput from './SmartDateInput'
 
 const COLUMN_DRAG_STORAGE_KEY = 'invoice-modal-column-drag-enabled'
 const TABLE_COLUMNS_STORAGE_KEY = 'invoice-modal-table-columns'
@@ -402,114 +403,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
 
 
-  // Display formatını raw formata çevirir (DD.MM.YYYY HH:MM:SS -> YYYY-MM-DD HH:MM:SS)
-  const convertDisplayToRaw = (displayString: string): string => {
-    if (!displayString) return ''
-    // DD.MM.YYYY HH:MM:SS formatını parse et
-    const match = displayString.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/)
-    if (match) {
-      const [, day, month, year, hours, minutes, seconds] = match
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-    }
-    // Əgər artıq raw formatdırsa, olduğu kimi qaytar
-    return displayString
-  }
-
-  // Tarix formatlaşdırma funksiyası - DD.MM.YYYY HH:MM:SS formatına çevirir
-  const formatDateToDisplay = (dateString: string | null | undefined): string => {
-    if (!dateString) {
-      // Əgər tarix yoxdursa, cari tarix və saatı göstər
-      const now = new Date()
-      const day = String(now.getDate()).padStart(2, '0')
-      const month = String(now.getMonth() + 1).padStart(2, '0')
-      const year = now.getFullYear()
-      const hours = String(now.getHours()).padStart(2, '0')
-      const minutes = String(now.getMinutes()).padStart(2, '0')
-      const seconds = String(now.getSeconds()).padStart(2, '0')
-      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
-    }
-
-    // Əgər artıq display formatındadırsa (tam və ya qismən), olduğu kimi qaytar (yazmaq üçün)
-    // Qismən formatlar: "12", "12.1", "12.10", "12.10.2025", "12.10.2025 10", və s.
-    if (/^[\d. :]*$/.test(dateString) && !dateString.includes('-')) {
-      return dateString
-    }
-
-    // Əgər raw formatdırsa (YYYY-MM-DD HH:MM:SS), display formatına çevir
-    try {
-      const date = new Date(dateString)
-      if (isNaN(date.getTime())) return dateString
-
-      const day = String(date.getDate()).padStart(2, '0')
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const year = date.getFullYear()
-      const hours = String(date.getHours()).padStart(2, '0')
-      const minutes = String(date.getMinutes()).padStart(2, '0')
-      const seconds = String(date.getSeconds()).padStart(2, '0')
-      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
-    } catch {
-      return dateString
-    }
-  }
-
-  // Smart tarix parsing - qısa formatları parse edir
-  const parseSmartDate = (input: string): string => {
-    const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth() + 1
-    const currentDay = now.getDate()
-    const currentHours = now.getHours()
-    const currentMinutes = now.getMinutes()
-    const currentSeconds = now.getSeconds()
-
-    // Təmizlə: yalnız rəqəmlər və nöqtələr
-    const cleaned = input.replace(/[^\d.]/g, '').trim()
-
-    if (!cleaned) {
-      // Boşdursa, cari tarix və saatı qaytar
-      const day = String(currentDay).padStart(2, '0')
-      const month = String(currentMonth).padStart(2, '0')
-      const year = currentYear
-      const hours = String(currentHours).padStart(2, '0')
-      const minutes = String(currentMinutes).padStart(2, '0')
-      const seconds = String(currentSeconds).padStart(2, '0')
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-    }
-
-    const parts = cleaned.split('.')
-
-    if (parts.length === 1 && parts[0]) {
-      // Sadəcə gün: "11" -> bugünün tarixi, gün 11, cari saat
-      const day = parseInt(parts[0])
-      if (day >= 1 && day <= 31) {
-        const month = String(currentMonth).padStart(2, '0')
-        const year = currentYear
-        const hours = String(currentHours).padStart(2, '0')
-        const minutes = String(currentMinutes).padStart(2, '0')
-        const seconds = String(currentSeconds).padStart(2, '0')
-        return `${year}-${month}-${String(day).padStart(2, '0')} ${hours}:${minutes}:${seconds}`
-      }
-    } else if (parts.length === 2 && parts[0] && parts[1]) {
-      // Gün və ay: "11.10" -> bu ilin vaxtı, gün 11, ay 10, saat 00:00:00
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        const year = currentYear
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} 00:00:00`
-      }
-    } else if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
-      // Tam tarix: "11.10.2025" -> 2025-10-11 00:00:00
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      const year = parseInt(parts[2])
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} 00:00:00`
-      }
-    }
-
-    // Əgər format düzgün deyilsə, olduğu kimi qaytar
-    return input
-  }
+  // Custom date functions removed - now using SmartDateInput component
 
   // Modal açılanda tarixi avtomatik set et (yalnız yeni qaimələr üçün)
   useEffect(() => {
@@ -1675,31 +1569,92 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     height: '28px'
                   }}
                 />
-                {localData.selectedSupplier && (
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '2px', position: 'absolute', right: '4px', height: '100%', alignItems: 'center' }}>
+                  {/* Magnifying Glass - Open Supplier Details */}
+                  {localData.selectedSupplier && (
+                    <button
+                      onClick={() => {
+                        if (!localData.selectedSupplier) return
+                        const { openPageWindow } = useWindowStore.getState()
+                        openPageWindow(
+                          `supplier-edit-${localData.selectedSupplierId}`,
+                          `Təchizatçı: ${localData.selectedSupplier.name}`,
+                          '👤',
+                          <div>Supplier Edit Modal (TODO)</div>,
+                          { width: 800, height: 600 }
+                        )
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#007bff',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        padding: '0 4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      title="Təchizatçı məlumatları"
+                    >
+                      🔍
+                    </button>
+                  )}
+
+                  {/* Three Dots - Open Suppliers Page */}
                   <button
                     onClick={() => {
-                      setLocalData(prev => ({ ...prev, selectedSupplierId: null, selectedSupplier: null }))
-                      setSupplierSearchTerm('')
+                      const { openPageWindow } = useWindowStore.getState()
+                      openPageWindow(
+                        'suppliers-page',
+                        'Təchizatçılar',
+                        '👥',
+                        <div>Suppliers Page (TODO)</div>,
+                        { width: 1000, height: 700 }
+                      )
                     }}
                     style={{
-                      position: 'absolute',
-                      right: '4px',
                       background: 'none',
                       border: 'none',
-                      color: '#dc3545',
+                      color: '#6c757d',
                       cursor: 'pointer',
-                      fontSize: '1rem',
-                      padding: '0',
+                      fontSize: '1.2rem',
+                      padding: '0 4px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      height: '100%'
+                      lineHeight: 1
                     }}
-                    title="Təmizlə"
+                    title="Təchizatçılar səhifəsi"
                   >
-                    ×
+                    ⋯
                   </button>
-                )}
+
+                  {/* Clear Button (X) */}
+                  {localData.selectedSupplier && (
+                    <button
+                      onClick={() => {
+                        setLocalData(prev => ({ ...prev, selectedSupplierId: null, selectedSupplier: null }))
+                        setSupplierSearchTerm('')
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#dc3545',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        padding: '0 4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      title="Təmizlə"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Təchizatçı dropdown */}
@@ -1779,42 +1734,18 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               Tarix:
             </label>
             <div style={{ flex: 1, position: 'relative' }}>
-              <input
-                type="text"
-                value={formatDateToDisplay(localData.invoiceDate)}
-                onChange={(e) => setLocalData({ ...localData, invoiceDate: e.target.value.replace(/[^\d. :]/g, '') })}
-                onFocus={(e) => {
-                  setShowInvoiceDatePicker(false)
-                  if (!localData.invoiceDate) {
-                    const now = formatDateToDisplay(null)
-                    setLocalData({ ...localData, invoiceDate: convertDisplayToRaw(now) })
-                  }
-                  e.target.select()
-                }}
-                onBlur={(e) => {
-                  const parsed = parseSmartDate(e.target.value)
-                  setLocalData({ ...localData, invoiceDate: convertDisplayToRaw(parsed) || parsed })
-                  setTimeout(() => setShowInvoiceDatePicker(false), 200)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    const parsed = parseSmartDate(e.currentTarget.value)
-                    setLocalData({ ...localData, invoiceDate: convertDisplayToRaw(parsed) || parsed })
-                  }
-                }}
+              <SmartDateInput
+                value={localData.invoiceDate || new Date().toISOString()}
+                onDateChange={(isoDate) => setLocalData({ ...localData, invoiceDate: isoDate })}
                 style={{
                   width: '100%',
                   padding: '4px 28px 4px 8px',
                   border: '1px solid #e0e0e0',
-                  outline: 'none',
-                  boxShadow: 'none',
                   borderRadius: '4px',
                   fontSize: '0.9rem',
                   height: '28px',
                   color: '#495057'
                 }}
-                placeholder="DD.MM.YYYY HH:MM:SS"
               />
               <button
                 type="button"
@@ -1904,27 +1835,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               Son Öd.:
             </label>
             <div style={{ flex: 1, position: 'relative' }}>
-              <input
-                type="text"
-                value={formatDateToDisplay(localData.paymentDate)}
-                onChange={(e) => setLocalData({ ...localData, paymentDate: e.target.value.replace(/[^\d. :]/g, '') })}
-                onBlur={(e) => {
-                  const parsed = parseSmartDate(e.target.value)
-                  setLocalData({ ...localData, paymentDate: convertDisplayToRaw(parsed) || parsed })
-                }}
+              <SmartDateInput
+                value={localData.paymentDate || new Date().toISOString()}
+                onDateChange={(isoDate) => setLocalData({ ...localData, paymentDate: isoDate })}
                 style={{
                   width: '100%',
                   padding: '4px 8px',
                   border: '1px solid #e0e0e0',
-                  outline: 'none',
-                  boxShadow: 'none',
                   borderRadius: '4px',
                   fontSize: '0.9rem',
                   height: '28px',
                   background: 'white',
                   color: '#495057'
                 }}
-                placeholder="DD.MM.YYYY"
               />
             </div>
           </div>

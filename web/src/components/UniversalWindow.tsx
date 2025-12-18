@@ -51,6 +51,7 @@ export default function UniversalWindow({
     const [showSettings, setShowSettings] = useState(false)
     const [zoom, setZoom] = useState(100)
     const [activeTab, setActiveTab] = useState<'view'>('view')
+    const [allowMultipleInstances, setAllowMultipleInstances] = useState(false) // Default: yalnız 1 dəfə açıla bilər
 
     // Snap Layout Menu (Deaktiv edilib - Istifadeci isteyi ile)
     const [showSnapMenu, setShowSnapMenu] = useState(false)
@@ -102,6 +103,9 @@ export default function UniversalWindow({
                 if (stored) {
                     const prefs = JSON.parse(stored)
                     if (prefs.zoom) setZoom(prefs.zoom)
+                    if (prefs.allowMultipleInstances !== undefined) {
+                        setAllowMultipleInstances(prefs.allowMultipleInstances)
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load window preferences:', e)
@@ -110,7 +114,7 @@ export default function UniversalWindow({
     }, [pageId])
 
     const handleSaveDefaults = () => {
-        console.log('[UniversalWindow] Varsayılan kimi saxla düyməsinə basıldı', { pageId, zoom, size, isMaximized })
+        console.log('[UniversalWindow] Varsayılan kimi saxla düyməsinə basıldı', { pageId, zoom, size, isMaximized, allowMultipleInstances })
 
         if (!pageId) {
             console.warn('[UniversalWindow] pageId yoxdur, saxlana bilməz')
@@ -121,7 +125,8 @@ export default function UniversalWindow({
         const prefs = {
             zoom,
             size,
-            isMaximized
+            isMaximized,
+            allowMultipleInstances
         }
 
         try {
@@ -346,6 +351,29 @@ export default function UniversalWindow({
 
                                             {pageId && (
                                                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #eee' }}>
+                                                    {/* Single Instance Checkbox */}
+                                                    <label style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        fontSize: '13px',
+                                                        marginBottom: '10px',
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none'
+                                                    }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!allowMultipleInstances}
+                                                            onChange={(e) => setAllowMultipleInstances(!e.target.checked)}
+                                                            style={{
+                                                                width: '16px',
+                                                                height: '16px',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        />
+                                                        <span>Yalnız 1 dəfə açıla bilər</span>
+                                                    </label>
+
                                                     <button
                                                         onClick={handleSaveDefaults}
                                                         style={{

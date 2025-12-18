@@ -245,7 +245,23 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
                         // onDelete: handleDelete,
                     }}
                     onRowSelect={setSelectedIds}
-                    onRowClick={(row) => setSelectedIds([row.id])} // Click selects row
+                    onRowClick={(row) => {
+                        // Open document to view/edit products inside
+                        const windowId = `discount-doc-edit-${row.id}`
+                        openPageWindow(
+                            windowId,
+                            type === 'SUPPLIER' ? 'Təchizatçı Faiz Sənədi (Redaktə)' : 'Məhsul Faiz Sənədi (Redaktə)',
+                            '📄',
+                            <DiscountDocumentModal
+                                type={type}
+                                documentId={row.id}
+                                onSuccess={() => {
+                                    loadDocuments()
+                                }}
+                            />,
+                            { width: 900, height: 600 }
+                        )
+                    }}
                 />
             </div>
         </div>

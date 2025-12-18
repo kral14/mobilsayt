@@ -6,14 +6,16 @@ import type { Customer } from '../../../shared/types'
 
 interface PartnerManagerProps {
     pageTitle: string
+    filterType?: 'ALL' | 'BUYER' | 'SUPPLIER' // Optional filter
 }
 
-export default function PartnerManager({ pageTitle }: PartnerManagerProps) {
+export default function PartnerManager({ pageTitle, filterType = 'ALL' }: PartnerManagerProps) {
     const [customers, setCustomers] = useState<Customer[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
     const [formData, setFormData] = useState<Partial<Customer>>({})
+    const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUYER' | 'SUPPLIER'>(filterType)
 
     // Fetch customers
     const loadCustomers = useCallback(async () => {
@@ -32,12 +34,33 @@ export default function PartnerManager({ pageTitle }: PartnerManagerProps) {
         loadCustomers()
     }, [loadCustomers])
 
+    // Filter customers by type
+    const filteredCustomers = useMemo(() => {
+        if (typeFilter === 'ALL') return customers
+        return customers.filter(c =>
+            c.type === typeFilter || c.type === 'BOTH'
+        )
+    }, [customers, typeFilter])
+
     // Columns configuration
     const columns = useMemo<ColumnConfig[]>(() => [
         { id: 'code', label: 'Kod', visible: true, width: 100, order: 1 },
-        { id: 'name', label: 'Ad', visible: true, width: 200, order: 2 },
-        { id: 'phone', label: 'Telefon', visible: true, width: 150, order: 3 },
-        { id: 'email', label: 'Email', visible: true, width: 200, order: 4 },
+        {
+            id: 'type',
+            label: 'Növ',
+            visible: true,
+            width: 120,
+            order: 2,
+            render: (value: any) => {
+                if (value === 'BUYER') return '🛒 Alıcı'
+                if (value === 'SUPPLIER') return '📦 Satıcı'
+                if (value === 'BOTH') return '🔄 Hər ikisi'
+                return '🛒 Alıcı' // Default
+            }
+        },
+        { id: 'name', label: 'Ad', visible: true, width: 200, order: 3 },
+        { id: 'phone', label: 'Telefon', visible: true, width: 150, order: 4 },
+        { id: 'email', label: 'Email', visible: true, width: 200, order: 5 },
         {
             id: 'permanent_discount',
             label: 'Daimi Endirim %',
@@ -95,7 +118,7 @@ export default function PartnerManager({ pageTitle }: PartnerManagerProps) {
 
     const openNewModal = () => {
         setEditingCustomer(null)
-        setFormData({ name: '', permanent_discount: 0, is_active: true })
+        setFormData({ name: '', permanent_discount: 0, is_active: true, type: 'BUYER' })
         setShowModal(true)
     }
 
@@ -105,43 +128,30 @@ export default function PartnerManager({ pageTitle }: PartnerManagerProps) {
         ]
     }), [])
 
-    const toolbarActions = useMemo(() => ({
-        onEdit: (ids: (number | string)[]) => {
-            const customer = customers.find(c => c.id === ids[0])
-            if (customer) handleEdit(customer)
-        },
-        onDelete: (ids: (number | string)[]) => handleDelete(ids)
-    }), [customers, handleEdit, handleDelete])
-
     return (
-        <div style={{ padding: '2rem', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                <h1>{pageTitle}</h1>
-                <button
-                    onClick={openNewModal}
-                    style={{
-                        padding: '0.5rem 1rem',
-                        backgroundColor: '#28a745',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
-                    + Yeni Tərəfdaş
-                </button>
-            </div>
+        <div style={{
+            padding: '2rem',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            border: '3px solid red' // DEBUG: Main container
+        }}>
 
-            <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+            <div style={{
+                flex: 1,
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                border: '3px solid blue' // DEBUG: Table container
+            }}>
                 <DataTable
-                    data={customers}
+                    data={filteredCustomers}
                     columns={columns}
                     loading={loading}
                     pageId={`partner-manager-${pageTitle.toLowerCase()}`}
                     title={pageTitle}
                     getRowId={(row: Customer) => row.id}
                     contextMenuActions={contextMenuActions}
-                    toolbarActions={toolbarActions}
                     defaultColumns={columns}
                 />
             </div>
@@ -155,6 +165,19 @@ export default function PartnerManager({ pageTitle }: PartnerManagerProps) {
                     <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '8px', width: '500px', maxWidth: '90%' }}>
                         <h2>{editingCustomer ? 'Redaktə Et' : 'Yeni Tərəfdaş'}</h2>
                         <form onSubmit={handleSave}>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Növ *</label>
+                                <select
+                                    required
+                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                                    value={formData.type || 'BUYER'}
+                                    onChange={e => setFormData({ ...formData, type: e.target.value as 'BUYER' | 'SUPPLIER' | 'BOTH' })}
+                                >
+                                    <option value="BUYER">🛒 Alıcı</option>
+                                    <option value="SUPPLIER">📦 Satıcı</option>
+                                    <option value="BOTH">🔄 Hər ikisi</option>
+                                </select>
+                            </div>
                             <div style={{ marginBottom: '1rem' }}>
                                 <label style={{ display: 'block', marginBottom: '0.5rem' }}>Ad *</label>
                                 <input

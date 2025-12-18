@@ -33,10 +33,10 @@ const SmartDateInput = forwardRef<HTMLInputElement, SmartDateInputProps>(({ valu
             const year = date.getFullYear()
             const hours = String(date.getHours()).padStart(2, '0')
             const minutes = String(date.getMinutes()).padStart(2, '0')
-            // const seconds = String(date.getSeconds()).padStart(2, '0')
+            const seconds = String(date.getSeconds()).padStart(2, '0')
 
-            // Display: DD.MM.YYYY HH:MM
-            setDisplayValue(`${day}.${month}.${year} ${hours}:${minutes}`)
+            // Display: DD.MM.YYYY HH:MM:SS
+            setDisplayValue(`${day}.${month}.${year} ${hours}:${minutes}:${seconds}`)
         } catch {
             setDisplayValue(value)
         }
@@ -48,8 +48,8 @@ const SmartDateInput = forwardRef<HTMLInputElement, SmartDateInputProps>(({ valu
         let day = now.getDate()
         let month = now.getMonth() + 1
         let year = now.getFullYear()
-        let hours = now.getHours()
-        let minutes = now.getMinutes()
+        let hours = 0  // Default to 00:00 instead of current time
+        let minutes = 0
         let seconds = 0
 
         const cleanText = text.trim()
@@ -96,32 +96,30 @@ const SmartDateInput = forwardRef<HTMLInputElement, SmartDateInputProps>(({ valu
             if (timeSegments.length >= 2) {
                 hours = parseInt(timeSegments[0])
                 minutes = parseInt(timeSegments[1])
+                if (timeSegments.length >= 3) {
+                    seconds = parseInt(timeSegments[2])
+                }
                 timePartFound = true
             }
         } else if (!timePartFound) {
-            // If user didn't type time, keep the time from the ORIGINAL value passed in props
-            // to avoid resetting time to "now" every time we edit date
-            if (value) {
-                const originalDate = new Date(value)
-                if (!isNaN(originalDate.getTime())) {
-                    hours = originalDate.getHours()
-                    minutes = originalDate.getMinutes()
-                }
-            }
+            // If user didn't type time, default to 00:00:00
+            hours = 0
+            minutes = 0
+            seconds = 0
         }
 
         // Validate
         const newDate = new Date(year, month - 1, day, hours, minutes, seconds)
 
-        // Construct ISO string for datetime-local compatible format (YYYY-MM-DDTHH:mm)
-        // Adjust for timezone offset if needed, or use local ISO
+        // Construct ISO string for datetime-local compatible format (YYYY-MM-DDTHH:mm:ss)
         const yyyy = newDate.getFullYear()
         const MM = String(newDate.getMonth() + 1).padStart(2, '0')
         const dd = String(newDate.getDate()).padStart(2, '0')
         const HH = String(newDate.getHours()).padStart(2, '0')
         const mm = String(newDate.getMinutes()).padStart(2, '0')
+        const ss = String(newDate.getSeconds()).padStart(2, '0')
 
-        onDateChange(`${yyyy}-${MM}-${dd}T${HH}:${mm}`)
+        onDateChange(`${yyyy}-${MM}-${dd}T${HH}:${mm}:${ss}`)
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -152,54 +150,72 @@ const SmartDateInput = forwardRef<HTMLInputElement, SmartDateInputProps>(({ valu
             return
         }
 
-        const cursor = input.selectionStart || 0
-        const text = input.value
-
-        // Check if clicked on whitespace (Space or End of string)
-        const isWhitespace = cursor >= text.length || text[cursor] === ' '
-
         if (clickStage === 0) {
-            // User clicked from normal state -> Start Cycle (Select All)
+            // 1st Click: Select All
             input.select()
             setClickStage(1)
         }
         else if (clickStage === 1) {
-            // 2nd Click (was All Selected)
-            if (isWhitespace) {
-                // Clicked on empty space -> Cancel selection
-                setClickStage(0)
-            } else {
-                // Clicked on text -> Select Part
-                let start = 0
-                let end = 0
-
-                if (cursor <= 2) { // DD
-                    start = 0; end = 2;
-                } else if (cursor >= 3 && cursor <= 5) { // MM
-                    start = 3; end = 5;
-                } else if (cursor >= 6 && cursor <= 10) { // YYYY
-                    start = 6; end = 10;
-                } else if (cursor >= 11 && cursor <= 13) { // HH
-                    start = 11; end = 13;
-                } else if (cursor >= 14) { // MM
-                    start = 14; end = 16;
-                }
-
-                if (end > 0) {
-                    input.setSelectionRange(start, end)
-                    setClickStage(2)
-                } else {
-                    // Fallback
-                    setClickStage(0)
-                }
-            }
+            // 2nd Click: Cancel selection
+            // Use setTimeout to get accurate cursor position after click
+            setTimeout(() => {
+                const clickPos = input.selectionStart || 0
+                input.setSelectionRange(clickPos, clickPos)
+            }, 0)
+            setClickStage(2)
         }
         else if (clickStage === 2) {
-            // 3rd Click -> Cancel / Reset based on click
-            setClickStage(0)
+            // 3rd+ Click: Select part based on click position
+            // Use setTimeout to get accurate cursor position after click
+            setTimeout(() => {
+                const clickPos = input.selectionStart || 0
+                const text = input.value
+
+                // Check if clicked on whitespace
+                const isWhitespace = clickPos >= text.length || text[clickPos] === ' '
+
+                if (isWhitespace) {
+                    // Just place cursor
+                    input.setSelectionRange(clickPos, clickPos)
+                } else {
+                    let start = 0
+                    let end = 0
+
+                    // Format: DD.MM.YYYY HH:MM:SS
+                    // Positions: 01.34.6789 1112:1415:1718
+                    if (clickPos <= 1) { // DD
+                        start = 0; end = 2;
+                    } else if (clickPos >= 3 && clickPos <= 4) { // MM
+                        start = 3; end = 5;
+                    } else if (clickPos >= 6 && clickPos <= 9) { // YYYY
+                        start = 6; end = 10;
+                    } else if (clickPos >= 11 && clickPos <= 12) { // HH
+                        start = 11; end = 13;
+                    } else if (clickPos >= 14 && clickPos <= 15) { // MM (minutes)
+                        start = 14; end = 16;
+                    } else if (clickPos >= 17 && clickPos <= 18) { // SS
+                        start = 17; end = 19;
+                    } else {
+                        // Clicked on separator - just place cursor
+                        input.setSelectionRange(clickPos, clickPos)
+                        return
+                    }
+
+                    if (end > 0) {
+                        input.setSelectionRange(start, end)
+                    }
+                }
+            }, 0)
+            // Stay in stage 2
         }
 
         if (onClick) onClick(e)
+    }
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        // Just update the display value, allow free typing
+        // Formatting and validation happens on blur
+        setDisplayValue(e.target.value)
     }
 
     return (
@@ -211,12 +227,13 @@ const SmartDateInput = forwardRef<HTMLInputElement, SmartDateInputProps>(({ valu
             }}
             type="text"
             value={displayValue}
-            onChange={(e) => setDisplayValue(e.target.value)}
+            onChange={handleChange}
             onBlur={handleBlur}
             onFocus={handleFocus}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
-            placeholder="GG.AA.İİİİ SS:DD"
+            placeholder="GG.AA.İİİİ SS:DD:SS"
+            maxLength={19} // DD.MM.YYYY HH:MM:SS = 19 characters
             {...props}
         />
     )

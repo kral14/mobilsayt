@@ -5,17 +5,17 @@ import { useWindowStore } from '../store/windowStore'
 import UniversalWindow from './UniversalWindow'
 import SnapAssist from './SnapAssist'
 import { useLogSync } from '../hooks/useLogSync'
+import PartnerManager from './PartnerManager'
 
 // Səhifə komponentləri
 import Hesablar from '../pages/Hesablar'
 import Anbar from '../pages/Anbar'
+import { AlisQaimeleriContent } from '../pages/Qaimeler/Alis'
 import SatisQaimeleri from '../pages/Qaimeler/Satis'
 import KassaMedaxil from '../pages/Kassa/Medaxil'
 import KassaMexaric from '../pages/Kassa/Mexaric'
-import Alicilar from '../pages/Musteriler/Alici'
-import Saticilar from '../pages/Musteriler/Satici'
 import Admin from '../pages/Admin'
-import DiscountDocuments, { SupplierDiscountDocuments, ProductDiscountDocuments } from '../pages/Discounts/DiscountDocuments'
+import { SupplierDiscountDocuments, ProductDiscountDocuments } from '../pages/Discounts/DiscountDocuments'
 import ActiveDiscountsModal from './ActiveDiscountsModal'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -353,13 +353,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         /* Taskbar Fixes */
         #taskbar {
             z-index: 10001; /* Taskbar ən üstdə */
+            border: 3px solid blue !important; /* DEBUG: Taskbar sərhədi */
         }
         
         /* General Workspace Adjustment */
         #workspace {
             padding-top: 70px; /* Navbar hündürlüyü qədər boşluq */
-            height: 100vh;
+            height: calc(100vh - 110px); /* Navbar (70px) + Taskbar (40px) çıxırıq */
             box-sizing: border-box;
+            border: 3px solid green !important; /* DEBUG: Workspace sərhədi */
+        }
+        
+        /* DEBUG: Navbar border */
+        .navbar {
+            border: 3px solid red !important; /* DEBUG: Navbar sərhədi */
         }
       `}</style>
 
@@ -384,7 +391,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </button>
                 <ul className="dropdown-menu">
                   <li>
-                    <button className="dropdown-item" onClick={() => { navigate('/qaimeler/alis'); setActiveDropdown(null); }}>
+                    <button className="dropdown-item" onClick={() => handleOpenPage('qaimeler-alis', 'Alış Qaimələri', '📄', AlisQaimeleriContent)}>
                       <span><i className="fas fa-file-invoice"></i> Alış Qaimələri</span> <i className="fas fa-arrow-right"></i>
                     </button>
                   </li>
@@ -435,22 +442,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
               {/* MÜŞTƏRİLƏR */}
               <li
-                className={`nav-item ${activeDropdown === 'musteriler' ? 'active' : ''}`}
-                onMouseEnter={() => setActiveDropdown('musteriler')}
+                className={`nav-item dropdown ${activeDropdown === 'kataloq' ? 'active' : ''}`}
+                onMouseEnter={() => setActiveDropdown('kataloq')}
                 onMouseLeave={() => setActiveDropdown(null)}
               >
                 <button className="nav-link">
-                  Müştərilər <i className="fas fa-chevron-down"></i>
+                  Kataloq <i className="fas fa-chevron-down"></i>
                 </button>
                 <ul className="dropdown-menu">
                   <li>
-                    <button className="dropdown-item" onClick={() => handleOpenPage('musteriler-alici', 'Alıcılar', '👥', Alicilar)}>
-                      <span><i className="fas fa-users"></i> Alıcılar</span> <i className="fas fa-arrow-right"></i>
-                    </button>
-                  </li>
-                  <li>
-                    <button className="dropdown-item" onClick={() => handleOpenPage('musteriler-satici', 'Satıcılar', '🏢', Saticilar)}>
-                      <span><i className="fas fa-building"></i> Satıcılar</span> <i className="fas fa-arrow-right"></i>
+                    <button className="dropdown-item" onClick={() => {
+                      const { openPageWindow } = useWindowStore.getState()
+                      openPageWindow(
+                        'partners',
+                        'Tərəfdaşlar',
+                        '👥',
+                        <PartnerManager pageTitle="Tərəfdaşlar" filterType="ALL" />,
+                        { width: 1200, height: 800 }
+                      )
+                    }}>
+                      <span><i className="fas fa-users"></i> Tərəfdaşlar</span> <i className="fas fa-arrow-right"></i>
                     </button>
                   </li>
                 </ul>

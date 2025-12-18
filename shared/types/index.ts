@@ -22,6 +22,7 @@ export interface Customer {
   permanent_discount: number | null
   folder_id: number | null
   is_active: boolean | null
+  type: 'BUYER' | 'SUPPLIER' | 'BOTH' | null
   created_at: Date | null
   updated_at: Date | null
 }
