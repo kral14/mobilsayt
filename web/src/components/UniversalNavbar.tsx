@@ -37,10 +37,15 @@ const UniversalNavbar: React.FC<UniversalNavbarProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            padding: '0.5rem 1rem',
+            padding: '0.1rem 0.5rem',
             background: '#f5f5f5',
             borderBottom: '1px solid #ddd',
-            flexWrap: 'wrap'
+            flexWrap: 'wrap',
+            flexShrink: 0,
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+            border: '2px solid green' // DEBUG: Navbar
         }}>
             {/* ADD */}
             {onAdd && (

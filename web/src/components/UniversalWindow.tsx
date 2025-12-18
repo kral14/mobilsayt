@@ -185,6 +185,10 @@ export default function UniversalWindow({
                 display: 'flex',
                 flexDirection: 'column'
             }}
+            onContextMenu={(e) => {
+                e.preventDefault()
+                return false
+            }}
         >
             {/* Window Header */}
             <div

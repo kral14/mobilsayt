@@ -1,8 +1,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import DataTable, { ColumnConfig } from './DataTable'
 import { customersAPI } from '../services/api'
 import type { Customer } from '../../../shared/types'
+import UniversalContainer from './UniversalContainer'
+import UniversalNavbar from './UniversalNavbar'
+import UniversalTable, { ColumnConfig } from './UniversalTable'
+import UniversalFooter from './UniversalFooter'
+import TableSettingsModal from './TableSettingsModal'
 
 interface PartnerManagerProps {
     pageTitle: string
@@ -13,9 +17,11 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
     const [customers, setCustomers] = useState<Customer[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
+    const [showSettingsModal, setShowSettingsModal] = useState(false)
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
     const [formData, setFormData] = useState<Partial<Customer>>({})
     const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUYER' | 'SUPPLIER'>(filterType)
+    const [tableColumns, setTableColumns] = useState<ColumnConfig[]>([])
 
     // Fetch customers
     const loadCustomers = useCallback(async () => {
@@ -82,6 +88,13 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
         }
     ], [])
 
+    // Initialize table columns
+    useEffect(() => {
+        if (tableColumns.length === 0) {
+            setTableColumns(columns)
+        }
+    }, [columns, tableColumns.length])
+
     const handleEdit = useCallback((customer: Customer) => {
         setEditingCustomer(customer)
         setFormData({ ...customer })
@@ -118,7 +131,29 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
 
     const openNewModal = () => {
         setEditingCustomer(null)
-        setFormData({ name: '', permanent_discount: 0, is_active: true, type: 'BUYER' })
+
+        // Generate code based on type
+        const generateCode = (type: string) => {
+            const prefix = type === 'SUPPLIER' ? 'SAT' : 'AL'
+            const maxCode = customers
+                .filter(c => c.code?.startsWith(prefix))
+                .map(c => {
+                    const num = parseInt(c.code?.substring(prefix.length) || '0')
+                    return isNaN(num) ? 0 : num
+                })
+                .reduce((max, num) => Math.max(max, num), 0)
+
+            return `${prefix}${String(maxCode + 1).padStart(4, '0')}`
+        }
+
+        const newCode = generateCode('BUYER')
+        setFormData({
+            name: '',
+            code: newCode,
+            permanent_discount: 0,
+            is_active: true,
+            type: 'BUYER'
+        })
         setShowModal(true)
     }
 
@@ -128,33 +163,68 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
         ]
     }), [])
 
-    return (
-        <div style={{
-            padding: '2rem',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            border: '3px solid red' // DEBUG: Main container
-        }}>
+    const [selectedIds, setSelectedIds] = useState<(number | string)[]>([])
 
-            <div style={{
-                flex: 1,
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                border: '3px solid blue' // DEBUG: Table container
-            }}>
-                <DataTable
-                    data={filteredCustomers}
-                    columns={columns}
-                    loading={loading}
-                    pageId={`partner-manager-${pageTitle.toLowerCase()}`}
-                    title={pageTitle}
-                    getRowId={(row: Customer) => row.id}
-                    contextMenuActions={contextMenuActions}
-                    defaultColumns={columns}
+    return (
+        <UniversalContainer padding="5px 15px">
+            <UniversalNavbar
+                onAdd={() => {
+                    openNewModal()
+                }}
+                onEdit={() => {
+                    if (selectedIds.length === 1) {
+                        const customer = filteredCustomers.find(c => c.id === selectedIds[0])
+                        if (customer) handleEdit(customer)
+                    }
+                }}
+                onDelete={() => {
+                    if (selectedIds.length > 0) {
+                        handleDelete(selectedIds)
+                    }
+                }}
+                onCopy={() => {
+                    // Copy functionality
+                    console.log('Copy:', selectedIds)
+                }}
+                onPrint={() => {
+                    // Print functionality
+                    window.print()
+                }}
+                onRefresh={loadCustomers}
+                onSettings={() => {
+                    setShowSettingsModal(true)
+                }}
+                onSearch={(term) => {
+                    // Search functionality
+                    console.log('Search:', term)
+                }}
+                onFilter={() => {
+                    // Filter functionality
+                    console.log('Filter')
+                }}
+            />
+
+            <UniversalTable
+                data={filteredCustomers}
+                columns={tableColumns}
+                loading={loading}
+                getRowId={(row: Customer) => row.id}
+                onRowSelect={setSelectedIds}
+            />
+
+            <UniversalFooter
+                totalRecords={filteredCustomers.length}
+                selectedCount={selectedIds.length}
+            />
+
+            {/* Table Settings Modal */}
+            {showSettingsModal && (
+                <TableSettingsModal
+                    columns={tableColumns}
+                    onSave={setTableColumns}
+                    onClose={() => setShowSettingsModal(false)}
                 />
-            </div>
+            )}
 
             {/* Edit Modal */}
             {showModal && (
@@ -188,6 +258,34 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
+
+                            {/* Type Selector */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Növ</label>
+                                <select
+                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                                    value={formData.type || 'BUYER'}
+                                    onChange={e => {
+                                        const newType = e.target.value as 'BUYER' | 'SUPPLIER' | 'BOTH'
+                                        const prefix = newType === 'SUPPLIER' ? 'SAT' : 'AL'
+                                        const maxCode = customers
+                                            .filter(c => c.code?.startsWith(prefix))
+                                            .map(c => {
+                                                const num = parseInt(c.code?.substring(prefix.length) || '0')
+                                                return isNaN(num) ? 0 : num
+                                            })
+                                            .reduce((max, num) => Math.max(max, num), 0)
+
+                                        const newCode = `${prefix}${String(maxCode + 1).padStart(4, '0')}`
+                                        setFormData({ ...formData, type: newType, code: newCode })
+                                    }}
+                                >
+                                    <option value="BUYER">🛒 Alıcı</option>
+                                    <option value="SUPPLIER">📦 Satıcı</option>
+                                    <option value="BOTH">🔄 Hər ikisi</option>
+                                </select>
+                            </div>
+
                             <div style={{ marginBottom: '1rem' }}>
                                 <label style={{ display: 'block', marginBottom: '0.5rem' }}>Kod (Avtomatik)</label>
                                 <input
@@ -272,6 +370,6 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
                     </div>
                 </div>
             )}
-        </div>
+        </UniversalContainer>
     )
 }
