@@ -6,7 +6,8 @@ import { logActivity } from './logStore'
 export const getLayoutConstraints = () => {
   const navbar = document.querySelector('nav')
   const navbarHeight = navbar ? navbar.offsetHeight : 60
-  const taskbarHeight = 50
+  // TASKBAR_HEIGHT Layout-dan import edilə bilməz (circular dependency), ona görə burada sabit
+  const taskbarHeight = 25
 
   return {
     navbarHeight,

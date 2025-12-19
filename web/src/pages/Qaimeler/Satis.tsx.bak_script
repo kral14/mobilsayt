@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 
-import UniversalContainer from '../../components/UniversalContainer'
-import UniversalNavbar from '../../components/UniversalNavbar'
-import UniversalTable, { ColumnConfig } from '../../components/UniversalTable'
-// UniversalFooter imported below
+import DataTable, { ColumnConfig } from '../../components/DataTable'
 import UniversalFooter from '../../components/UniversalFooter'
 import InvoiceModal, { type InvoiceItem, type ModalData } from '../../components/InvoiceModal'
 import FilterModal, { FilterValue } from '../../components/FilterModal'
@@ -1819,103 +1816,218 @@ export default function SatisQaimeleri() {
   })
 
   return (
-    <UniversalContainer>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{notificationStyles}</style>
-      <UniversalNavbar
-        onAdd={async () => {
-          await openModalForInvoice(null)
-        }}
-        onEdit={() => {
-          if (selectedInvoiceIds.length === 1) {
-            handleEdit(selectedInvoiceIds)
-          }
-        }}
-        onDelete={() => {
-          if (selectedInvoiceIds.length > 0) {
-            handleDelete(selectedInvoiceIds)
-          }
-        }}
-        onCopy={() => {
-          if (selectedInvoiceIds.length > 0) {
-            handleCopy(selectedInvoiceIds)
-          }
-        }}
-        onPrint={handlePrint}
-        onRefresh={loadInvoices}
-        onSettings={() => { }}
-        onSearch={handleSearch}
-        onFilter={() => setShowFilterModal(true)}
-      />
-
-      {/* Aktiv filtrlər */}
-      {activeFilters.length > 0 && (
-        <div style={{ display: 'flex', gap: '8px', padding: '0 15px', flexWrap: 'wrap', marginBottom: '10px' }}>
-          {activeFilters.map((filter, index) => {
-            let label = ''
-            let value = ''
-
-            if (filter.columnId === 'customer_id') {
-              const customer = customers.find(c => c.id === Number(filter.value))
-              label = 'Müştəri'
-              value = customer ? customer.name : filter.value
-            } else if (filter.columnId === 'product_id') {
-              if (Array.isArray(filter.value)) {
-                label = 'Məhsul'
-                value = `${filter.value.length} məhsul`
-              }
-            } else {
-              label = defaultColumns.find(c => c.id === filter.columnId)?.label || filter.columnId
-              value = filter.value.toString()
-            }
-
-            return (
-              <div
-                key={index}
-                style={{
-                  background: '#e9ecef',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  border: '1px solid #ced4da'
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{label}:</span>
-                <span>{value}</span>
-                <button
-                  onClick={() => {
-                    const newFilters = activeFilters.filter((_, i) => i !== index)
-                    setActiveFilters(newFilters)
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#dc3545',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '0',
-                    lineHeight: '1',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      <UniversalTable
-        data={tableData}
+      <DataTable
+        pageId="satis-qaimeleri"
         columns={defaultColumns}
+        data={tableData}
         loading={loading}
-        getRowId={(row: any) => row.id}
+        error={error}
+        title=""
+        getRowId={(row) => row.id}
+        defaultColumns={defaultColumns}
+        toolbarActions={{
+          onSettings: () => { },
+          onEdit: handleEdit,
+          onDelete: handleDelete,
+          onCopy: handleCopy,
+          onPrint: handlePrint,
+        }}
+        contextMenuActions={{
+          onSettings: () => { },
+          onEdit: handleEdit,
+          onDelete: handleDelete,
+          onCopy: handleCopy,
+          onPrint: handlePrint,
+          onActivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              showNotification('Qaimə seçilməyib', 'warning')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => ordersAPI.updateStatus(id.toString(), true)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              showNotification('Qaimələr təsdiq edildi', 'success')
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+            }
+          },
+          onDeactivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              showNotification('Qaimə seçilməyib', 'warning')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => ordersAPI.updateStatus(id.toString(), false)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              showNotification('Qaimələr təsdiq edilmədi', 'success')
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+            }
+          },
+        }}
+        onSearch={handleSearch}
+        activeSearchColumn={currentSearchColumn}
+        onActiveSearchColumnChange={setCurrentSearchColumn}
+        onColumnHeaderClick={(columnId) => {
+          console.log('[Satis.tsx] onColumnHeaderClick callback çağırıldı, columnId:', columnId)
+          console.log('[Satis.tsx] lastClickedColumn köhnə dəyər:', lastClickedColumn)
+          setLastClickedColumn(columnId)
+          console.log('[Satis.tsx] lastClickedColumn yeni dəyər təyin edildi:', columnId)
+        }}
         onRowSelect={setSelectedInvoiceIds}
-        onRowClick={(row: any) => handleEdit([row.id])}
+        onRowClick={(_row, id) => {
+          // Dubl klik zamanı sənədi aç
+          handleEdit([id])
+        }}
+        leftToolbarItems={[
+          <button
+            key="refresh"
+            onClick={loadInvoices}
+            title="Cədvəli yenilə (F5)"
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 3V1M8 1L6 3M8 1L10 3M3 8H1M1 8L3 6M1 8L3 10M13 8H15M15 8L13 6M15 8L13 10M8 13V15M8 15L6 13M8 15L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M8 12C10.2091 12 12 10.2091 12 8C12 5.79086 10.2091 4 8 4C5.79086 4 4 5.79086 4 8C4 10.2091 5.79086 12 8 12Z" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+            Yenilə
+          </button>,
+          <button
+            key="filter"
+            onClick={() => setShowFilterModal(true)}
+            title="Filtr"
+            style={{
+              padding: '0.5rem 1rem',
+              background: activeFilters.length > 0 ? '#ffc107' : '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 4H14M4 8H12M6 12H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Filtr{activeFilters.length > 0 ? ` (${activeFilters.length})` : ''}
+          </button>,
+          <button
+            key="add"
+            onClick={async () => {
+              await openModalForInvoice(null)
+            }}
+            title="Yeni qaimə (Insert)"
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            ➕ Yeni qaimə
+          </button>
+        ]}
+        rightToolbarItems={[
+          <button
+            key="activate"
+            onClick={async () => {
+              if (selectedInvoiceIds.length === 0) {
+                showNotification('Qaimə seçilməyib', 'warning')
+                return
+              }
+              try {
+                await Promise.all(selectedInvoiceIds.map(id => ordersAPI.updateStatus(id.toString(), true)))
+                await loadInvoices()
+                setSelectedInvoiceIds([])
+                showNotification('Qaimələr təsdiq edildi', 'success')
+              } catch (err: any) {
+                showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+              }
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+            title="Aktiv et"
+          >
+            <span style={{ position: 'relative', display: 'inline-block', fontSize: '1.2rem', marginRight: '0.5rem' }}>
+              📄
+              <span style={{
+                position: 'absolute',
+                top: '-2px',
+                right: '-2px',
+                color: '#28a745',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                width: '14px',
+                height: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: '1'
+              }}>✓</span>
+            </span>
+            Aktiv et
+          </button>,
+          <button
+            key="deactivate"
+            onClick={async () => {
+              if (selectedInvoiceIds.length === 0) {
+                showNotification('Qaimə seçilməyib', 'warning')
+                return
+              }
+              try {
+                await Promise.all(selectedInvoiceIds.map(id => ordersAPI.updateStatus(id.toString(), false)))
+                await loadInvoices()
+                setSelectedInvoiceIds([])
+                showNotification('Qaimələr təsdiq edilmədi', 'success')
+              } catch (err: any) {
+                showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+              }
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+            title="Deaktiv et"
+          >
+            <span style={{ fontSize: '1.2rem', marginRight: '0.5rem' }}>📄</span>
+            Deaktiv et
+          </button>
+        ]}
       />
 
       <UniversalFooter
@@ -3710,6 +3822,6 @@ export default function SatisQaimeleri() {
       />
 
 
-    </UniversalContainer>
+    </div>
   )
 }

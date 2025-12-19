@@ -93,7 +93,6 @@ export function AlisQaimeleriContent() {
   const [filteredInvoices, setFilteredInvoices] = useState<PurchaseInvoice[]>([])
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [activeFilters, setActiveFilters] = useState<{ columnId: string; value: any }[]>([])
 
   // Bildiriş göstər funksiyası
   const showNotification = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
@@ -1485,7 +1484,7 @@ export function AlisQaimeleriContent() {
 
 
   return (
-    <UniversalContainer>
+    <div>
       <style>{notificationStyles}</style>
       {/* Notification Container */}
       <div style={{
@@ -1552,115 +1551,208 @@ export function AlisQaimeleriContent() {
           )
         })}
       </div>
-      <UniversalNavbar
-        onAdd={() => openModalForInvoice(null)}
-        onEdit={() => {
-          if (selectedInvoiceIds.length === 1) {
-            handleEdit(selectedInvoiceIds)
-          }
-        }}
-        onDelete={() => {
-          if (selectedInvoiceIds.length > 0) {
-            handleDelete(selectedInvoiceIds)
-          }
-        }}
-        onCopy={() => {
-          if (selectedInvoiceIds.length > 0) {
-            handleCopy(selectedInvoiceIds)
-          }
-        }}
-        onPrint={handlePrint}
-        onRefresh={loadInvoices}
-        onSettings={() => { }}
-        onSearch={handleSearch}
-        onFilter={() => {
-          // Filter logic
-        }}
-      />
-
-      {/* Aktiv filtrlər */}
-      {/* Aktiv filtrlər */}
-      {activeFilters.length > 0 && (
-        <div style={{ display: 'flex', gap: '8px', padding: '0 15px', flexWrap: 'wrap', marginBottom: '10px' }}>
-          {activeFilters.map((filter, index) => {
-            let label = ''
-            let value = ''
-
-            if (filter.columnId === 'supplier_id') {
-              const supplier = suppliers.find(s => s.id === Number(filter.value))
-              label = 'Təchizatçı'
-              value = supplier ? supplier.name : filter.value
-            } else if (filter.columnId === 'product_id') {
-              // Multiselect üçün
-              if (Array.isArray(filter.value)) {
-                label = 'Məhsul'
-                value = `${filter.value.length} məhsul`
-              }
-            } else {
-              label = defaultColumns.find(c => c.id === filter.columnId)?.label || filter.columnId
-              value = filter.value.toString()
-            }
-
-            return (
-              <div
-                key={index}
-                style={{
-                  background: '#e9ecef',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  border: '1px solid #ced4da'
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{label}:</span>
-                <span>{value}</span>
-                <button
-                  onClick={() => {
-                    const newFilters = activeFilters.filter((_, i) => i !== index)
-                    setActiveFilters(newFilters)
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#dc3545',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '0',
-                    lineHeight: '1',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      <UniversalTable
-        data={tableData}
+      <DataTable
+        pageId="alis-qaimeleri"
         columns={defaultColumns}
+        data={tableData}
         loading={loading}
-        getRowId={(row: any) => row.id}
+        error={error}
+        title=""
+        getRowId={(row) => row.id}
+        defaultColumns={defaultColumns}
+        toolbarActions={{
+          onSettings: () => { },
+          onEdit: handleEdit,
+          onDelete: handleDelete,
+          onCopy: handleCopy,
+          onPrint: handlePrint,
+          onActivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              alert('Qaimə seçilməyib')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), true)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              showNotification('Qaimələr təsdiq edildi', 'success')
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+            }
+          },
+          onDeactivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              alert('Qaimə seçilməyib')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), false)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              showNotification('Qaimələr ləğv edildi', 'success')
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Xəta baş verdi', 'error')
+            }
+          },
+        }}
+        contextMenuActions={{
+          onSettings: () => { },
+          onEdit: handleEdit,
+          onDelete: handleDelete,
+          onCopy: handleCopy,
+          onPrint: handlePrint,
+          onActivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              alert('Qaimə seçilməyib')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), true)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              alert('Qaimələr təsdiq edildi')
+            } catch (err: any) {
+              alert(err.response?.data?.message || 'Xəta baş verdi')
+            }
+          },
+          onDeactivate: async (selectedIds: (number | string)[]) => {
+            if (selectedIds.length === 0) {
+              alert('Qaimə seçilməyib')
+              return
+            }
+            try {
+              await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), false)))
+              await loadInvoices()
+              setSelectedInvoiceIds([])
+              alert('Qaimələr təsdiq edilmədi')
+            } catch (err: any) {
+              alert(err.response?.data?.message || 'Xəta baş verdi')
+            }
+          },
+        }}
+        onSearch={handleSearch}
         onRowSelect={setSelectedInvoiceIds}
-        onRowClick={(row: any) => handleEdit([row.id])}
-      />
-
-      <UniversalFooter
-        totalRecords={tableData.length}
-        selectedCount={selectedInvoiceIds.length}
+        onRowClick={(_row, id) => {
+          // Dubl klik zamanı sənədi aç
+          handleEdit([id])
+        }}
+        rightToolbarItems={[
+          <button
+            key="activate"
+            onClick={async () => {
+              if (selectedInvoiceIds.length === 0) {
+                alert('Qaimə seçilməyib')
+                return
+              }
+              try {
+                await Promise.all(selectedInvoiceIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), true)))
+                await loadInvoices()
+                setSelectedInvoiceIds([])
+              } catch (err: any) {
+                alert(err.response?.data?.message || 'Xəta baş verdi')
+              }
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+            title="Aktiv et"
+          >
+            <span style={{ position: 'relative', display: 'inline-block', fontSize: '1.2rem', marginRight: '0.5rem' }}>
+              📄
+              <span style={{
+                position: 'absolute',
+                top: '-2px',
+                right: '-2px',
+                color: '#28a745',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                width: '14px',
+                height: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: '1'
+              }}>✓</span>
+            </span>
+            Aktiv et
+          </button>,
+          <button
+            key="deactivate"
+            onClick={async () => {
+              if (selectedInvoiceIds.length === 0) {
+                alert('Qaimə seçilməyib')
+                return
+              }
+              try {
+                await Promise.all(selectedInvoiceIds.map(id => purchaseInvoicesAPI.updateStatus(id.toString(), false)))
+                await loadInvoices()
+                setSelectedInvoiceIds([])
+              } catch (err: any) {
+                alert(err.response?.data?.message || 'Xəta baş verdi')
+              }
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+            title="Deaktiv et"
+          >
+            <span style={{ fontSize: '1.2rem', marginRight: '0.5rem' }}>📄</span>
+            Deaktiv et
+          </button>
+        ]}
+        leftToolbarItems={[
+          <button
+            key="refresh"
+            onClick={loadInvoices}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            🔄 Yenilə
+          </button>,
+          <button
+            key="add"
+            onClick={() => openModalForInvoice(null)}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            ➕ Yeni qaimə
+          </button>
+        ]}
       />
 
       {/* Təsdiq Dialoqu */}
 
 
       {/* Çoxlu Purchase Invoice Modalları - REMOVED (Handled by UniversalWindow) */}
-    </UniversalContainer>
+    </div>
   )
 }
 

@@ -80,3 +80,30 @@ export const formatDateInput = (input: string): string => {
   return input // Əgər format düzgün deyilsə, olduğu kimi qaytar
 }
 
+export const formatDateToDisplay = (dateString: string | undefined | null): string => {
+  if (!dateString) return ''
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return dateString
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}.${month}.${year}`
+  } catch {
+    return dateString || ''
+  }
+}
+
+export const convertDisplayToRaw = (displayDate: string): string => {
+  if (!displayDate) return ''
+  const parts = displayDate.split('.')
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`
+  }
+  return displayDate
+}
+
+export const parseSmartDate = (input: string): string => {
+  return formatDateInput(input)
+}
+

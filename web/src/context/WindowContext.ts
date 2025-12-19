@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 
 interface WindowContextType {
     windowId: string
+    isActive: boolean
     close: () => void
     maximize: () => void
     minimize: () => void

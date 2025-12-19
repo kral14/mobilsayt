@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="az">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Səsli Düymələr</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+            font-family: sans-serif;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+        }
+
+        button {
+            padding: 20px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background-color: #007bff;
+            color: white;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:active {
+            transform: scale(0.9);
+        }
+
+        h1 {
+            color: #333;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Musiqili Düymələr</h1>
+    <div class="container">
+        <button onclick="playSound(261.63)">Səs 1</button>
+        <button onclick="playSound(293.66)">Səs 2</button>
+        <button onclick="playSound(329.63)">Səs 3</button>
+        <button onclick="playSound(349.23)">Səs 4</button>
+        <button onclick="playSound(392.00)">Səs 5</button>
+        <button onclick="playSound(440.00)">Səs 6</button>
+        <button onclick="playSound(493.88)">Səs 7</button>
+        <button onclick="playSound(523.25)">Səs 8</button>
+        <button onclick="playSound(587.33)">Səs 9</button>
+        <button onclick="playSound(659.25)">Səs 10</button>
+    </div>
+
+    <script>
+        // Audio Context yaradırıq
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(frequency) {
+            // Ossilyator (səs dalğası yaradan) yaradırıq
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine'; // Səs tipi: 'sine', 'square', 'sawtooth', 'triangle'
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+            // Səsin yavaşca kəsilməsi üçün gain (səs səviyyəsi) tənzimləməsi
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5); // 0.5 saniyə sonra dayanır
+        }
+    </script>
+</body>
+
+</html>

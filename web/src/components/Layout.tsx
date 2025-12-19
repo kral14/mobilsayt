@@ -6,6 +6,8 @@ import UniversalWindow from './UniversalWindow'
 import SnapAssist from './SnapAssist'
 import { useLogSync } from '../hooks/useLogSync'
 import PartnerManager from './PartnerManager'
+import { useNotificationStore } from '../store/notificationStore'
+import { NotificationToast } from './NotificationToast'
 
 // Səhifə komponentləri
 import Hesablar from '../pages/Hesablar'
@@ -17,6 +19,14 @@ import KassaMexaric from '../pages/Kassa/Mexaric'
 import Admin from '../pages/Admin'
 import { SupplierDiscountDocuments, ProductDiscountDocuments } from '../pages/Discounts/DiscountDocuments'
 import ActiveDiscountsModal from './ActiveDiscountsModal'
+
+import GlobalFooter from './GlobalFooter'
+import { useFooterStore } from '../store/footerStore'
+
+// Layout sabitləri
+export const TASKBAR_HEIGHT = 25 // Taskbar hündürlüyü (px)
+export const NAVBAR_HEIGHT = 40 // Navbar hündürlüyü (px)
+export const FOOTER_HEIGHT = 25 // Global Footer hündürlüyü (px)
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, customer, logout } = useAuthStore()
@@ -30,6 +40,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navRef = useRef<HTMLDivElement>(null)
   const [mainContentZIndex, setMainContentZIndex] = useState(0)
   const { windows, activeWindowId, openPageWindow, restoreWindow, focusMainContent, togglePinWindow } = useWindowStore()
+  const { isVisible: isFooterVisible } = useFooterStore()
+
+  // Toast notifications (global)
+  const { activeToasts, removeToast } = useNotificationStore()
+
+  // Hide footer when no window is active
+  // useEffect(() => {
+  //   if (!activeWindowId) {
+  //     hideFooter()
+  //   }
+  // }, [activeWindowId, hideFooter])
 
   // Activate log sync
   useLogSync()
@@ -133,6 +154,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     setMainContentZIndex(newZ)
   }
 
+  // Calculate dynamic workspace bottom padding/height
+  const workspaceHeightCalc = isFooterVisible
+    ? `calc(100vh - ${NAVBAR_HEIGHT + TASKBAR_HEIGHT + FOOTER_HEIGHT}px)`
+    : `calc(100vh - ${NAVBAR_HEIGHT + TASKBAR_HEIGHT}px)`
+
   return (
     <div>
       {/* SUPER NAVBAR CSS STYLES */}
@@ -142,12 +168,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         /* Navbar Container */
         .navbar {
             background: #1a1a1a;
-            height: 70px;
+            height: ${NAVBAR_HEIGHT}px;
             width: 100%;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 30px;
+            padding: 0 20px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             position: fixed;
             top: 0;
@@ -158,7 +184,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         /* Logo */
         .navbar .logo {
             color: #fff;
-            font-size: 24px;
+            font-size: 16px;
             font-weight: 600;
             text-decoration: none;
             letter-spacing: 1px;
@@ -174,7 +200,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         .navbar .logo::after {
             content: '';
             position: absolute;
-            bottom: -15px;
+            bottom: 0;
             left: 10px;
             width: 0%;
             height: 3px;
@@ -211,7 +237,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         .nav-link {
             color: #fff;
             text-decoration: none;
-            font-size: 15px;
+            font-size: 12px;
             font-weight: 500;
             padding: 0 10px;
             display: flex;
@@ -228,7 +254,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         .nav-link::after {
             content: '';
             position: absolute;
-            bottom: 15px;
+            bottom: 0;
             left: 10px;
             width: 0%;
             height: 3px;
@@ -255,7 +281,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         /* Dropdown Menu */
         .dropdown-menu {
             position: absolute;
-            top: 70px; /* Navbar height */
+            top: ${NAVBAR_HEIGHT}px; /* Navbar height */
             left: 0;
             width: 240px;
             background: #242424;
@@ -268,7 +294,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             /* Animation */
             opacity: 0;
             visibility: hidden;
-            transform: translateY(20px);
+            transform: translateY(-10px);
             transition: all 0.3s ease;
             z-index: 10000;
         }
@@ -353,21 +379,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         /* Taskbar Fixes */
         #taskbar {
             z-index: 10001; /* Taskbar ən üstdə */
-            border: 3px solid blue !important; /* DEBUG: Taskbar sərhədi */
         }
+        
         
         /* General Workspace Adjustment */
         #workspace {
-            padding-top: 70px; /* Navbar hündürlüyü qədər boşluq */
-            height: calc(100vh - 110px); /* Navbar (70px) + Taskbar (40px) çıxırıq */
+            padding-top: ${NAVBAR_HEIGHT}px;
+            height: ${workspaceHeightCalc};
             box-sizing: border-box;
-            border: 3px solid green !important; /* DEBUG: Workspace sərhədi */
         }
         
-        /* DEBUG: Navbar border */
-        .navbar {
-            border: 3px solid red !important; /* DEBUG: Navbar sərhədi */
-        }
+        /* DEBUG: Navbar border - Removed */
       `}</style>
 
       {/* SUPER NAVBAR HTML STRUCTURE */}
@@ -410,10 +432,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </button>
               </li>
 
-              {/* ANBAR */}
+              {/* MƏHSULLAR (was ANBAR) */}
               <li className="nav-item">
-                <button className="nav-link" onClick={() => handleOpenPage('anbar', 'Anbar', '📦', Anbar)}>
-                  Anbar
+                <button className="nav-link" onClick={() => handleOpenPage('anbar', 'Məhsullar', '📦', Anbar)}>
+                  Məhsullar
                 </button>
               </li>
 
@@ -583,9 +605,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </nav >
 
       {/* WORKSPACE - Pəncərələr burada render olunur */}
-      < div id="workspace" >
+      <div id="workspace">
         {/* Səhifə məzmunu */}
-        < div
+        <div
           onClickCapture={handleMainContentClick}
           style={{
             width: '100%',
@@ -597,7 +619,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           }}
         >
           {children}
-        </div >
+        </div>
 
         {/* Pəncərələr */}
         {
@@ -623,20 +645,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             )
             )
         }
-      </div >
+      </div>
 
       {/* Snap Assist Overlay */}
-      < SnapAssist />
+      <SnapAssist />
+
+      {/* GLOBAL FOOTER */}
+      {isAuthenticated && <GlobalFooter taskbarHeight={TASKBAR_HEIGHT} />}
 
       {/* TASKBAR */}
       {
         isAuthenticated && (
           <div id="taskbar" style={{
-            position: 'fixed', bottom: 0, left: 0, width: '100%', height: '40px',
+            position: 'fixed', bottom: 0, left: 0, width: '100%', height: `${TASKBAR_HEIGHT}px`,
             background: '#2c3e50', display: 'flex', alignItems: 'center', padding: '0 10px',
             color: 'white', borderTop: '1px solid #444'
           }}>
-            <div style={{ marginRight: 'auto', fontWeight: 'bold', fontSize: '14px' }}>📋 Açıq Pəncərələr:</div>
+            <div style={{ marginRight: 'auto', fontWeight: 'bold', fontSize: '0.75rem' }}>📋 Açıq Pəncərələr:</div>
             {Array.from(windows.values()).map(window => (
               <div
                 key={window.id}
@@ -686,6 +711,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )
       }
-    </div >
+
+      {/* Notification Toasts (Global) */}
+      {activeToasts.map(toast => (
+        <NotificationToast
+          key={toast.id}
+          notification={toast}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
+    </div>
   )
 }

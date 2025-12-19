@@ -200,7 +200,7 @@ export default function UniversalWindow({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '0 10px',
-                    height: '32px', // Compact height
+                    height: '25px', // Compact height
                     background: isActive ? '#007bff' : '#f0f0f0',
                     color: isActive ? 'white' : 'black',
                     borderBottom: '1px solid #ccc',
@@ -208,9 +208,10 @@ export default function UniversalWindow({
                     cursor: 'default',
                     borderTopLeftRadius: isMaximized ? 0 : '8px',
                     borderTopRightRadius: isMaximized ? 0 : '8px'
+                    // border: '2px solid purple' // DEBUG: Header - Removed
                 }}
             >
-                <div className="window-title" style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
+                <div className="window-title" style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: '0.75rem' }}>
                     {icon && <span style={{ marginRight: '8px' }}>{icon}</span>}
                     {title}
                 </div>
@@ -229,9 +230,9 @@ export default function UniversalWindow({
                                 border: 'none',
                                 color: isPinned ? '#f1c40f' : '#555',
                                 cursor: 'pointer',
-                                fontSize: '16px',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
+                                fontSize: '12px',
+                                padding: '2px 4px',
+                                borderRadius: '3px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -253,9 +254,9 @@ export default function UniversalWindow({
                                 border: 'none',
                                 color: isActive ? 'white' : '#555',
                                 cursor: 'pointer',
-                                fontSize: '16px',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
+                                fontSize: '12px',
+                                padding: '2px 4px',
+                                borderRadius: '3px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center'
@@ -277,9 +278,9 @@ export default function UniversalWindow({
                                     background: 'white',
                                     color: 'black',
                                     border: '1px solid #ccc',
-                                    borderRadius: '6px',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                    width: '220px',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+                                    width: '280px',
                                     zIndex: 1000,
                                     overflow: 'hidden'
                                 }}
@@ -307,32 +308,33 @@ export default function UniversalWindow({
                                 </div>
 
                                 {/* Popover Content */}
-                                <div style={{ padding: '12px' }}>
+                                <div style={{ padding: '16px' }}>
                                     {activeTab === 'view' && (
                                         <div>
-                                            <div style={{ marginBottom: '8px', fontSize: '13px', fontWeight: '500' }}>
+                                            <div style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '500' }}>
                                                 Yaxınlaşdırma (Zoom): {zoom}%
                                             </div>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '10px' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
                                                 {zoomPresets.map(preset => (
                                                     <button
                                                         key={preset}
                                                         onClick={() => setZoom(preset)}
                                                         style={{
-                                                            fontSize: '12px',
-                                                            padding: '4px 8px',
+                                                            fontSize: '13px',
+                                                            padding: '6px 12px',
                                                             border: '1px solid #ddd',
                                                             borderRadius: '4px',
                                                             background: zoom === preset ? '#e7f1ff' : 'white',
                                                             color: zoom === preset ? '#007bff' : '#333',
-                                                            cursor: 'pointer'
+                                                            cursor: 'pointer',
+                                                            fontWeight: zoom === preset ? '600' : '400'
                                                         }}
                                                     >
                                                         {preset}%
                                                     </button>
                                                 ))}
                                             </div>
-                                            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                                 <input
                                                     type="number"
                                                     value={zoom}
@@ -343,25 +345,25 @@ export default function UniversalWindow({
                                                         }
                                                     }}
                                                     style={{
-                                                        width: '60px',
-                                                        padding: '4px',
-                                                        fontSize: '13px',
+                                                        width: '70px',
+                                                        padding: '6px 8px',
+                                                        fontSize: '14px',
                                                         border: '1px solid #ddd',
                                                         borderRadius: '4px'
                                                     }}
                                                 />
-                                                <span style={{ fontSize: '13px' }}>%</span>
+                                                <span style={{ fontSize: '14px', fontWeight: '500' }}>%</span>
                                             </div>
 
                                             {pageId && (
-                                                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #eee' }}>
+                                                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
                                                     {/* Single Instance Checkbox */}
                                                     <label style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '8px',
-                                                        fontSize: '13px',
-                                                        marginBottom: '10px',
+                                                        gap: '10px',
+                                                        fontSize: '14px',
+                                                        marginBottom: '12px',
                                                         cursor: 'pointer',
                                                         userSelect: 'none'
                                                     }}>
@@ -370,8 +372,8 @@ export default function UniversalWindow({
                                                             checked={!allowMultipleInstances}
                                                             onChange={(e) => setAllowMultipleInstances(!e.target.checked)}
                                                             style={{
-                                                                width: '16px',
-                                                                height: '16px',
+                                                                width: '18px',
+                                                                height: '18px',
                                                                 cursor: 'pointer'
                                                             }}
                                                         />
@@ -382,18 +384,22 @@ export default function UniversalWindow({
                                                         onClick={handleSaveDefaults}
                                                         style={{
                                                             width: '100%',
-                                                            padding: '6px',
+                                                            padding: '10px',
                                                             background: '#28a745',
                                                             color: 'white',
                                                             border: 'none',
-                                                            borderRadius: '4px',
+                                                            borderRadius: '6px',
                                                             cursor: 'pointer',
-                                                            fontSize: '13px',
+                                                            fontSize: '14px',
+                                                            fontWeight: '500',
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
-                                                            gap: '6px'
+                                                            gap: '8px',
+                                                            transition: 'background 0.2s'
                                                         }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#218838'}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = '#28a745'}
                                                     >
                                                         💾 Varsayılan kimi saxla
                                                     </button>
@@ -518,6 +524,7 @@ export default function UniversalWindow({
             >
                 <WindowContext.Provider value={{
                     windowId: id,
+                    isActive,
                     close: () => closeWindow(id),
                     maximize: () => maximizeWindow(id),
                     minimize: () => minimizeWindow(id)

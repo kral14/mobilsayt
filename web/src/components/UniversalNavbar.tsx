@@ -44,8 +44,8 @@ const UniversalNavbar: React.FC<UniversalNavbarProps> = ({
             flexShrink: 0,
             position: 'sticky',
             top: 0,
-            zIndex: 100,
-            border: '2px solid green' // DEBUG: Navbar
+            zIndex: 100
+            // border: '2px solid green' // DEBUG: Navbar - Removed
         }}>
             {/* ADD */}
             {onAdd && (
@@ -74,7 +74,7 @@ const UniversalNavbar: React.FC<UniversalNavbarProps> = ({
                 <button
                     onClick={onEdit}
                     title="Redaktə"
-                    style={buttonStyle('#ffc107', 'black')}
+                    style={buttonStyle('#ffc107')}
                 >
                     <span style={iconStyle}>✏️</span>
                 </button>
@@ -198,7 +198,7 @@ const UniversalNavbar: React.FC<UniversalNavbarProps> = ({
 }
 
 // Styles
-const buttonStyle = (bgColor: string, color: string = 'white'): React.CSSProperties => ({
+const buttonStyle = (bgColor: string): React.CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

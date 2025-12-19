@@ -202,7 +202,55 @@ export const deleteCustomer = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Müştəri tapılmadı' })
     }
 
-    // Müştərini sil
+    // Müştəriyə aid sənədləri yoxla
+    const [saleInvoices, purchaseInvoices] = await Promise.all([
+      prisma.sale_invoices.findMany({
+        where: { customer_id: parseInt(id) },
+        select: {
+          id: true,
+          invoice_number: true,
+          total_amount: true,
+          created_at: true,
+        },
+      }),
+      prisma.purchase_invoices.findMany({
+        where: { customer_id: parseInt(id) },
+        select: {
+          id: true,
+          invoice_number: true,
+          total_amount: true,
+          created_at: true,
+        },
+      }),
+    ])
+
+    const totalDocuments = saleInvoices.length + purchaseInvoices.length
+
+    if (totalDocuments > 0) {
+      return res.status(400).json({
+        message: `Silmək mümkün deyil! Bu müştərinin adına ${totalDocuments} sənəd var.`,
+        canDelete: false,
+        documents: {
+          sales: saleInvoices.map(inv => ({
+            id: inv.id,
+            number: inv.invoice_number,
+            amount: inv.total_amount,
+            date: inv.created_at,
+            type: 'Satış'
+          })),
+          purchases: purchaseInvoices.map(inv => ({
+            id: inv.id,
+            number: inv.invoice_number,
+            amount: inv.total_amount,
+            date: inv.created_at,
+            type: 'Alış'
+          }))
+        },
+        totalCount: totalDocuments
+      })
+    }
+
+    // Sənəd yoxdursa, müştərini sil
     await prisma.customers.delete({
       where: { id: parseInt(id) },
     })

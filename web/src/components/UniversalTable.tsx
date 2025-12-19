@@ -7,6 +7,7 @@ export interface ColumnConfig {
     width?: number
     align?: 'left' | 'right' | 'center'
     sortable?: boolean
+    order?: number
     render?: (value: any, row: any) => React.ReactNode
 }
 
@@ -170,8 +171,8 @@ export default function UniversalTable<T = any>({
             flex: 1,
             overflow: 'auto',
             minHeight: 0,
-            backgroundColor: 'white',
-            border: '2px solid blue' // DEBUG: Table
+            backgroundColor: 'white'
+            // border: '2px solid blue' // DEBUG: Table - Removed
         }}>
             {loading && (
                 <div style={{ padding: '2rem', textAlign: 'center' }}>

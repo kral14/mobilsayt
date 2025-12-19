@@ -1,4 +1,6 @@
-import React from 'react'
+import { useEffect } from 'react'
+import { useFooterStore } from '../store/footerStore'
+import { useWindow } from '../context/WindowContext'
 
 interface UniversalFooterProps {
     totalRecords?: number
@@ -7,50 +9,35 @@ interface UniversalFooterProps {
 }
 
 /**
- * UniversalFooter - Universal footer komponenti
+ * UniversalFooter - Bridge component for Global Footer
  * 
- * Pəncərənin aşağısında statistika və əlavə məlumat göstərir.
- * Sticky positioning ilə həmişə görünür.
+ * Bu komponent artıq birbaşa UI render etmir. 
+ * Bunun əvəzinə, props-ları (totalRecords, selectedCount, customContent) 
+ * Global Footer Store-a ötürür.
+ * 
+ * Yalnız aktiv pəncərənin məlumatları Global Footer-də göstərilir.
  */
 export default function UniversalFooter({
     totalRecords,
     selectedCount,
     customContent
 }: UniversalFooterProps) {
-    return (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.5rem 1rem',
-            backgroundColor: '#f8f9fa',
-            borderTop: '1px solid #dee2e6',
-            fontSize: '0.875rem',
-            color: '#6c757d',
-            flexShrink: 0,
-            position: 'sticky',
-            bottom: 0,
-            zIndex: 10,
-            border: '2px solid orange' // DEBUG: Footer
-        }}>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-                {totalRecords !== undefined && (
-                    <span>
-                        <strong>Cəmi:</strong> {totalRecords}
-                    </span>
-                )}
-                {selectedCount !== undefined && selectedCount > 0 && (
-                    <span>
-                        <strong>Seçilmiş:</strong> {selectedCount}
-                    </span>
-                )}
-            </div>
+    const { setFooterData } = useFooterStore()
+    const { isActive } = useWindow()
 
-            {customContent && (
-                <div>
-                    {customContent}
-                </div>
-            )}
-        </div>
-    )
+    useEffect(() => {
+        // console.log('[UniversalFooter] isActive:', isActive, 'total:', totalRecords)
+        if (isActive) {
+            // console.log('[UniversalFooter] Setting Global Footer Data')
+            setFooterData({
+                totalRecords,
+                selectedCount,
+                customContent,
+                isVisible: true
+            })
+        }
+    }, [isActive, totalRecords, selectedCount, customContent, setFooterData])
+
+    // Render nothing, UI is handled by GlobalFooter in Layout.tsx
+    return null
 }

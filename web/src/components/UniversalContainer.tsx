@@ -22,7 +22,7 @@ interface UniversalContainerProps {
  */
 export default function UniversalContainer({
     children,
-    padding = '0'
+    padding = '5px 15px'
 }: UniversalContainerProps) {
     return (
         <div style={{
@@ -33,7 +33,7 @@ export default function UniversalContainer({
             padding,
             overflow: 'hidden',
             position: 'relative',
-            border: '2px solid red', // DEBUG: Container
+            // border: '2px solid red', // DEBUG: Container - Removed
             gap: '1px'
         }}>
             {children}

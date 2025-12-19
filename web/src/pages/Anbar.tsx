@@ -156,7 +156,11 @@ const formatDateDifference = (startDate: Date, endDate: Date): string => {
   return parts.join(' ')
 }
 
-export default function Anbar() {
+interface AnbarProps {
+  onSelect?: (product: Product) => void
+}
+
+export default function Anbar({ onSelect }: AnbarProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -2059,7 +2063,13 @@ export default function Anbar() {
                               e.dataTransfer.effectAllowed = 'move'
                               e.dataTransfer.setData('productId', product.id.toString())
                             }}
-                            onClick={(e) => handleSelectRow(product.id, e)}
+                            onClick={(e) => {
+                              if (onSelect) {
+                                onSelect(product)
+                              } else {
+                                handleSelectRow(product.id, e)
+                              }
+                            }}
                             style={{
                               borderBottom: '1px solid #dee2e6',
                               background: selectedRows.includes(product.id) ? '#e7f3ff' : 'white',

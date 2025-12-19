@@ -7,13 +7,16 @@ import UniversalNavbar from './UniversalNavbar'
 import UniversalTable, { ColumnConfig } from './UniversalTable'
 import UniversalFooter from './UniversalFooter'
 import TableSettingsModal from './TableSettingsModal'
+import { useNotificationStore } from '../store/notificationStore'
 
 interface PartnerManagerProps {
     pageTitle: string
     filterType?: 'ALL' | 'BUYER' | 'SUPPLIER' // Optional filter
+    onSelect?: (partner: Customer) => void
 }
 
-export default function PartnerManager({ pageTitle, filterType = 'ALL' }: PartnerManagerProps) {
+
+export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect }: PartnerManagerProps) {
     const [customers, setCustomers] = useState<Customer[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
@@ -23,6 +26,8 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
     const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUYER' | 'SUPPLIER'>(filterType)
     const [tableColumns, setTableColumns] = useState<ColumnConfig[]>([])
 
+    const addNotification = useNotificationStore(state => state.addNotification)
+
     // Fetch customers
     const loadCustomers = useCallback(async () => {
         try {
@@ -31,10 +36,11 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
             setCustomers(data)
         } catch (error) {
             console.error('Failed to load customers:', error)
+            addNotification('error', 'Xəta', 'Tərəfdaşlar yüklənərkən xəta baş verdi')
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [addNotification])
 
     useEffect(() => {
         loadCustomers()
@@ -106,26 +112,55 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
             try {
                 await Promise.all(ids.map(id => customersAPI.delete(id.toString())))
                 loadCustomers()
-            } catch (error) {
+                addNotification('success', 'Uğurlu əməliyyat', `${ids.length} tərəfdaş silindi`)
+            } catch (error: any) {
                 console.error('Error deleting:', error)
-                alert('Silinərkən xəta baş verdi')
+
+                // Backend-dən gələn xəta mesajını göstər
+                if (error.response?.data) {
+                    const errorData = error.response.data
+
+                    if (errorData.documents) {
+                        // Sənədləri formatla
+                        const allDocs = [
+                            ...errorData.documents.sales,
+                            ...errorData.documents.purchases
+                        ]
+
+                        const docList = allDocs.map((doc: any) =>
+                            `${doc.type}: ${doc.number} - ${doc.amount} AZN`
+                        ).join(', ')
+
+                        addNotification(
+                            'error',
+                            'Silmək mümkün deyil',
+                            `${errorData.message} Sənədlər: ${docList}`
+                        )
+                    } else {
+                        addNotification('error', 'Xəta', errorData.message || 'Silinərkən xəta baş verdi')
+                    }
+                } else {
+                    addNotification('error', 'Xəta', 'Silinərkən xəta baş verdi')
+                }
             }
         }
-    }, [loadCustomers])
+    }, [loadCustomers, addNotification])
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
             if (editingCustomer) {
                 await customersAPI.update(editingCustomer.id.toString(), formData)
+                addNotification('success', 'Uğurlu əməliyyat', 'Tərəfdaş yeniləndi')
             } else {
                 await customersAPI.create(formData)
+                addNotification('success', 'Uğurlu əməliyyat', 'Yeni tərəfdaş əlavə edildi')
             }
             setShowModal(false)
             loadCustomers()
         } catch (error) {
             console.error('Error saving:', error)
-            alert('Yadda saxlanılarkən xəta baş verdi')
+            addNotification('error', 'Xəta', 'Yadda saxlanılarkən xəta baş verdi')
         }
     }
 
@@ -143,7 +178,7 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
                 })
                 .reduce((max, num) => Math.max(max, num), 0)
 
-            return `${prefix}${String(maxCode + 1).padStart(4, '0')}`
+            return `${prefix}${String(maxCode + 1).padStart(8, '0')}`
         }
 
         const newCode = generateCode('BUYER')
@@ -210,6 +245,7 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
                 loading={loading}
                 getRowId={(row: Customer) => row.id}
                 onRowSelect={setSelectedIds}
+                onRowClick={onSelect}
             />
 
             <UniversalFooter
@@ -221,7 +257,7 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
             {showSettingsModal && (
                 <TableSettingsModal
                     columns={tableColumns}
-                    onSave={setTableColumns}
+                    onColumnsChange={setTableColumns}
                     onClose={() => setShowSettingsModal(false)}
                 />
             )}
@@ -235,19 +271,6 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
                     <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '8px', width: '500px', maxWidth: '90%' }}>
                         <h2>{editingCustomer ? 'Redaktə Et' : 'Yeni Tərəfdaş'}</h2>
                         <form onSubmit={handleSave}>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Növ *</label>
-                                <select
-                                    required
-                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                    value={formData.type || 'BUYER'}
-                                    onChange={e => setFormData({ ...formData, type: e.target.value as 'BUYER' | 'SUPPLIER' | 'BOTH' })}
-                                >
-                                    <option value="BUYER">🛒 Alıcı</option>
-                                    <option value="SUPPLIER">📦 Satıcı</option>
-                                    <option value="BOTH">🔄 Hər ikisi</option>
-                                </select>
-                            </div>
                             <div style={{ marginBottom: '1rem' }}>
                                 <label style={{ display: 'block', marginBottom: '0.5rem' }}>Ad *</label>
                                 <input
@@ -276,7 +299,7 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL' }: Partne
                                             })
                                             .reduce((max, num) => Math.max(max, num), 0)
 
-                                        const newCode = `${prefix}${String(maxCode + 1).padStart(4, '0')}`
+                                        const newCode = `${prefix}${String(maxCode + 1).padStart(8, '0')}`
                                         setFormData({ ...formData, type: newType, code: newCode })
                                     }}
                                 >

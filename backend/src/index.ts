@@ -16,6 +16,7 @@ import testRoutes from './routes/testRoutes'
 import logsRoutes from './routes/logsRoutes'
 import adminRoutes from './routes/adminRoutes'
 import discountDocumentRoutes from './routes/discountDocumentRoutes'
+import notificationRoutes from './routes/notificationRoutes'
 
 
 
@@ -113,6 +114,7 @@ app.use('/api/test', testRoutes)
 app.use('/api/logs', logsRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/documents/discounts', discountDocumentRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 // 404 handler
 app.use((req, res) => {
