@@ -5,7 +5,7 @@ import Login from './pages/Login'
 
 import Profile from './pages/Profile'
 import Hesablar from './pages/Hesablar'
-import Anbar from './pages/Anbar'
+import Mehsullar from './pages/Mehsullar'
 import AlisQaimeleri from './pages/Qaimeler/Alis'
 import SatisQaimeleri from './pages/Qaimeler/Satis'
 import KassaMedaxil from './pages/Kassa/Medaxil'
@@ -55,10 +55,10 @@ function App() {
           }
         />
         <Route
-          path="/anbar"
+          path="/mehsullar"
           element={
             <ProtectedRoute>
-              <Anbar />
+              <Mehsullar />
             </ProtectedRoute>
           }
         />

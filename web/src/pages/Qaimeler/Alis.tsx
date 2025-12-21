@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+
 import Layout from '../../components/Layout'
 
 import UniversalContainer from '../../components/UniversalContainer'
-import UniversalNavbar from '../../components/UniversalNavbar'
+import UniversalToolBar from '../../components/UniversalToolBar'
 import UniversalTable, { ColumnConfig } from '../../components/UniversalTable'
 import UniversalFooter from '../../components/UniversalFooter'
 import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
@@ -10,6 +11,8 @@ import { purchaseInvoicesAPI, productsAPI, suppliersAPI, warehousesAPI } from '.
 import type { PurchaseInvoice, Product, Supplier, WarehouseLocation } from '@shared/types'
 import { useWindowStore } from '../../store/windowStore'
 import { logActivity } from '../../store/logStore'
+
+import { useNotificationStore } from '../../store/notificationStore'
 
 // Development rejimində console.log üçün helper
 const devLog = (...args: any[]) => {
@@ -32,11 +35,7 @@ const notificationStyles = `
   }
 `
 
-interface Notification {
-  id: string
-  message: string
-  type: 'success' | 'error' | 'info' | 'warning'
-}
+
 
 const defaultColumns: ColumnConfig[] = [
   { id: 'checkbox', label: '', visible: true, width: 50, order: 0 },
@@ -92,17 +91,17 @@ export function AlisQaimeleriContent() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredInvoices, setFilteredInvoices] = useState<PurchaseInvoice[]>([])
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [activeFilters, setActiveFilters] = useState<{ columnId: string; value: any }[]>([])
+  // Global notification store
+  const { addNotification } = useNotificationStore()
 
-  // Bildiriş göstər funksiyası
+  // Bildiriş göstər helper (backward compatibility)
   const showNotification = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-    const id = Date.now().toString() + Math.random().toString(36).substring(2, 9)
-    setNotifications(prev => [...prev, { id, message, type }])
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id))
-    }, 3000)
-  }, [])
+    addNotification(
+      type,
+      type === 'error' ? 'Xəta' : (type === 'success' ? 'Uğurlu' : 'Məlumat'),
+      message
+    )
+  }, [addNotification])
 
   // Çoxlu modal state - Windows benzeri sistem
   const [openModals, setOpenModals] = useState<Map<string, ModalData>>(new Map())
@@ -266,7 +265,7 @@ export function AlisQaimeleriContent() {
   const handleModalPrint = useCallback(async (modalId: string, _modalData: ModalData['data']) => {
     const modal = openModals.get(modalId)
     if (!modal || !modal.invoiceId) {
-      alert('Yalnız mövcud qaimələr çap edilə bilər')
+      showNotification('Yalnız mövcud qaimələr çap edilə bilər', 'warning')
       return
     }
 
@@ -349,7 +348,7 @@ export function AlisQaimeleriContent() {
         printWindow.print()
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Qaimə çap edilərkən xəta baş verdi')
+      showNotification(err.response?.data?.message || 'Qaimə çap edilərkən xəta baş verdi', 'error')
     }
   }, [openModals])
 
@@ -483,19 +482,15 @@ export function AlisQaimeleriContent() {
 
         // devLog removed
 
-        // Content-i həmişə yenilə ki, prop-lar düzgün ötürülsün (modal data, suppliers, products və s. dəyişə bilər)
-        // Əmin ol ki, window görünürdür (isVisible: true)
-        updateWindow(windowId, {
-          isVisible: true, // Həmişə görünür olmalıdır (minimize edilməmişdirsə)
-          isMinimized: storeIsMinimized,
-          title: modal.data.invoiceNumber || (modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Alış Qaiməsi'),
-          // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
-          // position və size burdan çıxarılır ki, istifadəçi dəyişiklikləri qorunsun
-          // position və size burdan çıxarılır ki, istifadəçi dəyişiklikləri qorunsun
-          // position: modal.position,
-          // size: modal.size,
-          // isMaximized: modal.isMaximized, // Store tərəfindən idarə olunur, burdan göndərmə
+        const currentTitle = modal.data.invoiceNumber || (modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Alış Qaiməsi')
 
+        // Dirty check LƏĞV EDİLDİ: ConfirmDialog və digər daxili state dəyişikliklərinin (məs: activeConfirmDialog) 
+        // prop kimi InvoiceModal-a ötürülməsi üçün updateWindow hər zaman çağırılmalıdır.
+        // if (storeWindow.title !== currentTitle || storeWindow.isMinimized !== storeIsMinimized || !storeWindow.isVisible) {
+        updateWindow(windowId, {
+          isVisible: true,
+          isMinimized: storeIsMinimized,
+          title: currentTitle,
           onBeforeClose: () => handleModalBeforeClose(modal.id),
           content: (
             <InvoiceModal
@@ -851,7 +846,7 @@ export function AlisQaimeleriContent() {
       // Window useEffect-də avtomatik yaradılacaq
     } catch (err: any) {
       console.error('Modal açılarkən xəta:', err)
-      alert('Modal açılarkən xəta baş verdi')
+      showNotification('Modal açılarkən xəta baş verdi', 'error')
     }
   }
 
@@ -865,60 +860,30 @@ export function AlisQaimeleriContent() {
   const handleDelete = async (selectedIds: (number | string)[]) => {
     if (confirm(`${selectedIds.length} qaimə silinsin?`)) {
       try {
+        // Silinəcək qaimələrin nömrələrini tap
+        const deletedInvoices = invoices.filter(inv => selectedIds.includes(inv.id))
+        const deletedInvoiceNumbers = deletedInvoices.map(inv => inv.invoice_number).filter(Boolean)
+
         await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.delete(id.toString())))
         await loadInvoices()
-        alert('Qaimələr silindi')
+
+        if (deletedInvoiceNumbers.length > 0) {
+          showNotification(`Qaimələr silindi: ${deletedInvoiceNumbers.join(', ')}`, 'success')
+        } else {
+          showNotification('Qaimələr silindi', 'success')
+        }
       } catch (err: any) {
-        alert(err.response?.data?.message || 'Silinərkən xəta baş verdi')
+        showNotification(err.response?.data?.message || 'Silinərkən xəta baş verdi', 'error')
       }
     }
   }
 
   const handleCopy = (_selectedIds: (number | string)[]) => {
     // TODO: Kopyalama funksiyası
-    alert('Kopyalama funksiyası hazırlanır...')
+    showNotification('Kopyalama funksiyası hazırlanır...', 'info')
   }
 
-  // F4 qısayolu üçün useEffect (yalnız modal açıq deyilsə)
-  useEffect(() => {
-    // Modal açıq olduqda qısa yolları deaktiv et
-    const hasOpenModals = openModals.size > 0
-    if (hasOpenModals) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // F4 basıldıqda
-      if (e.key === 'F4') {
-        // Aktiv element yoxla
-        const activeElement = document.activeElement as HTMLElement
-
-        // Təchizatçı input-undadırsa
-        if (activeElement && activeElement.getAttribute('data-supplier-input') === 'true') {
-          e.preventDefault()
-          setShowSupplierModal(true)
-        }
-
-        // Məhsul input-undadırsa (modal içində)
-        if (activeElement && activeElement.getAttribute('data-product-input') === 'true') {
-          e.preventDefault()
-          setShowProductModal(true)
-        }
-
-        // Cədvəldəki məhsul input-undadırsa
-        if (activeElement && activeElement.getAttribute('data-product-row-input') === 'true') {
-          e.preventDefault()
-          const rowIndex = activeElement.getAttribute('data-row-index')
-          if (rowIndex !== null) {
-            setShowProductModal(true)
-            // Seçilmiş sətiri yadda saxla ki, modal bağlandıqdan sonra o sətirə məhsul əlavə edə bilək
-            sessionStorage.setItem('selectedProductRowIndex', rowIndex)
-          }
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [openModals])
+  // F4 qısayolu InvoiceModal-da idarə olunur
 
 
   const handleModalSave = useCallback(async (modalId: string, modalData: ModalData['data']) => {
@@ -1031,7 +996,7 @@ export function AlisQaimeleriContent() {
         )
 
         console.log('[Alis.tsx] Qaimə yeniləndi')
-        showNotification('Qaimə uğurla yeniləndi', 'success')
+        showNotification(`Alış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
 
         logActivity(
           'invoice',
@@ -1098,27 +1063,7 @@ export function AlisQaimeleriContent() {
 
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
 
-        showNotification('Qaimə uğurla yaradıldı', 'success')
-
-        logActivity(
-          'invoice',
-          'Yeni qaimə yaradıldı',
-          `Yeni alış qaiməsi ${newInvoice.invoice_number || ('#' + newInvoice.id)} yaradıldı (${validItems.length} məhsul)`,
-          'success',
-          { invoiceId: newInvoice.id, itemCount: validItems.length, supplierId: finalData.selectedSupplierId, invoiceNumber: newInvoice.invoice_number }
-        )
-
-        // Modal-ı yenilə - invoiceId-ni set et.
-        console.log('[Alis.tsx] Yeni qaimə yaradıldı:', newInvoice.id)
-
-        // Change saved: update initial data to prevent unsaved changes warning
-        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify({
-          ...finalData,
-          invoiceNumber: newInvoice.invoice_number || '',
-          invoiceDate: invoiceDateStr
-        })))
-
-        showNotification('Qaimə uğurla yaradıldı (təsdiqsiz)', 'success')
+        showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1133,7 +1078,7 @@ export function AlisQaimeleriContent() {
       console.error('[Alis.tsx] Xəta response:', err.response)
       console.error('[Alis.tsx] Xəta response data:', err.response?.data)
       console.error('[Alis.tsx] Xəta response status:', err.response?.status)
-      alert(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi')
+      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
       throw err // Xətanı yuxarı at ki, modal bağlanmasın
     }
   }, [showNotification, loadInvoices])
@@ -1241,7 +1186,7 @@ export function AlisQaimeleriContent() {
           return newMap
         })
 
-        showNotification('Qaimə uğurla yeniləndi və təsdiq edildi', 'success')
+        showNotification(`Alış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
       } else {
         // Yeni qaimə - yarad və təsdiqlə
         console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR VƏ TƏSDİQLƏNİR ==========')
@@ -1307,7 +1252,7 @@ export function AlisQaimeleriContent() {
           invoiceDate: invoiceDateStr
         })))
 
-        showNotification('Qaimə uğurla yaradıldı və təsdiq edildi', 'success')
+        showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1322,7 +1267,7 @@ export function AlisQaimeleriContent() {
       console.error('[Alis.tsx] Xəta response:', err.response)
       console.error('[Alis.tsx] Xəta response data:', err.response?.data)
       console.error('[Alis.tsx] Xəta response status:', err.response?.status)
-      alert(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi')
+      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
       throw err // Xətanı yuxarı at ki, modal bağlanmasın
     }
   }, [showNotification, loadInvoices])
@@ -1335,7 +1280,7 @@ export function AlisQaimeleriContent() {
       : []
 
     if (invoicesToPrint.length === 0) {
-      alert('Çap üçün sənəd seçilməyib')
+      showNotification('Çap üçün sənəd seçilməyib', 'warning')
       return
     }
 
@@ -1487,72 +1432,7 @@ export function AlisQaimeleriContent() {
   return (
     <UniversalContainer>
       <style>{notificationStyles}</style>
-      {/* Notification Container */}
-      <div style={{
-        position: 'fixed',
-        top: '20px',
-        right: '20px',
-        zIndex: 10000,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-        pointerEvents: 'none'
-      }}>
-        {notifications.map((notification) => {
-          const bgColor = {
-            success: '#28a745',
-            error: '#dc3545',
-            warning: '#ffc107',
-            info: '#17a2b8'
-          }[notification.type]
-
-          const textColor = notification.type === 'warning' ? '#000' : '#fff'
-
-          return (
-            <div
-              key={notification.id}
-              onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
-              style={{
-                background: bgColor,
-                color: textColor,
-                padding: '12px 20px',
-                borderRadius: '4px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                cursor: 'pointer',
-                pointerEvents: 'auto',
-                minWidth: '300px',
-                maxWidth: '500px',
-                animation: 'slideUp 0.3s ease-out',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '10px'
-              }}
-            >
-              <span style={{ flex: 1 }}>{notification.message}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setNotifications(prev => prev.filter(n => n.id !== notification.id))
-                }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: textColor,
-                  cursor: 'pointer',
-                  fontSize: '18px',
-                  padding: '0',
-                  lineHeight: '1',
-                  opacity: 0.8
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )
-        })}
-      </div>
-      <UniversalNavbar
+      <UniversalToolBar
         onAdd={() => openModalForInvoice(null)}
         onEdit={() => {
           if (selectedInvoiceIds.length === 1) {
@@ -1571,76 +1451,18 @@ export function AlisQaimeleriContent() {
         }}
         onPrint={handlePrint}
         onRefresh={loadInvoices}
-        onSettings={() => { }}
+        onSettings={() => setShowItemSettingsModal(true)}
         onSearch={handleSearch}
-        onFilter={() => {
-          // Filter logic
-        }}
       />
 
       {/* Aktiv filtrlər */}
-      {/* Aktiv filtrlər */}
-      {activeFilters.length > 0 && (
+      {/* activeFilters.length > 0 && (
         <div style={{ display: 'flex', gap: '8px', padding: '0 15px', flexWrap: 'wrap', marginBottom: '10px' }}>
           {activeFilters.map((filter, index) => {
-            let label = ''
-            let value = ''
-
-            if (filter.columnId === 'supplier_id') {
-              const supplier = suppliers.find(s => s.id === Number(filter.value))
-              label = 'Təchizatçı'
-              value = supplier ? supplier.name : filter.value
-            } else if (filter.columnId === 'product_id') {
-              // Multiselect üçün
-              if (Array.isArray(filter.value)) {
-                label = 'Məhsul'
-                value = `${filter.value.length} məhsul`
-              }
-            } else {
-              label = defaultColumns.find(c => c.id === filter.columnId)?.label || filter.columnId
-              value = filter.value.toString()
-            }
-
-            return (
-              <div
-                key={index}
-                style={{
-                  background: '#e9ecef',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  border: '1px solid #ced4da'
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{label}:</span>
-                <span>{value}</span>
-                <button
-                  onClick={() => {
-                    const newFilters = activeFilters.filter((_, i) => i !== index)
-                    setActiveFilters(newFilters)
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#dc3545',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '0',
-                    lineHeight: '1',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )
+             ...
           })}
         </div>
-      )}
+      ) */}
 
       <UniversalTable
         data={tableData}

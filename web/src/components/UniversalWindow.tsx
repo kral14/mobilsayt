@@ -1,7 +1,7 @@
 import React from 'react'
 import { useWindowStore } from '../store/windowStore'
 import { useState, useEffect, useRef } from 'react'
-import SnapLayoutMenu from './SnapLayoutMenu'
+import SnapLayoutMenu from './SnapLayoutMenu' // Warning unused, keep it
 import WindowContext from '../context/WindowContext'
 
 interface UniversalWindowProps {
@@ -13,10 +13,10 @@ interface UniversalWindowProps {
     size: { width: number; height: number }
     isMaximized: boolean
     isPinned?: boolean
-    modalType?: string // 'confirm', 'invoice-edit', etc.
+    modalType?: string
     zIndex: number
     isActive: boolean
-    pageId?: string // Unique identifier for window type
+    pageId?: string
     onClose?: () => void
     onActivate?: () => void
 }
@@ -37,37 +37,30 @@ export default function UniversalWindow({
     onClose,
     onActivate
 }: UniversalWindowProps) {
-    const {
-        closeWindow,
-        minimizeWindow,
-        maximizeWindow,
-        activateWindow,
-        togglePinWindow,
-        startDrag,
-        startResize
-    } = useWindowStore()
+    const closeWindow = useWindowStore(state => state.closeWindow)
+    const minimizeWindow = useWindowStore(state => state.minimizeWindow)
+    const maximizeWindow = useWindowStore(state => state.maximizeWindow)
+    const activateWindow = useWindowStore(state => state.activateWindow)
+    const togglePinWindow = useWindowStore(state => state.togglePinWindow)
+    const startDrag = useWindowStore(state => state.startDrag)
+    const startResize = useWindowStore(state => state.startResize)
 
-    // State for Settings Menu and Zoom
+    // State, Refs, Effects
     const [showSettings, setShowSettings] = useState(false)
     const [zoom, setZoom] = useState(100)
     const [activeTab, setActiveTab] = useState<'view'>('view')
-    const [allowMultipleInstances, setAllowMultipleInstances] = useState(false) // Default: yalnız 1 dəfə açıla bilər
+    const [allowMultipleInstances, setAllowMultipleInstances] = useState(false)
 
-    // Snap Layout Menu (Deaktiv edilib - Istifadeci isteyi ile)
     const [showSnapMenu, setShowSnapMenu] = useState(false)
     const snapMenuTimeoutRef = useRef<number | null>(null)
 
-    // Settings modal ref - kənara kliklədikdə bağlamaq üçün
     const settingsRef = useRef<HTMLDivElement>(null)
 
-    // Zoom Functions
     const zoomPresets = [50, 75, 100, 125, 150]
 
-    // Kənara kliklədikdə settings modalını bağla
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (showSettings && settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
-                // Settings button-a kliklədikdə bağlanmasın (toggle üçün)
                 const target = event.target as HTMLElement
                 if (target.closest('button[title="Ayarlar"]') || target.closest('button')?.title === 'Ayarlar') {
                     return
@@ -85,7 +78,6 @@ export default function UniversalWindow({
         }
     }, [showSettings])
 
-    // Snap menu timeout cleanup
     useEffect(() => {
         return () => {
             if (snapMenuTimeoutRef.current) {
@@ -95,7 +87,6 @@ export default function UniversalWindow({
         }
     }, [])
 
-    // Load saved preferences on mount
     React.useEffect(() => {
         if (pageId) {
             try {
@@ -140,7 +131,6 @@ export default function UniversalWindow({
     }
 
     const handleHeaderMouseDown = (e: React.MouseEvent) => {
-        // Əgər düyməyə klikləyibsə, drag başlatma
         const target = e.target as HTMLElement
         if (target.tagName === 'BUTTON' || target.closest('button')) {
             return
@@ -151,15 +141,12 @@ export default function UniversalWindow({
         e.preventDefault()
     }
 
-    // Dubl kliklə maximize/restore
     const handleHeaderDoubleClick = (e: React.MouseEvent) => {
-        // Əgər düyməyə və ya settings modal-ına klikləyibsə, ignore et
         const target = e.target as HTMLElement
         if (target.tagName === 'BUTTON' || target.closest('button')) {
             return
         }
 
-        // Settings modal-ına klikləyibsə, ignore et
         if (settingsRef.current && settingsRef.current.contains(target)) {
             return
         }
@@ -168,6 +155,14 @@ export default function UniversalWindow({
         e.preventDefault()
         maximizeWindow(id)
     }
+
+    const contextValue = React.useMemo(() => ({
+        windowId: id,
+        isActive,
+        close: () => closeWindow(id),
+        maximize: () => maximizeWindow(id),
+        minimize: () => minimizeWindow(id)
+    }), [id, isActive, closeWindow, maximizeWindow, minimizeWindow])
 
     return (
         <div
@@ -208,7 +203,6 @@ export default function UniversalWindow({
                     cursor: 'default',
                     borderTopLeftRadius: isMaximized ? 0 : '8px',
                     borderTopRightRadius: isMaximized ? 0 : '8px'
-                    // border: '2px solid purple' // DEBUG: Header - Removed
                 }}
             >
                 <div className="window-title" style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: '0.75rem' }}>
@@ -217,7 +211,7 @@ export default function UniversalWindow({
                 </div>
                 <div className="window-controls" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
 
-                    {/* Settings Button (New) */}
+                    {/* Settings Button */}
                     <div style={{ position: 'relative' }}>
                         <button
                             onClick={(e) => {
@@ -357,7 +351,6 @@ export default function UniversalWindow({
 
                                             {pageId && (
                                                 <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
-                                                    {/* Single Instance Checkbox */}
                                                     <label style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
@@ -452,7 +445,6 @@ export default function UniversalWindow({
                                 clearTimeout(snapMenuTimeoutRef.current)
                                 snapMenuTimeoutRef.current = null
                             }
-                            // Menu-nu dərhal bağlama, SnapLayoutMenu özü idarə edəcək
                         }}
                         style={{
                             background: 'transparent',
@@ -470,7 +462,7 @@ export default function UniversalWindow({
                     >
                         □
                     </button>
-                    {/* Snap Layout Menu (Gizlədilib) */}
+                    {/* Snap Layout Menu */}
                     {showSnapMenu && (
                         <div
                             style={{ position: 'absolute', right: '40px', top: '0' }}
@@ -518,22 +510,14 @@ export default function UniversalWindow({
                     flex: 1,
                     overflow: 'auto',
                     position: 'relative',
-                    // Zoom Tətbiqi
                     zoom: `${zoom}%`
                 }}
             >
-                <WindowContext.Provider value={{
-                    windowId: id,
-                    isActive,
-                    close: () => closeWindow(id),
-                    maximize: () => maximizeWindow(id),
-                    minimize: () => minimizeWindow(id)
-                }}>
+                <WindowContext.Provider value={contextValue}>
                     {children}
                 </WindowContext.Provider>
             </div>
 
-            {/* Resize Handle */}
             {/* Resize Handles */}
             {
                 !isMaximized && (

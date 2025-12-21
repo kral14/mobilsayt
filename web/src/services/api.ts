@@ -78,7 +78,9 @@ api.interceptors.response.use(
 
       // Login səhifəsinə yönləndir
       // window.location.href istifadə edirik ki, React Router state-i də təmizlənsin
-      window.location.href = '/login'
+      // Base path-i nəzərə al
+      const basePath = import.meta.env.BASE_URL
+      window.location.href = `${basePath}login`
     }
 
     return Promise.reject(error)
@@ -116,19 +118,7 @@ export const productsAPI = {
     return response.data
   },
 
-  create: async (data: {
-    name: string
-    barcode?: string
-    description?: string
-    unit?: string
-    purchase_price?: number
-    sale_price?: number
-    code?: string
-    warranty_period?: number
-    production_date?: string
-    expiry_date?: string
-    is_active?: boolean
-  }): Promise<Product> => {
+  create: async (data: Partial<Product> & { name: string }): Promise<Product> => {
     const response = await api.post<Product>('/products', data)
     return response.data
   },
@@ -212,6 +202,10 @@ export const ordersAPI = {
   updateStatus: async (id: string, is_active: boolean): Promise<SaleInvoice> => {
     const response = await api.patch<SaleInvoice>(`/orders/${id}/status`, { is_active })
     return response.data
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/orders/${id}`)
   },
 }
 
@@ -389,7 +383,7 @@ export const discountDocumentsAPI = {
     return response.data
   },
 
-  getActive: async (type: 'SUPPLIER' | 'PRODUCT', entityId: number): Promise<DiscountDocument | null> => {
+  getActive: async (type: 'SUPPLIER' | 'PRODUCT' | 'CUSTOMER', entityId: number): Promise<DiscountDocument | null> => {
     const response = await api.get<DiscountDocument[]>('/documents/discounts', {
       params: { type, entity_id: entityId, active_only: true }
     })
@@ -408,7 +402,7 @@ export const discountDocumentsAPI = {
     return validDoc || null
   },
 
-  getAllActive: async (type: 'SUPPLIER' | 'PRODUCT', entityId?: number | null): Promise<DiscountDocument[]> => {
+  getAllActive: async (type: 'SUPPLIER' | 'PRODUCT' | 'CUSTOMER', entityId?: number | null): Promise<DiscountDocument[]> => {
     const params: any = { type, active_only: true }
     if (entityId) params.entity_id = entityId
 

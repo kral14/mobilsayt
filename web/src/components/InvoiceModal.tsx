@@ -1,15 +1,22 @@
-﻿import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWindowStore } from '../store/windowStore'
 import { formatDateInput, convertDisplayToRaw, formatDateToDisplay, parseSmartDate } from '../utils/dateUtils'
 import type { Customer, Product, Supplier, WarehouseLocation, DiscountDocument } from '@shared/types'
-import TableSettingsModal, { type FunctionSettings } from './TableSettingsModal'
-import { type ColumnConfig as TableColumnConfig } from './UniversalTable'
+import TableSettingsModal from './TableSettingsModal'
 import ConfirmDialog from './ConfirmDialog'
 import { purchaseInvoicesAPI, productDiscountsAPI } from '../services/api'
 import SmartDateInput from './SmartDateInput'
-import PartnerManager from './PartnerManager'
-import Anbar from '../pages/Anbar'
+
+import PartnerSelect from './PartnerSelect'
+import InvoiceTable from './InvoiceTable'
+import { InvoiceItem, ModalData, TableColumnConfig, FunctionSettings } from './InvoiceTypes'
+import Mehsullar from '../pages/Mehsullar'
+import ProductFormModal from './ProductFormModal'
+import { categoriesAPI, productsAPI } from '../services/api'
+
+// Re-export for consumers like Satis.tsx
+export type { InvoiceItem, ModalData }
 
 const COLUMN_DRAG_STORAGE_KEY = 'invoice-modal-column-drag-enabled'
 const TABLE_COLUMNS_STORAGE_KEY = 'invoice-modal-table-columns'
@@ -47,39 +54,11 @@ const normalizeColumns = (source?: Partial<TableColumnConfig>[]): TableColumnCon
   })
 }
 
-export interface InvoiceItem {
-  product_id: number | null
-  product_name: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  discount_auto?: number
-  discount_manual?: number
-  vat_rate?: number
-  searchTerm?: string // Məhsul axtarışı üçün
-}
 
-export interface ModalData {
-  id: string
-  invoiceId: number | null
-  position: { x: number, y: number }
-  size: { width: number, height: number }
-  isMaximized: boolean
-  zIndex: number
-  isActive?: boolean // Qaimənin təsdiq statusu (mövcud qaimələr üçün)
-  data: {
-    selectedCustomerId?: number | null
-    selectedCustomer?: Customer | null
-    selectedSupplierId?: number | null
-    selectedSupplier?: Supplier | null
-    invoiceItems: InvoiceItem[]
-    notes: string
-    paymentDate?: string
-    invoiceNumber?: string
-    invoiceDate?: string
-  }
-  invoiceType?: 'sale' | 'purchase' // Satış və ya alış qaiməsi
-}
+
+
+
+
 
 interface InvoiceModalProps {
   modal: ModalData
@@ -125,45 +104,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
    * STATE & INITIALIZATION
    * ---------------------------------------------------------------------------------------------- */
 
-  const handleSupplierSelect = (supplier: Supplier) => {
-    setLocalData(prev => ({ ...prev, selectedSupplierId: Number(supplier.id), selectedSupplier: supplier }))
-    setSupplierSearchTerm(supplier.name)
-    useWindowStore.getState().closeWindow('suppliers-page-select')
-  }
-
-  const openSuppliersSelect = () => {
-    useWindowStore.getState().openPageWindow(
-      'suppliers-page-select',
-      'Təchizatçılar',
-      '👥',
-      <PartnerManager
-        pageTitle="Təchizatçılar"
-        filterType="SUPPLIER"
-        onSelect={handleSupplierSelect}
-      />,
-      { width: 1000, height: 700 }
-    )
-  }
-
-  const handleCustomerSelect = (customer: Customer) => {
-    setLocalData(prev => ({ ...prev, selectedCustomerId: Number(customer.id), selectedCustomer: customer }))
-    setCustomerSearchTerm(customer.name)
-    useWindowStore.getState().closeWindow('customers-page-select')
-  }
-
-  const openCustomersSelect = () => {
-    useWindowStore.getState().openPageWindow(
-      'customers-page-select',
-      'Müştərilər',
-      '🛒',
-      <PartnerManager
-        pageTitle="Müştərilər"
-        filterType="BUYER"
-        onSelect={handleCustomerSelect}
-      />,
-      { width: 1000, height: 700 }
-    )
-  }
 
   // Product Selection Modal State
 
@@ -204,14 +144,17 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
   // UI State
   const [activeTab, setActiveTab] = useState<'items' | 'functions'>('items')
+  console.log(`[${new Date().toISOString()}] [InvoiceModal] RENDER CHECK. isActive:`, isActive)
+
+  // Product Modal State removed
+
+  const [categories, setCategories] = useState<any[]>([])
 
   // Form state-ləri
 
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(null)
-  const [supplierSearchTerm, setSupplierSearchTerm] = useState('')
-  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false)
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
+
+  // Search terms and dropdowns removed as now handled by PartnerSelect
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showInvoiceDatePicker, setShowInvoiceDatePicker] = useState(false)
 
@@ -223,7 +166,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [showItemSettingsModal, setShowItemSettingsModal] = useState(false)
 
   const [enableColumnDrag, setEnableColumnDrag] = useState(false)
-  const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null)
+
 
   const [tableColumns, setTableColumns] = useState<TableColumnConfig[]>(() => {
     if (typeof window === 'undefined') {
@@ -241,6 +184,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     return normalizeColumns()
   })
 
+
+
   // Köhnə format üçün helper funksiyalar (backward compatibility)
 
 
@@ -249,7 +194,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
 
   // Function Settings State
-  const [functionSettings, setFunctionSettings] = useState<FunctionSettings>(() => {
+  const [functionSettings] = useState<FunctionSettings>(() => {
     try {
       const stored = localStorage.getItem(FUNCTION_SETTINGS_STORAGE_KEY)
       return stored ? JSON.parse(stored) : { enableColumnDrag: true, enableColumnResize: true }
@@ -291,25 +236,74 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
-      if (e.key === 'Delete' && !isInput && selectedItemIndices.length > 0) {
-        // Remove selected items
-        // Sort indices descending to remove from end first to avoid index shifting issues
-        const sortedIndices = [...selectedItemIndices].sort((a, b) => b - a)
-        const newItems = [...localData.invoiceItems]
+      let shouldDelete = false
+      if (e.key === 'Delete' && selectedItemIndices.length > 0) {
+        if (!isInput) {
+          shouldDelete = true
+        } else {
+          // If input is empty, treat as row delete command
+          const val = (target as HTMLInputElement).value
+          // Careful: val might be undefined if not input
+          if (!val) shouldDelete = true
+        }
+      }
 
+      if (shouldDelete) {
+        if (isInput) e.preventDefault()
+        console.log('[DEBUG] Deleting rows:', selectedItemIndices)
+
+        // Sort indices descending
+        const sortedIndices = [...selectedItemIndices].sort((a, b) => b - a)
+        const minIndex = Math.min(...selectedItemIndices)
+
+        const newItems = [...localData.invoiceItems]
         sortedIndices.forEach(idx => {
-          newItems.splice(idx, 1)
+          if (idx >= 0 && idx < newItems.length) newItems.splice(idx, 1)
         })
 
         setLocalData(prev => ({ ...prev, invoiceItems: newItems }))
-        setSelectedItemIndices([]) // Clear selection
+
+        // AUTO-SELECT & FOCUS
+        if (newItems.length > 0) {
+          let nextIndex = minIndex - 1
+          if (nextIndex < 0) nextIndex = 0
+          if (nextIndex >= newItems.length) nextIndex = newItems.length - 1
+
+          console.log('[DEBUG] Auto-selecting target index:', nextIndex)
+          setSelectedItemIndices([nextIndex])
+
+          // Robust Focus Attempt
+          const attemptFocus = (retries = 3) => {
+            const selector = `input[data-row-index="${nextIndex}"][data-col-id="product"]`
+            const el = document.querySelector(selector) as HTMLElement
+
+            if (el) {
+              console.log('[DEBUG] Focus successful on:', selector)
+              el.focus()
+              if (el instanceof HTMLInputElement) el.select()
+            } else if (retries > 0) {
+              console.log('[DEBUG] Focus target not found, retrying...', retries)
+              setTimeout(() => attemptFocus(retries - 1), 100)
+            } else {
+              console.warn('[DEBUG] Failed to focus on:', selector)
+            }
+          }
+
+          // Wait for render
+          setTimeout(() => attemptFocus(), 50)
+        } else {
+          setSelectedItemIndices([])
+        }
       }
 
-      // F4 key for Product Selection
+      // F4 key for Product/Supplier Selection
       if (e.key === 'F4') {
         e.preventDefault()
 
-        // Case 1: Input focused (check data-row-index)
+        // Check if supplier input is focused (for purchase invoices)
+
+
+        // Case 1: Product input focused (check data-row-index)
         if (isInput) {
           const input = target as HTMLInputElement
           const rowIdxAttr = input.getAttribute('data-row-index')
@@ -340,6 +334,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       // ignore storage write errors
     }
   }, [])
+
+  // Column resize handler
+
+
 
   // Removed derived functionSettings to avoid conflict with state variable
   // const functionSettings: FunctionSettings = useMemo(() => ({
@@ -445,69 +443,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   // Filtered lists
 
 
-  const filteredSuppliers = React.useMemo(() => {
-    // Yalnız yazı yazanda göstər, boş olduqda göstərmə
-    if (!supplierSearchTerm.trim()) return []
-    const term = supplierSearchTerm.toLowerCase()
-    return suppliers.filter(supplier =>
-      supplier.name.toLowerCase().includes(term) ||
-      supplier.phone?.toLowerCase().includes(term) ||
-      supplier.email?.toLowerCase().includes(term)
-    ).slice(0, 10)
-  }, [suppliers, supplierSearchTerm])
 
-  // Debug: Təchizatçı dropdown state-ini izlə
-  React.useEffect(() => {
-    console.log('[SUPPLIER DROPDOWN DEBUG]', {
-      showSupplierDropdown,
-      supplierSearchTerm,
-      suppliersCount: suppliers.length,
-      filteredSuppliersCount: filteredSuppliers.length,
-      filteredSuppliers: filteredSuppliers.map(s => s.name)
-    })
-  }, [showSupplierDropdown, supplierSearchTerm, suppliers, filteredSuppliers])
 
-  // Click-outside handler - dropdown-u bağla
-  React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      // Əgər supplier input və ya dropdown-a klikləməyibsə, bağla
-      if (!target.closest('[data-supplier-input]') && !target.closest('[data-supplier-dropdown]')) {
-        setShowSupplierDropdown(false)
-      }
-    }
 
-    if (showSupplierDropdown) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [showSupplierDropdown])
-
-  const filteredCustomers = React.useMemo(() => {
-    if (!customerSearchTerm.trim()) return []
-    const term = customerSearchTerm.toLowerCase()
-    // customers default to empty array if undefined
-    return (customers || []).filter(customer =>
-      customer.name.toLowerCase().includes(term) ||
-      customer.phone?.toLowerCase().includes(term) ||
-      customer.email?.toLowerCase().includes(term)
-    ).slice(0, 10)
-  }, [customers, customerSearchTerm])
-
-  const visibleOrderedColumns = useMemo(() => {
-    return [...tableColumns]
-      .filter(column => column.visible)
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-  }, [tableColumns])
-
-  const visibleColumnCount = visibleOrderedColumns.length
-
-  const columnConfig = useMemo(() => {
-    return tableColumns.reduce((acc, col) => {
-      acc[col.id] = col
-      return acc
-    }, {} as Record<string, TableColumnConfig>)
-  }, [tableColumns])
 
   const handleSort = (columnId: string) => {
     if (sortColumn === columnId) {
@@ -518,9 +456,67 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
   }
 
-  const handleColumnDragEnd = () => {
-    setDraggedColumnKey(null)
+  const handleOpenProductDetails = async (productId: number, productName: string) => {
+    console.log(`[${new Date().toISOString()}] [InvoiceModal] handleOpenProductDetails called`, productId, productName)
+    let product = products.find(p => p.id === productId)
+
+    if (!product) {
+      try {
+        // Fetch single product details
+        product = await productsAPI.getById(productId.toString())
+      } catch (e) {
+        console.error('Failed to fetch product for details', e)
+      }
+    }
+
+    if (product) {
+      // Ensure categories are loaded
+      let currentCategories = categories;
+      if (currentCategories.length === 0) {
+        try {
+          currentCategories = await categoriesAPI.getAll();
+          setCategories(currentCategories)
+        } catch (e) {
+          console.error('Categories load error:', e)
+        }
+      }
+
+      const targetProduct = product; // capture for closure
+      // Open in Universal Window
+      useWindowStore.getState().openPageWindow(
+        `product-details-${product.id}`,
+        `Məhsul: ${product.name}`,
+        '📝',
+        <ProductFormModal
+          product={product}
+          categories={currentCategories}
+          existingBarcodes={[]}
+          onSubmit={async (data) => {
+            try {
+              await productsAPI.update(targetProduct.id.toString(), data)
+              alert('Məhsul yeniləndi! (Siyahını yeniləmək üçün səhifəni yeniləmək lazım ola bilər)')
+              // Close the window? The user might want to keep it open or close it.
+              // Usually ProductForm doesn't close itself on submit unless explicitly handled.
+              // But handleProductFormSubmit did setShowProductModal(false) which is irrelevant now.
+              // Let's close it to match old behavior.
+              useWindowStore.getState().closePageWindow(`product-details-${targetProduct.id}`)
+            } catch (error: any) {
+              alert('Xəta: ' + (error.response?.data?.message || error.message))
+            }
+          }}
+        />,
+        {
+          width: 850,
+          height: 700
+        }
+      )
+    } else {
+      console.warn(`Product ${productId} not found via local search or API fetch`)
+      alert('Məhsul məlumatları tapılmadı.')
+    }
   }
+
+
 
 
 
@@ -542,7 +538,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   }, [modal.data.invoiceDate]) // Yalnız modal açılanda və ya invoiceDate dəyişdikdə
 
 
-
   // Helper functions
   const handleAddEmptyRow = () => {
     const newItems = [...localData.invoiceItems, {
@@ -555,33 +550,28 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setLocalData({ ...localData, invoiceItems: newItems })
   }
 
-  const handleUpdateItem = (index: number, field: 'quantity' | 'unit_price' | 'discount_manual', value: number) => {
+
+
+  const handleTableUpdateItem = (index: number, updates: Partial<InvoiceItem>) => {
     const updatedItems = [...localData.invoiceItems]
     const currentItem = updatedItems[index]
+    const newItem = { ...currentItem, ...updates }
 
-    // Update the field
-    const newItem = {
-      ...currentItem,
-      [field]: value
+    // Recalc logic if needed
+    if ('quantity' in updates || 'unit_price' in updates || 'discount_manual' in updates || 'discount_auto' in updates) {
+      const qty = newItem.quantity || 0
+      const price = newItem.unit_price || 0
+      const totalDisc = (newItem.discount_auto || 0) + (newItem.discount_manual || 0)
+      newItem.total_price = (qty * price) * (1 - totalDisc / 100)
     }
 
-    // Calculate new total
-    const qty = newItem.quantity || 0
-    const price = newItem.unit_price || 0
-    const autoDisc = newItem.discount_auto || 0
-    const manualDisc = newItem.discount_manual || 0
-    const totalDisc = Math.min(autoDisc + manualDisc, 100) // Cap at 100%
-
-    newItem.total_price = (qty * price) * (1 - totalDisc / 100)
-
     updatedItems[index] = newItem
-    setLocalData({ ...localData, invoiceItems: updatedItems })
+    setLocalData(prev => ({ ...prev, invoiceItems: updatedItems }))
   }
 
-  const handleRemoveItem = (index: number) => {
-    const newItems = localData.invoiceItems.filter((_, i) => i !== index)
-    setLocalData({ ...localData, invoiceItems: newItems })
-  }
+
+
+
 
 
 
@@ -596,32 +586,106 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     ).slice(0, 10)
   }
 
-  const handleProductSearchInRow = (index: number, searchTerm: string) => {
-    const updatedItems = [...localData.invoiceItems]
-    updatedItems[index] = {
-      ...updatedItems[index],
-      searchTerm: searchTerm
-    }
-    setLocalData({ ...localData, invoiceItems: updatedItems })
-  }
+
 
   const handleProductSelectInRow = async (index: number, productId: number) => {
+    console.log(`[DEBUG] handleProductSelectInRow started. Index: ${index}, ProductId: ${productId}`)
     const product = products.find(p => p.id === productId)
-    if (!product) return
 
-    // Calculate Auto Discount
+    if (!product) {
+      console.error(`[DEBUG] Product not found in list. ProductId: ${productId}`)
+      return
+    }
+
+    console.log(`[DEBUG] Found product: ${product.name}, Price: ${isPurchase ? product.purchase_price : product.sale_price}`)
+
+    // 1. Optimistic Update (Immediate)
+    // Set product details immediately so UI updates instantly and resists race conditions
+    const price = isPurchase ? (product.purchase_price || 0) : (product.sale_price || 0)
+    const vatRate = product.tax_rate || 0
+
+    setLocalData(prev => {
+      console.log('[DEBUG] Optimistic Update. Index:', index)
+      const newItems = [...prev.invoiceItems]
+      const currentItem = newItems[index]
+      const currentQty = currentItem.quantity || 0
+      const manualDisc = currentItem.discount_manual || 0
+      // Auto disc 0 initially
+      const totalDisc = Math.min(0 + manualDisc, 100)
+
+      newItems[index] = {
+        ...currentItem,
+        product_id: productId,
+        product_name: product.name,
+        unit_price: price,
+        discount_auto: 0, // Will update later
+        vat_rate: vatRate,
+        total_price: (currentQty * price) * (1 - totalDisc / 100),
+        searchTerm: ''
+      }
+      return { ...prev, invoiceItems: newItems }
+    })
+
+
+    // 2. Async Discount Calculation
     let autoDisc = 0
 
     if (isPurchase) {
       autoDisc = calculateAutoDiscount(productId)
     } else {
-      // Sale Logic
-      const customer = localData.selectedCustomer
-      // @ts-ignore - permanent_discount field might strict typed
-      const customerDiscount = Number(customer?.permanent_discount || 0)
+      // Sale Logic - Get customer from either selectedCustomer or by ID
+      const customer = localData.selectedCustomer || customers.find(c => c.id === localData.selectedCustomerId)
+      const customerPermanentDiscount = Number(customer?.permanent_discount || 0)
 
-      let productDiscount = 0
+      console.log('[DEBUG] Product Select - Customer Info:', {
+        selectedCustomerId: localData.selectedCustomerId,
+        selectedCustomer: localData.selectedCustomer?.name,
+        foundCustomer: customer?.name,
+        permanentDiscount: customer?.permanent_discount,
+        calculatedDiscount: customerPermanentDiscount
+      })
+
+      // Get customer temporary discount from discount documents
+      let customerTempDiscount = 0
       try {
+        if (customer?.id) {
+          const { discountDocumentsAPI } = await import('../services/api')
+          const customerDocs = await discountDocumentsAPI.getAllActive('CUSTOMER', customer.id)
+
+          // Find active document for current date
+          const now = new Date()
+          const activeDoc = customerDocs.find(doc => {
+            if (doc.start_date && now < new Date(doc.start_date)) return false
+            if (doc.end_date && now > new Date(doc.end_date)) return false
+            return true
+          })
+
+          if (activeDoc && activeDoc.items) {
+            // Check for product-specific discount first
+            const productItem = activeDoc.items.find((i: any) => i.product_id === productId)
+            if (productItem) {
+              customerTempDiscount = Number(productItem.discount_percent)
+            } else {
+              // Check for general discount
+              const generalItem = activeDoc.items.find((i: any) => i.product_id === null)
+              if (generalItem) {
+                customerTempDiscount = Number(generalItem.discount_percent)
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[DEBUG] Failed to load customer discount documents', e)
+      }
+
+      // Get product permanent discount (if exists in future)
+      const productObj = products.find(p => p.id === productId)
+      const productPermanentDiscount = Number((productObj as any)?.permanent_discount || 0)
+
+      // Get product temporary discount from product discounts API
+      let productTempDiscount = 0
+      try {
+        console.log('[DEBUG] Fetching product discounts for product:', productId)
         const discounts = await productDiscountsAPI.getAll(productId)
         const now = new Date()
         const activeDiscount = discounts.find((d: any) => {
@@ -631,119 +695,79 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         })
 
         if (activeDiscount) {
-          productDiscount = Number(activeDiscount.percentage)
+          productTempDiscount = Number(activeDiscount.percentage)
+          console.log('[DEBUG] Found active product discount:', productTempDiscount)
         }
       } catch (e) {
-        console.error('Failed to load product discounts', e)
+        console.error('[DEBUG] Failed to load product discounts', e)
       }
-      autoDisc = customerDiscount + productDiscount
+
+      autoDisc = customerPermanentDiscount + customerTempDiscount + productPermanentDiscount + productTempDiscount
+      console.log('[DEBUG] Sales Discount Breakdown:', {
+        customerPermanent: customerPermanentDiscount,
+        customerTemp: customerTempDiscount,
+        productPermanent: productPermanentDiscount,
+        productTemp: productTempDiscount,
+        total: autoDisc
+      })
     }
-    // const autoDisc = customerDiscount + productDiscount // Removed old line
 
-    // Check if component mounted/state valid?
-    // For now assuming safe enough or user simple flow
-    // Need to get latest items state in case it changed during await
-    // Using functional state update or refetching from ref would be safer but complex
-    // Re-reading localData from state might be stale in closure
-
+    // 3. Final Update with Discount
+    console.log('[DEBUG] Final Update with Discount:', autoDisc)
     setLocalData(prev => {
       const newItems = [...prev.invoiceItems]
-      const currentItem = newItems[index]
-      // If row changed product in meantime, abort?
-      // For simplicity, just update.
+      // Check if item still has same product (user might have changed it while waiting)
+      if (newItems[index].product_id !== productId) {
+        console.warn('[DEBUG] Product changed during async op, discarding discount update')
+        return prev
+      }
 
-      const price = isPurchase ? (product.purchase_price || 0) : (product.sale_price || 0)
-      const currentQty = currentItem.quantity || 0
+      const currentItem = newItems[index]
       const manualDisc = currentItem.discount_manual || 0
       const totalDisc = Math.min(autoDisc + manualDisc, 100)
 
       newItems[index] = {
         ...currentItem,
-        product_id: productId,
-        product_name: product.name,
-        unit_price: price,
         discount_auto: autoDisc,
-        vat_rate: product.tax_rate || 0,
-        total_price: (currentQty * price) * (1 - totalDisc / 100),
-        searchTerm: ''
+        total_price: (currentItem.quantity * currentItem.unit_price) * (1 - totalDisc / 100)
       }
       return { ...prev, invoiceItems: newItems }
     })
   }
 
   const openProductsSelect = (index: number) => {
+    // Get the currently selected product ID for this row
+    const currentItem = localData.invoiceItems[index]
+    const currentProductId = currentItem?.product_id || null
+
+    console.log('[DEBUG] Opening selection window. Current Row Index:', index)
+
     useWindowStore.getState().openPageWindow(
       'products-page-select',
       'Məhsul Seçimi',
       '📦',
-      <Anbar onSelect={(product: Product) => {
-        handleProductSelectInRow(index, product.id)
-        useWindowStore.getState().closeWindow('products-page-select')
-      }} />,
-      { width: 1000, height: 700 }
+      <Mehsullar
+        initialSelectedProductId={currentProductId}
+        onSelect={(product: Product) => {
+          console.log('[DEBUG] Product selected from Anbar. ID:', product.id, 'Name:', product.name)
+          handleProductSelectInRow(index, product.id)
+          useWindowStore.getState().closePageWindow('products-page-select')
+        }}
+      />,
+      {
+        width: Math.min(1000, window.innerWidth - 40),
+        height: Math.min(700, window.innerHeight - 100)
+      }
     )
   }
 
-  // Sütun sürüşdürmə funksiyaları
-  const handleColumnDragStart = (e: React.DragEvent, columnKey: string) => {
-    if (!functionSettings.enableColumnDrag) return
-    setDraggedColumnKey(columnKey)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  const handleColumnDragOver = (e: React.DragEvent) => {
-    if (!functionSettings.enableColumnDrag) return
-    e.preventDefault()
-    e.stopPropagation()
-  }
-
-  const handleColumnDrop = (e: React.DragEvent, targetColumnKey: string) => {
-    if (!functionSettings.enableColumnDrag || !draggedColumnKey || draggedColumnKey === targetColumnKey) {
-      setDraggedColumnKey(null)
-      return
-    }
-    e.preventDefault()
-    e.stopPropagation()
-
-    const updatedColumns = [...tableColumns]
-    const draggedCol = updatedColumns.find(col => col.id === draggedColumnKey)
-    const targetCol = updatedColumns.find(col => col.id === targetColumnKey)
-
-    if (!draggedCol || !targetCol) {
-      setDraggedColumnKey(null)
-      return
-    }
-
-    const draggedOrder = draggedCol.order || 0
-    const targetOrder = targetCol.order || 0
-
-    // Sütun sırasını dəyişdir
-    updatedColumns.forEach(col => {
-      const currentOrder = col.order || 0
-      if (col.id === draggedColumnKey) {
-        col.order = targetOrder
-      } else if (draggedOrder < targetOrder) {
-        if (currentOrder > draggedOrder && currentOrder <= targetOrder) {
-          col.order = currentOrder - 1
-        }
-      } else {
-        if (currentOrder >= targetOrder && currentOrder < draggedOrder) {
-          col.order = currentOrder + 1
-        }
-      }
-    })
-
-    setTableColumns(updatedColumns)
-    setDraggedColumnKey(null)
-  }
+  // Köhnə sütun funksiyaları silindi - yeni implementasiya sətir 365-460-da
 
 
 
 
 
-  const invoiceTotal = useMemo(() => {
-    return localData.invoiceItems.reduce((sum, item) => sum + (item.total_price || 0), 0)
-  }, [localData.invoiceItems])
+
 
   // Məhsul bilgilerini al
   const getProductInfo = (productId: number | null) => {
@@ -764,13 +788,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   useEffect(() => {
     // Yalnız fərqli olduqda yenilə (Loop-un qarşısını almaq üçün)
     if (JSON.stringify(modal.data) !== JSON.stringify(localData)) {
+      console.log('[DEBUG] Downward Sync triggered! This might be erasing your changes!')
       isSyncingFromProps.current = true
       setLocalData(modal.data)
     }
 
-    if (modal.data.selectedSupplier) {
-      setSupplierSearchTerm('')
-    }
+
   }, [modal.data])
 
   // Local data dəyişdikdə parent-ə bildir - Upward Sync
@@ -839,6 +862,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       }
     }
 
+    // Get supplier's permanent discount
+    const supplier = localData.selectedSupplier || suppliers.find(s => s.id === localData.selectedSupplierId)
+    const supplierPermanentDiscount = Number(supplier?.permanent_discount || 0)
+
+    console.log('[DEBUG] calculateAutoDiscount - Supplier:', supplier?.name, 'Permanent Discount:', supplierPermanentDiscount)
+
     // Determine Active Supplier Document based on this date
     // Sort by start_date desc to prioritize newer documents
     const validSupplierDocs = supplierDiscountDocuments.filter(doc => {
@@ -853,16 +882,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
     const activeSupplierDoc = validSupplierDocs[0] || null
 
-    // 1. Calculate Supplier Discount
-    let supplierDiscount = 0
+    // 1. Calculate Supplier Document Discount
+    let supplierDocDiscount = 0
     if (activeSupplierDoc && activeSupplierDoc.items) {
       const item = activeSupplierDoc.items.find((i: any) => Number(i.product_id) === Number(productId))
       if (item) {
-        supplierDiscount = Number(item.discount_percent)
+        supplierDocDiscount = Number(item.discount_percent)
       } else {
         const general = activeSupplierDoc.items.find((i: any) => i.product_id === null)
         if (general) {
-          supplierDiscount = Number(general.discount_percent)
+          supplierDocDiscount = Number(general.discount_percent)
         }
       }
     }
@@ -901,8 +930,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       }
     }
 
-    return supplierDiscount + productDiscount
-  }, [supplierDiscountDocuments, productDiscountDocuments, localData.invoiceDate])
+    const totalDiscount = supplierPermanentDiscount + supplierDocDiscount + productDiscount
+    console.log('[DEBUG] Total Discount Breakdown:', {
+      supplierPermanent: supplierPermanentDiscount,
+      supplierDoc: supplierDocDiscount,
+      product: productDiscount,
+      total: totalDiscount
+    })
+
+    return totalDiscount
+  }, [supplierDiscountDocuments, productDiscountDocuments, localData.invoiceDate, localData.selectedSupplier, localData.selectedSupplierId, suppliers])
 
   // Recalculate discounts when date changes
   const initialDateRef = React.useRef<string | null>(null)
@@ -962,12 +999,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   // Recalculate discounts when Customer changes (Sales only)
   useEffect(() => {
     if (isPurchase) return
+    if (!localData.invoiceItems || localData.invoiceItems.length === 0) {
+      console.log('[DiscountCalc] No items to calculate discounts for')
+      return
+    }
 
     const recalculateSalesDiscounts = async () => {
       const customer = localData.selectedCustomer || customers.find(c => c.id === localData.selectedCustomerId)
       const customerDiscount = Number(customer?.permanent_discount || 0)
 
-      console.log('[DiscountCalc] Customer changed. New Discount:', customerDiscount)
+      console.log('[DiscountCalc] Customer changed. Customer:', customer?.name, 'Discount:', customerDiscount, 'Items:', localData.invoiceItems.length)
 
       const updatedItems = await Promise.all(localData.invoiceItems.map(async (item) => {
         if (!item.product_id) return item
@@ -989,6 +1030,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         }
 
         const autoDisc = customerDiscount + productDiscount
+
+        console.log(`[DiscountCalc] Product: ${item.product_name}, Customer Disc: ${customerDiscount}%, Product Disc: ${productDiscount}%, Total Auto: ${autoDisc}%`)
 
         // Only update if changed
         if (item.discount_auto === autoDisc) return item
@@ -1014,333 +1057,17 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       if (hasChanges) {
         console.log('[DiscountCalc] Updating items with new discounts')
         setLocalData(prev => ({ ...prev, invoiceItems: updatedItems }))
+      } else {
+        console.log('[DiscountCalc] No changes detected, skipping update')
       }
     }
 
     recalculateSalesDiscounts()
-  }, [localData.selectedCustomerId, isPurchase, customers])
+  }, [localData.selectedCustomerId, localData.invoiceItems.length, isPurchase, customers])
 
-  // Scope fixes: Define handleResizeStart and renderCell here or before usage
-  const handleResizeStart = (e: React.MouseEvent, _columnId: string) => {
-    // Placeholder for column resize logic if needed, or implement full logic
-    // existing logic uses handleResizeMouseDown for the window, this is for columns
-    e.stopPropagation()
-  }
+  // handleResizeStart artıq sətir 370-380-da implement edilib
 
-  const renderCell = (item: InvoiceItem, idx: number, columnId: string) => {
-    const isSelected = selectedItemIndices.includes(idx)
-    // Helper to get products for row, reused logic
-    const rowProducts = getFilteredProductsForRow(item.searchTerm || '')
 
-    switch (columnId) {
-      case 'checkbox':
-        return (
-          <div style={{ textAlign: 'center' }}>
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => { }}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (e.ctrlKey || e.metaKey) {
-                  if (selectedItemIndices.includes(idx)) {
-                    setSelectedItemIndices(selectedItemIndices.filter(i => i !== idx))
-                  } else {
-                    setSelectedItemIndices([...selectedItemIndices, idx])
-                  }
-                } else {
-                  setSelectedItemIndices([idx])
-                }
-              }}
-              style={{ cursor: 'pointer' }}
-            />
-          </div>
-        )
-      case 'number':
-        return (
-          <div style={{ textAlign: 'center' }}>
-            {idx + 1}
-          </div>
-        )
-      case 'product':
-        return (
-          <div style={{ position: 'relative' }}>
-            {item.product_id ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>{item.product_name}</span>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      alert(`Məhsul detalları: ${item.product_name} (ID: ${item.product_id})`)
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      padding: '0.25rem',
-                      marginLeft: '0.5rem'
-                    }}
-                    title="Məhsul detalları"
-                  >
-                    🔍
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const updatedItems = [...localData.invoiceItems]
-                      updatedItems[idx] = {
-                        ...updatedItems[idx],
-                        product_id: null,
-                        product_name: '',
-                        searchTerm: ''
-                      }
-                      setLocalData({ ...localData, invoiceItems: updatedItems })
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#dc3545',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      padding: '0.25rem',
-                      marginLeft: '0.5rem'
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-                <input
-                  type="text"
-                  placeholder="Məhsul adını yazın..."
-                  value={item.searchTerm || ''}
-                  onChange={(e) => handleProductSearchInRow(idx, e.target.value)}
-                  onBlur={(e) => {
-                    setTimeout(() => {
-                      const relatedTarget = e.relatedTarget as HTMLElement
-                      if (!relatedTarget || (!relatedTarget.closest('.product-dropdown') && !relatedTarget.closest('.product-action-btn'))) {
-                        // Clear search if not selecting from dropdown or clicking action button
-                        const updatedItems = [...localData.invoiceItems]
-                        // Only clear if no product selected? Or reset to empty?
-                        // Existing logic:
-                        updatedItems[idx] = {
-                          ...updatedItems[idx],
-                          searchTerm: ''
-                        }
-                        setLocalData(prev => ({ ...prev, invoiceItems: updatedItems }))
-                      }
-                    }, 200)
-                  }}
-                  data-row-index={idx}
-                  style={{
-                    flex: 1,
-                    padding: '0.25rem 4rem 0.25rem 0.25rem', // Extra right padding for buttons
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '0.9rem'
-                  }}
-                />
-                {/* Action Buttons inside Input */}
-                <div style={{ position: 'absolute', right: '4px', display: 'flex', gap: '2px', height: '100%', alignItems: 'center', zIndex: 10 }}>
-
-                  <button
-                    className="product-action-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      // We need to call openProductsSelect.
-                      // But it is not defined yet if we place it below?
-                      // We can move the definition UP if we move handleProductSelectInRow UP.
-                      // Or duplicate the call logic?
-                      // Better: Move openProductsSelect definition right before render/return, OR move handleProductSelectInRow UP.
-
-                      // Actually, let's temporarily use a ref or just invoke it if it exists.
-                      // But typescript will complain.
-                      // I will insert openProductsSelect definition BEFORE return statement but AFTER handleProductSelectInRow.
-                      openProductsSelect(idx)
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '1rem', // Slightly larger for dots
-                      padding: '0 2px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 'bold',
-                      marginBottom: '4px' // Adjust alignment
-                    }}
-                    title="Məhsul seç"
-                  >
-                    ...
-                  </button>
-                </div>
-                {rowProducts.length > 0 && (
-                  <div
-                    className="product-dropdown"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: 'white',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      marginTop: '0.25rem',
-                      maxHeight: '200px',
-                      overflow: 'auto',
-                      zIndex: 1000,
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                    }}
-                    onMouseDown={(e) => e.preventDefault()}
-                  >
-                    {rowProducts.map(product => (
-                      <div
-                        key={product.id}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          handleProductSelectInRow(idx, product.id)
-                        }}
-                        style={{
-                          padding: '0.75rem',
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #f0f0f0'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f8f9fa'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'white'
-                        }}
-                      >
-                        <div style={{ fontWeight: 'bold' }}>{product.name}</div>
-                        <div style={{ fontSize: '0.875rem', color: '#666' }}>
-                          {product.code && <span>Kod: {product.code} </span>}
-                          {product.barcode && <span>Barkod: {product.barcode}</span>}
-                        </div>
-                        {isPurchase
-                          ? (product.purchase_price && (
-                            <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
-                              Qiymət: {Number(product.purchase_price).toFixed(2)} ₼
-                            </div>
-                          ))
-                          : product.sale_price && (
-                            <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
-                              Qiymət: {Number(product.sale_price).toFixed(2)} ₼
-                            </div>
-                          )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-            }
-          </div >
-        )
-      case 'code':
-        return (
-          <div style={{ textAlign: 'left' }}>
-            {getProductInfo(item.product_id).code || '-'}
-          </div>
-        )
-      case 'barcode':
-        return (
-          <div style={{ textAlign: 'left' }}>
-            {getProductInfo(item.product_id).barcode || '-'}
-          </div>
-        )
-      case 'unit':
-        return (
-          <div style={{ textAlign: 'left' }}>
-            {getProductInfo(item.product_id).unit || '-'}
-          </div>
-        )
-      case 'quantity':
-        return (
-          <div style={{ textAlign: 'right' }}>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={item.quantity}
-              onChange={(e) => handleUpdateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
-              onClick={(e) => e.stopPropagation()}
-              onFocus={(e) => e.target.select()}
-              style={{
-                width: '100%',
-                padding: '0.25rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                textAlign: 'right',
-                fontSize: '0.9rem'
-              }}
-            />
-          </div>
-        )
-      case 'unitPrice':
-        return (
-          <div style={{ textAlign: 'right' }}>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={item.unit_price}
-              onChange={(e) => handleUpdateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-              onClick={(e) => e.stopPropagation()}
-              onFocus={(e) => e.target.select()}
-              style={{
-                width: '100%',
-                padding: '0.25rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                textAlign: 'right',
-                fontSize: '0.9rem'
-              }}
-            />
-          </div>
-        )
-      case 'discountAuto':
-        return (
-          <div style={{ textAlign: 'center', padding: '0.25rem', color: '#666', fontSize: '0.9rem' }}>
-            {(item.discount_auto || 0)}%
-          </div>
-        )
-      case 'discountManual':
-        return (
-          <div style={{ textAlign: 'center' }}>
-            <input
-              type="number"
-              step="0.01"
-              value={item.discount_manual || ''}
-              onChange={(e) => handleUpdateItem(idx, 'discount_manual', e.target.value === '' ? 0 : parseFloat(e.target.value))}
-              onClick={(e) => e.stopPropagation()}
-              onFocus={(e) => e.target.select()}
-              placeholder="0"
-              style={{
-                width: '100%',
-                padding: '0.25rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                textAlign: 'center',
-                fontSize: '0.9rem'
-              }}
-            />
-          </div>
-        )
-      case 'total':
-        return (
-          <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
-            {item.total_price.toFixed(2)} ₼
-          </div>
-        )
-      default:
-        return null
-    }
-  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
@@ -1623,12 +1350,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         return
       }
 
-      // F4 - Müştərilər səhifəsini aç
-      if (e.key === 'F4' && !isPurchase && isActive) {
-        e.preventDefault()
-        openCustomersSelect()
-        return
-      }
+
 
       // Input içində digər qısa yollar işləməsin
       if (isInput) {
@@ -1727,304 +1449,35 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           }}>
             {/* 1. Təchizatçı OR Müştəri */}
             {isPurchase ? (
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <label style={{ width: '90px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0 }}>
-                  Təchizatçı:
-                </label>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                    <input
-                      type="text"
-                      data-supplier-input="true"
-                      placeholder="Seçin..."
-                      value={localData.selectedSupplier ? localData.selectedSupplier.name : supplierSearchTerm}
-                      onChange={(e) => {
-                        setSupplierSearchTerm(e.target.value)
-                        setShowSupplierDropdown(true)
-                        if (localData.selectedSupplier) {
-                          setLocalData(prev => ({ ...prev, selectedSupplierId: null, selectedSupplier: null }))
-                        }
-                      }}
-                      onFocus={() => {
-                        if (localData.selectedSupplier) {
-                          setSupplierSearchTerm(localData.selectedSupplier.name)
-                          setShowSupplierDropdown(true)
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'F4') {
-                          e.preventDefault()
-                          openSuppliersSelect()
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '2px 24px 2px 8px', // Right padding for clear button
-                        border: '1px solid #e0e0e0',
-                        outline: 'none',
-                        boxShadow: 'none',
-                        borderRadius: '4px',
-                        fontSize: '0.85rem',
-                        height: '24px'
-                      }}
-                    />
-                    {/* Action Buttons */}
-                    <div style={{ display: 'flex', gap: '2px', position: 'absolute', right: '4px', height: '100%', alignItems: 'center' }}>
-                      {/* Magnifying Glass - Open Supplier Details */}
-                      {localData.selectedSupplier && (
-                        <button
-                          onClick={() => {
-                            if (!localData.selectedSupplier) return
-                            const { openPageWindow } = useWindowStore.getState()
-                            openPageWindow(
-                              `supplier-edit-${localData.selectedSupplierId}`,
-                              `Təchizatçı: ${localData.selectedSupplier.name}`,
-                              '👤',
-                              <div>Supplier Edit Modal (TODO)</div>,
-                              { width: 800, height: 600 }
-                            )
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#007bff',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            padding: '0 4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          title="Təchizatçı məlumatları"
-                        >
-                          🔍
-                        </button>
-                      )}
-
-                      {/* Three Dots - Open Suppliers Page */}
-                      <button
-                        onClick={openSuppliersSelect}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#6c757d',
-                          cursor: 'pointer',
-                          fontSize: '1.2rem',
-                          padding: '0 4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          lineHeight: 1
-                        }}
-                        title="Təchizatçılar səhifəsi"
-                      >
-                        ⋯
-                      </button>
-
-                      {/* Clear Button (X) */}
-                      {localData.selectedSupplier && (
-                        <button
-                          onClick={() => {
-                            setLocalData(prev => ({ ...prev, selectedSupplierId: null, selectedSupplier: null }))
-                            setSupplierSearchTerm('')
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#dc3545',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            padding: '0 4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          title="Təmizlə"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Təchizatçı dropdown */}
-                  {showSupplierDropdown && filteredSuppliers.length > 0 && (
-                    <div
-                      data-supplier-dropdown="true"
-                      style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: 'white',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        marginTop: '2px',
-                        maxHeight: '300px',
-                        overflowY: 'auto',
-                        zIndex: 1000,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}
-                    >
-                      {filteredSuppliers.map(supplier => (
-                        <div
-                          key={supplier.id}
-                          style={{
-                            padding: '6px 10px',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #f0f0f0',
-                            fontSize: '0.9rem'
-                          }}
-                          onClick={() => {
-                            setLocalData(prev => ({ ...prev, selectedSupplierId: supplier.id, selectedSupplier: supplier }))
-                            setSupplierSearchTerm(supplier.name)
-                            setShowSupplierDropdown(false)
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9fa')}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
-                        >
-                          <div style={{ fontWeight: '500', color: '#333' }}>{supplier.name}</div>
-                          {supplier.phone && <div style={{ fontSize: '0.8rem', color: '#666' }}>{supplier.phone}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <PartnerSelect
+                partners={suppliers}
+                value={localData.selectedSupplier || null}
+                onChange={(supplier) => {
+                  setLocalData(prev => ({
+                    ...prev,
+                    selectedSupplierId: supplier?.id || null,
+                    selectedSupplier: supplier as Supplier | null
+                  }))
+                }}
+                placeholder="Seçin..."
+                filterType="SUPPLIER"
+                label="Təchizatçı:"
+              />
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <label style={{ width: '90px', fontWeight: '500', fontSize: '0.9rem', color: '#495057', flexShrink: 0 }}>
-                  Müştəri:
-                </label>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                    <input
-                      type="text"
-                      data-customer-input="true"
-                      placeholder="Seçin..."
-                      value={localData.selectedCustomer ? localData.selectedCustomer.name : customerSearchTerm}
-                      onChange={(e) => {
-                        setCustomerSearchTerm(e.target.value)
-                        setShowCustomerDropdown(true)
-                        if (localData.selectedCustomer) {
-                          setLocalData(prev => ({ ...prev, selectedCustomerId: null, selectedCustomer: null }))
-                        }
-                      }}
-                      onFocus={() => {
-                        if (localData.selectedCustomer) {
-                          setCustomerSearchTerm(localData.selectedCustomer.name)
-                          setShowCustomerDropdown(true)
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'F4') {
-                          e.preventDefault()
-                          openCustomersSelect()
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '2px 24px 2px 8px', // Right padding for clear button
-                        border: '1px solid #e0e0e0',
-                        outline: 'none',
-                        boxShadow: 'none',
-                        borderRadius: '4px',
-                        fontSize: '0.85rem',
-                        height: '24px'
-                      }}
-                    />
-                    {/* Action Buttons */}
-                    <div style={{ display: 'flex', gap: '2px', position: 'absolute', right: '4px', height: '100%', alignItems: 'center' }}>
-                      {/* Three Dots - Open Customers Page */}
-                      <button
-                        onClick={openCustomersSelect}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#6c757d',
-                          cursor: 'pointer',
-                          fontSize: '1.2rem',
-                          padding: '0 4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          lineHeight: 1
-                        }}
-                        title="Müştərilər səhifəsi"
-                      >
-                        ⋯
-                      </button>
-
-                      {/* Clear Button (X) */}
-                      {localData.selectedCustomer && (
-                        <button
-                          onClick={() => {
-                            setLocalData(prev => ({ ...prev, selectedCustomerId: null, selectedCustomer: null }))
-                            setCustomerSearchTerm('')
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#dc3545',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            padding: '0 4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          title="Təmizlə"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Müştəri dropdown */}
-                  {showCustomerDropdown && filteredCustomers.length > 0 && (
-                    <div
-                      data-customer-dropdown="true"
-                      style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: 'white',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        marginTop: '2px',
-                        maxHeight: '300px',
-                        overflowY: 'auto',
-                        zIndex: 1000,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}
-                    >
-                      {filteredCustomers.map(customer => (
-                        <div
-                          key={customer.id}
-                          style={{
-                            padding: '6px 10px',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #f0f0f0',
-                            fontSize: '0.9rem'
-                          }}
-                          onClick={() => {
-                            setLocalData(prev => ({ ...prev, selectedCustomerId: customer.id, selectedCustomer: customer }))
-                            setCustomerSearchTerm(customer.name)
-                            setShowCustomerDropdown(false)
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9fa')}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
-                        >
-                          <div style={{ fontWeight: '500', color: '#333' }}>{customer.name}</div>
-                          {customer.phone && <div style={{ fontSize: '0.8rem', color: '#666' }}>{customer.phone}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <PartnerSelect
+                partners={customers}
+                value={localData.selectedCustomer || null}
+                onChange={(customer) => {
+                  setLocalData(prev => ({
+                    ...prev,
+                    selectedCustomerId: customer?.id || null,
+                    selectedCustomer: customer as Customer | null
+                  }))
+                }}
+                placeholder="Seçin..."
+                filterType="BUYER"
+                label="Müştəri:"
+              />
             )}
 
             {/* 4. Anbar */}
@@ -2674,94 +2127,33 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </div>
                 <div style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>Məhsullar ({localData.invoiceItems.length})</div>
               </div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f1f3f5' }}>
-                    <tr>
-                      <th style={{ padding: '8px', borderBottom: '1px solid #e0e0e0', width: '40px', textAlign: 'center' }}>№</th>
-                      {tableColumns.filter(c => c.visible).map((column, _index) => (
-                        <th key={column.id}
-                          style={{
-                            padding: '8px',
-                            borderBottom: '1px solid #e0e0e0',
-                            textAlign: column.align as any || 'left',
-                            width: column.width,
-                            cursor: enableColumnDrag ? 'move' : 'default',
-                            position: 'relative',
-                            userSelect: 'none'
-                          }}
-                          draggable={enableColumnDrag}
-                          onDragStart={(e) => handleColumnDragStart(e, column.id)}
-                          onDragOver={handleColumnDragOver}
-                          onDrop={(e) => handleColumnDrop(e, column.id)}
-                        >
-                          {column.label}
-                          {/* Resize handle */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              right: 0,
-                              top: 0,
-                              bottom: 0,
-                              width: '5px',
-                              cursor: 'col-resize',
-                              zIndex: 1
-                            }}
-                            onMouseDown={(e) => handleResizeStart(e, column.id)}
-                          />
-                        </th>
-                      ))}
-                      <th style={{ padding: '8px', borderBottom: '1px solid #e0e0e0', width: '50px' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Render Rows */}
-                    {localData.invoiceItems.map((item, index) => (
-                      <tr
-                        key={index}
-                        onClick={() => setSelectedItemIndices([index])}
-                        style={{
-                          borderBottom: '1px solid #eee',
-                          background: selectedItemIndices.includes(index) ? '#e3f2fd' : (index % 2 === 0 ? 'white' : '#f8f9fa'),
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <td style={{ padding: '6px', textAlign: 'center', color: '#666' }}>{index + 1}</td>
-                        {tableColumns.filter(c => c.visible).map(column => (
-                          <td key={column.id} style={{ padding: '4px' }}>
-                            {renderCell(item, index, column.id)}
-                          </td>
-                        ))}
-                        <td style={{ padding: '4px', textAlign: 'center' }}>
-                          <button
-                            onClick={() => handleRemoveItem(index)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: '#dc3545',
-                              cursor: 'pointer',
-                              fontSize: '1.2rem',
-                              padding: '0 4px'
-                            }}
-                            title="Sətiri sil"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                    }
-                    {/* New Item Row (Empty) - Logic to add new item */}
-                  </tbody>
-                </table>
-              </div>
+              <InvoiceTable
+                items={localData.invoiceItems}
+                columns={tableColumns}
+                onColumnsChange={setTableColumns}
+                selectedItemIndices={selectedItemIndices}
+                onRowSelect={setSelectedItemIndices}
+                functionSettings={functionSettings}
+                onUpdateItem={handleTableUpdateItem}
+                onProductSelect={(idx, prod) => handleProductSelectInRow(idx, prod.id)}
+                onOpenProductSelect={openProductsSelect}
+                onOpenProductDetails={handleOpenProductDetails}
+
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+
+                getProductInfo={getProductInfo}
+                getFilteredProductsForRow={getFilteredProductsForRow}
+                isPurchase={isPurchase}
+              />
               {/* Fixed Total Row */}
               <div style={{ padding: '7px 16px', borderTop: '1px solid #dee2e6', background: '#f8f9fa', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ fontWeight: '600', color: '#6c757d', fontSize: '0.95rem' }}>Miqdar:</span>
                   <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#495057' }}>
                     {localData.invoiceItems.reduce((sum, item) => sum + (item.quantity || 0), 0)}
                   </span>
+
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <span style={{ fontWeight: '600', color: '#6c757d', fontSize: '0.95rem' }}>EDV:</span>
@@ -2830,25 +2222,28 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
             </div>
           </div>
-        )}
-        {showItemSettingsModal && (
-          <TableSettingsModal
-            isOpen={showItemSettingsModal}
-            onClose={() => setShowItemSettingsModal(false)}
-            columns={tableColumns}
-            onColumnsChange={setTableColumns}
-            title="Məhsul Cədvəli Ayarları"
-            defaultColumns={BASE_TABLE_COLUMNS}
-            functionSettings={functionSettings}
-            onFunctionSettingsChange={(settings) => {
-              if (settings.enableColumnDrag !== undefined) {
-                updateEnableColumnDrag(settings.enableColumnDrag)
-              }
-            }}
-            showFunctionsTab={true}
-            customFunctionContent={functionTabContent}
-          />
-        )}
+        )
+        }
+        {
+          showItemSettingsModal && (
+            <TableSettingsModal
+              isOpen={showItemSettingsModal}
+              onClose={() => setShowItemSettingsModal(false)}
+              columns={tableColumns}
+              onColumnsChange={setTableColumns}
+              title="Məhsul Cədvəli Ayarları"
+              defaultColumns={BASE_TABLE_COLUMNS}
+              functionSettings={functionSettings}
+              onFunctionSettingsChange={(settings) => {
+                if (settings.enableColumnDrag !== undefined) {
+                  updateEnableColumnDrag(settings.enableColumnDrag)
+                }
+              }}
+              showFunctionsTab={true}
+              customFunctionContent={functionTabContent}
+            />
+          )
+        }
         {/* Footer */}
         <div style={{ padding: '5px 10px', marginBottom: '1px', borderTop: '1px solid #dee2e6', /* border: '4px solid orange', */ background: '#f8f9fa', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {/* Notes */}
@@ -2996,21 +2391,23 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </div >
     )
   }
 
   return (
     <div
       style={{
-        position: 'fixed',
-        top: `${navbarHeight}px`, // Navbar altından başla
+        position: isEmbedded ? 'relative' : 'fixed',
+        top: isEmbedded ? 0 : `${navbarHeight}px`, // Navbar altından başla
         left: 0,
         right: 0,
-        bottom: `${taskbarHeight}px`, // Taskbar üstündə bitir
-        background: 'rgba(0, 0, 0, 0.3)',
-        zIndex: modalZIndex,
+        bottom: isEmbedded ? 0 : `${taskbarHeight}px`, // Taskbar üstündə bitir
+        background: isEmbedded ? 'transparent' : 'rgba(0, 0, 0, 0.3)',
+        zIndex: isEmbedded ? 'auto' : modalZIndex,
         pointerEvents: 'auto', // Overlay-ə klikləmək üçün
+        height: isEmbedded ? '100%' : 'auto',
+        width: isEmbedded ? '100%' : 'auto',
       }}
       onClick={(e) => {
         // Yalnız overlay-ə klikləndikdə (pəncərənin özünə deyil)
@@ -3023,19 +2420,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     >
       <div
         style={{
-          position: 'absolute',
-          left: `${effectivePosition.x}px`,
-          top: `${effectivePosition.y}px`,
-          width: `${effectiveSize.width}px`,
-          height: `${effectiveSize.height}px`,
+          position: isEmbedded ? 'relative' : 'absolute',
+          left: isEmbedded ? 0 : `${effectivePosition.x}px`,
+          top: isEmbedded ? 0 : `${effectivePosition.y}px`,
+          width: isEmbedded ? '100%' : `${effectiveSize.width}px`,
+          height: isEmbedded ? '100%' : `${effectiveSize.height}px`,
           background: 'white',
-          borderRadius: modal.isMaximized ? '0' : '8px',
+          borderRadius: (modal.isMaximized || isEmbedded) ? '0' : '8px',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          boxShadow: isEmbedded ? 'none' : '0 4px 20px rgba(0,0,0,0.3)',
           overflow: 'hidden',
           pointerEvents: 'auto',
-          border: '4px solid red' // DEBUG BORDER
+          // border: '4px solid red' // DEBUG BORDER
         }}
         data-modal-container
         onClick={(e) => {
@@ -3047,133 +2444,135 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         }}
       >
         {/* Modal başlığı */}
-        <div
-          className="modal-header"
-          onMouseDown={handleMouseDown}
-          style={{
-            padding: '0.75rem 1rem',
-            borderBottom: 'none',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            background: '#007bff',
-            color: 'white',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            userSelect: 'none',
-            flexShrink: 0,
-            border: '4px solid blue' // DEBUG BORDER
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: '500', flex: 1, color: 'white' }}>
-            {modal.invoiceId
-              ? `Qaimə #${modal.invoiceId}`
-              : modal.invoiceType === 'purchase'
-                ? 'Yeni Alış Qaiməsi'
-                : 'Yeni Satış Qaiməsi'}
-          </h2>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
-            <button
-              onClick={() => {
-                minimizeWindow(windowId)
-                onUpdate(modal.id, { isMaximized: false })
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                fontSize: '14px',
-                cursor: 'pointer',
-                padding: '0',
-                color: 'white',
-                width: '46px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'background-color 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#e5e5e5'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent'
-              }}
-              title="Aşağı göndər"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect y="5" width="12" height="1" fill="currentColor" />
-              </svg>
-            </button>
-            <button
-              onClick={handleMaximize}
-              onMouseDown={(e) => e.stopPropagation()}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                fontSize: '12px',
-                cursor: 'pointer',
-                padding: '0',
-                color: '#666',
-                width: '46px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'background-color 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#e5e5e5'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent'
-              }}
-              title={modal.isMaximized ? "Bərpa et" : "Böyüt"}
-            >
-              {modal.isMaximized ? (
+        {!isEmbedded && (
+          <div
+            className="modal-header"
+            onMouseDown={handleMouseDown}
+            style={{
+              padding: '0.75rem 1rem',
+              borderBottom: 'none',
+              cursor: isDragging ? 'grabbing' : 'grab',
+              background: '#007bff',
+              color: 'white',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              userSelect: 'none',
+              flexShrink: 0,
+              border: '4px solid blue' // DEBUG BORDER
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: '500', flex: 1, color: 'white' }}>
+              {modal.invoiceId
+                ? `Qaimə #${modal.invoiceId}`
+                : modal.invoiceType === 'purchase'
+                  ? 'Yeni Alış Qaiməsi'
+                  : 'Yeni Satış Qaiməsi'}
+            </h2>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
+              <button
+                onClick={() => {
+                  minimizeWindow(windowId)
+                  onUpdate(modal.id, { isMaximized: false })
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  color: 'white',
+                  width: '46px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e5e5e5'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                }}
+                title="Aşağı göndər"
+              >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="2" y="2" width="8" height="8" stroke="currentColor" strokeWidth="1" fill="none" />
-                  <rect x="4" y="4" width="6" height="6" stroke="currentColor" strokeWidth="1" fill="none" />
+                  <rect y="5" width="12" height="1" fill="currentColor" />
                 </svg>
-              ) : (
+              </button>
+              <button
+                onClick={handleMaximize}
+                onMouseDown={(e) => e.stopPropagation()}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  color: '#666',
+                  width: '46px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e5e5e5'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                }}
+                title={modal.isMaximized ? "Bərpa et" : "Böyüt"}
+              >
+                {modal.isMaximized ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="2" width="8" height="8" stroke="currentColor" strokeWidth="1" fill="none" />
+                    <rect x="4" y="4" width="6" height="6" stroke="currentColor" strokeWidth="1" fill="none" />
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="1" width="10" height="10" stroke="currentColor" strokeWidth="1" fill="none" />
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={() => onClose(modal.id)}
+                onMouseDown={(e) => e.stopPropagation()}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  color: '#666',
+                  width: '46px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.15s ease, color 0.15s ease',
+                  lineHeight: '1',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e81123'
+                  e.currentTarget.style.color = 'white'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                  e.currentTarget.style.color = '#666'
+                }}
+                title="Bağla"
+              >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="1" y="1" width="10" height="10" stroke="currentColor" strokeWidth="1" fill="none" />
+                  <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
-              )}
-            </button>
-            <button
-              onClick={() => onClose(modal.id)}
-              onMouseDown={(e) => e.stopPropagation()}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                fontSize: '16px',
-                cursor: 'pointer',
-                padding: '0',
-                color: '#666',
-                width: '46px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'background-color 0.15s ease, color 0.15s ease',
-                lineHeight: '1',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#e81123'
-                e.currentTarget.style.color = 'white'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent'
-                e.currentTarget.style.color = '#666'
-              }}
-              title="Bağla"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
+              </button>
+            </div>
+          </div >
+        )}
 
         {/* Modal məzmunu */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '1rem', minHeight: 0, display: 'flex', flexDirection: 'column', border: '4px solid green' /* DEBUG BORDER */ }}>
@@ -3362,140 +2761,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           {!isPurchase ? (
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
               {/* Müştəri */}
-              <div style={{ flex: 1, position: 'relative' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                  Müştəri
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigate('/musteriler/alici')
-                      // Müştəri seçildikdə geri qayıtmaq üçün event listener əlavə et
-                      const handleCustomerSelected = (event: CustomEvent) => {
-                        const customer = event.detail as Customer
-                        setLocalData({
-                          ...localData,
-                          selectedCustomerId: customer.id,
-                          selectedCustomer: customer
-                        })
-                        window.removeEventListener('customerSelected', handleCustomerSelected as EventListener)
-                      }
-                      window.addEventListener('customerSelected', handleCustomerSelected as EventListener)
-                    }}
-                    style={{
-                      padding: '0.35rem 0.5rem',
-                      background: '#f8f9fa',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}
-                    title="Müştərilər səhifəsini aç (F4)"
-                  >
-                    рџ“Ѓ
-                  </button>
-                  <div style={{ flex: 1, position: 'relative' }}>
-                    <input
-                      type="text"
-                      placeholder="Müştəri adını yazın..."
-                      value={localData.selectedCustomer ? localData.selectedCustomer.name : customerSearchTerm}
-                      data-customer-input="true"
-                      onChange={(e) => {
-                        const value = e.target.value
-                        setCustomerSearchTerm(value)
-                        setShowCustomerDropdown(value.length > 0)
-                        if (!value) {
-                          setLocalData({ ...localData, selectedCustomerId: null, selectedCustomer: null })
-                          setShowCustomerDropdown(false)
-                        }
-                      }}
-                      onFocus={() => {
-                        if (customerSearchTerm && !localData.selectedCustomer) {
-                          setShowCustomerDropdown(true)
-                        }
-                      }}
-                      onBlur={() => {
-                        setTimeout(() => setShowCustomerDropdown(false), 200)
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '0.35rem 0.5rem',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem'
-                      }}
-                    />
-                    {showCustomerDropdown && filteredCustomers.length > 0 && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: 'white',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        marginTop: '0.25rem',
-                        maxHeight: '200px',
-                        overflow: 'auto',
-                        zIndex: 1000,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                      }}>
-                        {filteredCustomers.map(customer => (
-                          <div
-                            key={customer.id}
-                            onClick={() => {
-                              setLocalData({ ...localData, selectedCustomerId: customer.id, selectedCustomer: customer })
-                              setCustomerSearchTerm('')
-                              setShowCustomerDropdown(false)
-                            }}
-                            style={{
-                              padding: '0.75rem',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid #f0f0f0'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = '#f8f9fa'
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'white'
-                            }}
-                          >
-                            <div style={{ fontWeight: 'bold' }}>{customer.name}</div>
-                            {customer.phone && <div style={{ fontSize: '0.875rem', color: '#666' }}>Tel: {customer.phone}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {localData.selectedCustomer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLocalData({ ...localData, selectedCustomerId: null, selectedCustomer: null })
-                        setCustomerSearchTerm('')
-                        setShowCustomerDropdown(false)
-                      }}
-                      style={{
-                        padding: '0.35rem 0.75rem',
-                        background: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.875rem',
-                        flexShrink: 0
-                      }}
-                      title="Təmizlə"
-                    >
-                      ✖
-                    </button>
-                  )}
-                </div>
+              <div style={{ flex: 1 }}>
+                <PartnerSelect
+                  partners={customers}
+                  value={localData.selectedCustomer || null}
+                  onChange={(customer) => {
+                    setLocalData(prev => ({
+                      ...prev,
+                      selectedCustomerId: customer?.id || null,
+                      selectedCustomer: customer as Customer | null
+                    }))
+                  }}
+                  placeholder="Müştəri adını yazın..."
+                  filterType="BUYER"
+                  label="Müştəri"
+                  style={{ marginBottom: 0 }}
+                />
               </div>
 
               {/* Son ödəniş tarixi */}
@@ -3599,111 +2880,23 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               )}
             </div>
           ) : (
-            <div style={{ marginBottom: '0.75rem', position: 'relative' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                Təchizatçı
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    type="text"
-                    placeholder="Təchizatçı adını yazın..."
-                    value={localData.selectedSupplier ? localData.selectedSupplier.name : supplierSearchTerm}
-                    data-supplier-input="true"
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setSupplierSearchTerm(value)
-                      setShowSupplierDropdown(value.length > 0)
-                      if (!value) {
-                        setLocalData({ ...localData, selectedSupplierId: null, selectedSupplier: null })
-                        setShowSupplierDropdown(false)
-                      }
-                    }}
-                    onFocus={() => {
-                      if (supplierSearchTerm && !localData.selectedSupplier) {
-                        setShowSupplierDropdown(true)
-                      }
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => setShowSupplierDropdown(false), 200)
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '1rem'
-                    }}
-                  />
-                  {showSupplierDropdown && filteredSuppliers.length > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: 'white',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      marginTop: '0.25rem',
-                      maxHeight: '200px',
-                      overflow: 'auto',
-                      zIndex: 1000,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                      {filteredSuppliers.map(supplier => (
-                        <div
-                          key={supplier.id}
-                          onClick={() => {
-                            setLocalData({ ...localData, selectedSupplierId: supplier.id, selectedSupplier: supplier })
-                            setSupplierSearchTerm('')
-                            setShowSupplierDropdown(false)
-                          }}
-                          style={{
-                            padding: '0.75rem',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #f0f0f0'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#f8f9fa'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'white'
-                          }}
-                        >
-                          <div style={{ fontWeight: 'bold' }}>{supplier.name}</div>
-                          {supplier.phone && <div style={{ fontSize: '0.875rem', color: '#666' }}>Tel: {supplier.phone}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {localData.selectedSupplier && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLocalData({ ...localData, selectedSupplierId: null, selectedSupplier: null })
-                      setSupplierSearchTerm('')
-                      setShowSupplierDropdown(false)
-                    }}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '1rem'
-                    }}
-                    title="Təmizlə"
-                  >
-                    ✖
-                  </button>
-                )}
-              </div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <PartnerSelect
+                partners={suppliers}
+                value={localData.selectedSupplier || null}
+                onChange={(supplier) => {
+                  setLocalData(prev => ({
+                    ...prev,
+                    selectedSupplierId: supplier?.id || null,
+                    selectedSupplier: supplier as Supplier | null
+                  }))
+                }}
+                placeholder="Təchizatçı adını yazın..."
+                filterType="SUPPLIER"
+                label="Təchizatçı"
+              />
             </div>
           )}
-
-
           {/* Məhsul siyahısı */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden', minHeight: 0 }}>
             {/* Toolbar */}
@@ -4018,278 +3211,30 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </button>
               </div>
             </div>
-            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f8f9fa', position: 'sticky', top: 0, zIndex: 10 }}>
-                    {visibleOrderedColumns.map((column) => {
-                      if (column.id === 'checkbox') {
-                        return (
-                          <th
-                            key="checkbox"
-                            style={{
-                              padding: '0.75rem',
-                              border: '1px solid #ddd',
-                              textAlign: 'center',
-                              fontSize: '0.875rem',
-                              width: `${columnConfig.checkbox.width}px`
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedItemIndices.length === localData.invoiceItems.length && localData.invoiceItems.length > 0}
-                              onChange={() => {
-                                if (selectedItemIndices.length === localData.invoiceItems.length) {
-                                  setSelectedItemIndices([])
-                                } else {
-                                  setSelectedItemIndices(localData.invoiceItems.map((_, i) => i))
-                                }
-                              }}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </th>
-                        )
-                      }
+            <InvoiceTable
+              items={localData.invoiceItems}
+              columns={tableColumns}
+              onColumnsChange={setTableColumns}
+              selectedItemIndices={selectedItemIndices}
+              onRowSelect={setSelectedItemIndices}
+              functionSettings={functionSettings}
+              onUpdateItem={handleTableUpdateItem}
+              onProductSelect={(idx, prod) => {
+                if (typeof handleProductSelectInRow === 'function') {
+                  handleProductSelectInRow(idx, prod.id)
+                }
+              }}
+              onOpenProductSelect={openProductsSelect}
+              onOpenProductDetails={handleOpenProductDetails}
 
-                      const dragProps = functionSettings.enableColumnDrag ? {
-                        draggable: true,
-                        onDragStart: (e: React.DragEvent) => handleColumnDragStart(e, column.id),
-                        onDragOver: handleColumnDragOver,
-                        onDrop: (e: React.DragEvent) => handleColumnDrop(e, column.id),
-                        onDragEnd: handleColumnDragEnd
-                      } : {}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={handleSort}
 
-                      const isRightAligned = ['quantity', 'unitPrice', 'total'].includes(column.id)
-
-                      const commonStyle: React.CSSProperties = {
-                        padding: '0.5rem',
-                        borderRight: '1px solid #dee2e6',
-                        borderBottom: '2px solid #dee2e6',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        cursor: functionSettings.enableColumnDrag ? 'move' : 'default',
-                        userSelect: 'none',
-                        textAlign: isRightAligned ? 'right' : 'center', // Center align mostly
-                        width: `${columnConfig[column.id]?.width || 120}px`,
-                        position: 'relative',
-                        backgroundColor: '#fff',
-                        color: '#495057',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        verticalAlign: 'middle',
-                        height: '40px'
-                      }
-
-                      const renderSortIcon = (columnId: string) => {
-                        if (sortColumn !== columnId) {
-                          return (
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.5 }}>
-                              <path d="M3 4.5L6 1.5L9 4.5M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )
-                        }
-
-                        return sortDirection === 'asc' ? (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3 4.5L6 1.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        ) : (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )
-                      }
-
-                      const headerContent = () => {
-                        switch (column.id) {
-                          case 'number':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                №
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.5 }}>
-                                  <path d="M3 4.5L6 1.5L9 4.5M3 7.5L6 10.5L9 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              </div>
-                            )
-                          case 'product':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                Məhsul
-                                {renderSortIcon('product')}
-                              </div>
-                            )
-                          case 'code':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                Kod
-                                {renderSortIcon('code')}
-                              </div>
-                            )
-                          case 'barcode':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                Barkod
-                                {renderSortIcon('barcode')}
-                              </div>
-                            )
-                          case 'unit':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                Vahid
-                                {renderSortIcon('unit')}
-                              </div>
-                            )
-                          case 'quantity':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.25rem' }}>
-                                Miqdar
-                                {renderSortIcon('quantity')}
-                              </div>
-                            )
-                          case 'unitPrice':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.25rem' }}>
-                                Vahid qiymət
-                                {renderSortIcon('unitPrice')}
-                              </div>
-                            )
-                          case 'total':
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.25rem' }}>
-                                Cəm
-                                {renderSortIcon('total')}
-                              </div>
-                            )
-                          default:
-                            return null
-                        }
-                      }
-
-                      const handleHeaderClick = () => {
-                        switch (column.id) {
-                          case 'product':
-                          case 'code':
-                          case 'barcode':
-                          case 'unit':
-                          case 'quantity':
-                          case 'unitPrice':
-                          case 'total':
-                            handleSort(column.id)
-                            break
-                          default:
-                            break
-                        }
-                      }
-
-                      return (
-                        <th
-                          key={column.id}
-                          {...dragProps}
-                          style={commonStyle}
-                          // Remove onClick here, move to content div for sort
-                          title={column.label}
-                        >
-                          <div
-                            onClick={handleHeaderClick}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: isRightAligned ? 'flex-end' : 'center',
-                              height: '100%',
-                              width: '100%',
-                              gap: '4px'
-                            }}>
-                            {headerContent()}
-                          </div>
-                          {/* Resize Handle */}
-                          {functionSettings.enableColumnResize !== false && (
-                            <div
-                              onMouseDown={(e) => handleResizeStart(e, column.id)}
-                              style={{
-                                position: 'absolute',
-                                right: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: '5px',
-                                cursor: 'col-resize',
-                                zIndex: 1
-                              }}
-                            />
-                          )}
-                        </th>
-                      )
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {localData.invoiceItems.map((item, idx) => {
-
-                    const isSelected = selectedItemIndices.includes(idx)
-                    return (
-                      <tr
-                        key={idx}
-                        onClick={(e) => {
-                          if ((e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
-                            if (e.ctrlKey || e.metaKey) {
-                              if (selectedItemIndices.includes(idx)) {
-                                setSelectedItemIndices(selectedItemIndices.filter(i => i !== idx))
-                              } else {
-                                setSelectedItemIndices([...selectedItemIndices, idx])
-                              }
-                            } else {
-                              setSelectedItemIndices([idx])
-                            }
-                          }
-                        }}
-                        style={{
-                          background: isSelected ? '#e7f3ff' : (idx % 2 === 0 ? 'white' : '#f9f9f9'),
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {visibleOrderedColumns.map((column) => (
-                          <td key={`${column.id}-${idx}`} style={{ padding: '0.75rem', border: '1px solid #ddd' }}>
-                            {renderCell(item, idx, column.id)}
-                          </td>
-                        ))}
-                      </tr>
-                    )
-                  })}
-                  {localData.invoiceItems.length === 0 && (
-                    <tr>
-                      <td colSpan={visibleColumnCount} style={{ padding: '1rem', textAlign: 'center', color: '#666' }}>
-                        Məhsul yoxdur. Əlavə edin.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#e7f3ff', fontWeight: 'bold' }}>
-                    {visibleOrderedColumns.map((column) => {
-                      if (column.id === 'unitPrice') {
-                        return (
-                          <td key="unitPrice-footer" style={{ padding: '0.5rem', border: '1px solid #ddd', textAlign: 'right' }}>
-                            Ümumi:
-                          </td>
-                        )
-                      }
-
-                      if (column.id === 'total') {
-                        return (
-                          <td key="total-footer" style={{ padding: '0.5rem', border: '1px solid #ddd', textAlign: 'right' }}>
-                            {invoiceTotal.toFixed(2)} ₼
-                          </td>
-                        )
-                      }
-
-                      return (
-                        <td key={`${column.id}-footer`} style={{ padding: '0.5rem', border: '1px solid #ddd' }}></td>
-                      )
-                    })}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+              getProductInfo={getProductInfo}
+              getFilteredProductsForRow={getFilteredProductsForRow}
+              isPurchase={isPurchase}
+            />
           </div>
 
         </div>
@@ -4465,47 +3410,54 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         </div>
 
         {/* Resize handle */}
-        {!modal.isMaximized && (
-          <div
-            onMouseDown={handleResizeMouseDown}
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              right: 0,
-              width: '20px',
-              height: '20px',
-              cursor: 'nwse-resize',
-              background: 'linear-gradient(135deg, transparent 0%, transparent 40%, #999 40%, #999 60%, transparent 60%)',
-            }}
-          />
-        )}
-        {showItemSettingsModal && (
-          <TableSettingsModal
-            isOpen={showItemSettingsModal}
-            onClose={() => setShowItemSettingsModal(false)}
-            columns={tableColumns}
-            onColumnsChange={setTableColumns}
-            title="Məhsul Cədvəli Ayarları"
-            defaultColumns={BASE_TABLE_COLUMNS}
-            functionSettings={functionSettings}
-            onFunctionSettingsChange={(settings) => {
-              if (settings.enableColumnDrag !== undefined) {
-                updateEnableColumnDrag(settings.enableColumnDrag)
-              }
-            }}
-            showFunctionsTab={true}
-            customFunctionContent={functionTabContent}
-          />
-        )}
+        {
+          !isEmbedded && !modal.isMaximized && (
+            <div
+              onMouseDown={handleResizeMouseDown}
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: '20px',
+                height: '20px',
+                cursor: 'nwse-resize',
+                background: 'linear-gradient(135deg, transparent 0%, transparent 40%, #999 40%, #999 60%, transparent 60%)',
+              }}
+            />
+          )
+        }
+        {
+          showItemSettingsModal && (
+            <TableSettingsModal
+              isOpen={showItemSettingsModal}
+              onClose={() => setShowItemSettingsModal(false)}
+              columns={tableColumns}
+              onColumnsChange={setTableColumns}
+              title="Məhsul Cədvəli Ayarları"
+              defaultColumns={BASE_TABLE_COLUMNS}
+              functionSettings={functionSettings}
+              onFunctionSettingsChange={(settings) => {
+                if (settings.enableColumnDrag !== undefined) {
+                  updateEnableColumnDrag(settings.enableColumnDrag)
+                }
+              }}
+              showFunctionsTab={true}
+              customFunctionContent={functionTabContent}
+            />
+          )
+        }
 
         {/* Təsdiq Dialoqu - Qaimə daxilində render olunur */}
-        {activeConfirmDialog && (
-          <ConfirmDialog {...activeConfirmDialog} />
-        )}
-      </div>
-    </div>
+        {
+          activeConfirmDialog && (
+            <ConfirmDialog {...activeConfirmDialog} />
+          )
+        }
+
+        {/* Product Edit Modal Removed - rendered via Universal Window */}
+      </div >
+    </div >
   )
 }
 
 export default InvoiceModal
-

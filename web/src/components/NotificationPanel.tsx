@@ -6,6 +6,8 @@ interface NotificationPanelProps {
     onClose: () => void
     onMarkAsRead: (id: number) => void
     onClearAll: () => void
+    isPinned: boolean
+    onTogglePin: () => void
 }
 
 export default function NotificationPanel({
@@ -13,7 +15,9 @@ export default function NotificationPanel({
     isOpen,
     onClose,
     onMarkAsRead,
-    onClearAll
+    onClearAll,
+    isPinned,
+    onTogglePin
 }: NotificationPanelProps) {
     if (!isOpen) return null
 
@@ -42,7 +46,7 @@ export default function NotificationPanel({
                 <h3 style={{ margin: 0, fontSize: '1.125rem' }}>
                     Bildirişlər {unreadCount > 0 && `(${unreadCount})`}
                 </h3>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     {notifications.length > 0 && (
                         <button
                             onClick={onClearAll}
@@ -58,6 +62,26 @@ export default function NotificationPanel({
                             Hamısını təmizlə
                         </button>
                     )}
+
+                    {/* Pin Button */}
+                    <button
+                        onClick={onTogglePin}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            fontSize: '1.2rem',
+                            cursor: 'pointer',
+                            padding: '0 4px',
+                            lineHeight: 1,
+                            transform: isPinned ? 'rotate(45deg)' : 'none',
+                            transition: 'transform 0.2s',
+                            opacity: isPinned ? 1 : 0.5
+                        }}
+                        title={isPinned ? "Sancağı çıxar (Avtomatik bağlansın)" : "Sancaqlayın (Pəncərə açıq qalsın)"}
+                    >
+                        📌
+                    </button>
+
                     <button
                         onClick={onClose}
                         style={{

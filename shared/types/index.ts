@@ -86,6 +86,7 @@ export interface SaleInvoice {
   invoice_date: Date | null
   payment_date: Date | null
   notes: string | null
+  is_active: boolean | null
   created_at: Date | null
   customers?: Customer | null
   sale_invoice_items?: SaleInvoiceItem[]
@@ -138,6 +139,7 @@ export interface CreateOrderRequest {
   is_active?: boolean
 }
 
+
 export interface Supplier {
   id: number
   name: string
@@ -145,6 +147,7 @@ export interface Supplier {
   email: string | null
   address: string | null
   balance: number | null
+  permanent_discount: number | null
   created_at: Date | null
   updated_at: Date | null
 }
@@ -195,7 +198,7 @@ export interface DiscountDocument {
   document_date: Date | string
   start_date?: Date | string
   end_date?: Date | string
-  type: 'SUPPLIER' | 'PRODUCT'
+  type: 'SUPPLIER' | 'PRODUCT' | 'CUSTOMER'
   entity_id: number | null
   is_active: boolean
   notes: string | null

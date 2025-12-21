@@ -1,17 +1,24 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import Layout from '../../components/Layout'
 
 import UniversalContainer from '../../components/UniversalContainer'
-import UniversalNavbar from '../../components/UniversalNavbar'
+import UniversalToolBar from '../../components/UniversalToolBar'
 import UniversalTable, { ColumnConfig } from '../../components/UniversalTable'
-// UniversalFooter imported below
 import UniversalFooter from '../../components/UniversalFooter'
-import InvoiceModal, { type InvoiceItem, type ModalData } from '../../components/InvoiceModal'
-import FilterModal, { FilterValue } from '../../components/FilterModal'
-import ConfirmDialog from '../../components/ConfirmDialog'
-import { ordersAPI, productsAPI, customersAPI } from '../../services/api'
-import type { SaleInvoice, Product, Customer } from '@shared/types'
-import { formatDateDifference, calculateDaysDifference } from '../../utils/dateUtils'
-import { useWindowStore, calculateCenteredPosition, getLayoutConstraints } from '../../store/windowStore'
+import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
+import { ordersAPI, productsAPI, customersAPI, warehousesAPI } from '../../services/api'
+import type { SaleInvoice, Product, Customer, WarehouseLocation } from '@shared/types'
+import { useWindowStore } from '../../store/windowStore'
+import { logActivity } from '../../store/logStore'
+
+import { useNotificationStore } from '../../store/notificationStore'
+
+// Development rejimində console.log üçün helper
+const devLog = (...args: any[]) => {
+  if (import.meta.env.DEV) {
+    console.log(...args)
+  }
+}
 
 // CSS animasiya üçün style tag
 const notificationStyles = `
@@ -26,6 +33,8 @@ const notificationStyles = `
     }
   }
 `
+
+
 
 const defaultColumns: ColumnConfig[] = [
   { id: 'checkbox', label: '', visible: true, width: 50, order: 0 },
@@ -63,101 +72,80 @@ const defaultColumns: ColumnConfig[] = [
       return <span style={{ fontSize: '1.2rem' }}>📄</span>
     }
   },
-  { id: 'id', label: 'ID', visible: true, width: 80, order: 2 },
-  { id: 'invoice_number', label: 'Faktura №', visible: true, width: 150, order: 3 },
-  { id: 'customer_name', label: 'Müştəri', visible: true, width: 200, order: 4 },
-  { id: 'created_at', label: 'Yaradılma tarixi', visible: true, width: 150, order: 5 },
+  { id: 'invoice_number', label: '№', visible: true, width: 140, order: 2 },
+  { id: 'customers', label: 'Müştəri', visible: true, width: 220, order: 3, render: (value: any) => value?.name || '-' },
+  { id: 'invoice_date', label: 'Tarix', visible: true, width: 180, order: 4 },
+  { id: 'payment_date', label: 'Son ödəniş tarixi', visible: true, width: 180, order: 5 },
   { id: 'total_amount', label: 'Ümumi məbləğ', visible: true, width: 150, order: 6, align: 'right' },
-  { id: 'payment_date', label: 'Son ödəniş tarixi', visible: true, width: 150, order: 7 },
-  { id: 'days_remaining', label: 'Qalıb gün', visible: true, width: 120, order: 8, align: 'right' },
-  { id: 'notes', label: 'Qeydlər', visible: true, width: 200, order: 9 },
+  { id: 'notes', label: 'Qeydlər', visible: true, width: 250, order: 7 },
+  { id: 'created_at', label: 'Yaradılma tarixi', visible: true, width: 180, order: 8 },
 ]
 
-// InvoiceItem və ModalData artıq InvoiceModal.tsx-dən import edilir
 
-export default function SatisQaimeleri() {
+// Content component (The actual window content)
+export function SatisQaimeleriContent() {
   const [invoices, setInvoices] = useState<SaleInvoice[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredInvoices, setFilteredInvoices] = useState<SaleInvoice[]>([])
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
-  const [showFilterModal, setShowFilterModal] = useState(false)
-  const [activeFilters, setActiveFilters] = useState<FilterValue[]>([])
-  const [currentSearchColumn, setCurrentSearchColumn] = useState<string | null>(null) // Ctrl+F basıldıqda hansı sütun üzərindədir
-  const [lastClickedColumn, setLastClickedColumn] = useState<string | null>(null) // Son kliklənən sütun header-ı
+  // Global notification store
+  const { addNotification } = useNotificationStore()
 
-  // Debug: currentSearchColumn dəyişdikdə log yaz
-  useEffect(() => {
-    console.log('[Satis.tsx] currentSearchColumn dəyişdi:', currentSearchColumn)
-  }, [currentSearchColumn])
+  // Bildiriş göstər helper (backward compatibility)
+  const showNotification = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    addNotification(
+      type,
+      type === 'error' ? 'Xəta' : (type === 'success' ? 'Uğurlu' : 'Məlumat'),
+      message
+    )
+  }, [addNotification])
 
-  // Debug: lastClickedColumn dəyişdikdə log yaz
-  useEffect(() => {
-    console.log('[Satis.tsx] lastClickedColumn dəyişdi:', lastClickedColumn)
-  }, [lastClickedColumn])
-
-  // Modal state - çoxlu modal dəstəyi
+  // Çoxlu modal state - Windows benzeri sistem
   const [openModals, setOpenModals] = useState<Map<string, ModalData>>(new Map())
   const openModalsRef = useRef<Map<string, ModalData>>(new Map())
   const initialDataMap = useRef<Map<string, any>>(new Map()) // İlkin datanı saxlamaq üçün
-
-  // Ref-i update et
-  useEffect(() => {
-    openModalsRef.current = openModals
-  }, [openModals])
-
-  // Aktiv modal ID (ən üstdə olan)
   const [activeModalId, setActiveModalId] = useState<string | null>(null)
-
-  // Base z-index (hər yeni modal üçün artırılır)
   const [baseZIndex, setBaseZIndex] = useState(1000)
 
   // Təsdiq dialoqu üçün state
   const [confirmDialog, setConfirmDialog] = useState<{ modalId: string; currentModal: ModalData } | null>(null)
 
-  // Global window store
-  const { windows, addWindow, removeWindow, updateWindow, minimizeWindow } = useWindowStore()
+  // openModals state-i dəyişdikdə ref-i yenilə
+  useEffect(() => {
+    openModalsRef.current = openModals
+  }, [openModals])
 
-  // Köhnə modal state (backward compatibility)
-  const [showModal, setShowModal] = useState(false)
-  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
-  const [editingInvoiceIsActive, setEditingInvoiceIsActive] = useState<boolean>(false) // Redaktə edilən qaimənin təsdiq statusu
+  // Global window store actions (selectors to prevent re-renders)
+  const addWindow = useWindowStore(state => state.addWindow)
+  const removeWindow = useWindowStore(state => state.removeWindow)
+  const updateWindow = useWindowStore(state => state.updateWindow)
+
+  // Data state
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([])
-  const [notes, setNotes] = useState('')
-  const [paymentDate, setPaymentDate] = useState('')
-  const [invoiceNumber, setInvoiceNumber] = useState('')
-  const [invoiceDate, setInvoiceDate] = useState('') // Qaimə tarixi (saat, dəqiqə, saniyə ilə)
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
-  // Köhnə modal üçün state-lər (yalnız set funksiyaları istifadə olunur)
-  const [_selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [_itemQuantity, setItemQuantity] = useState<number>(1)
-  const [_itemPrice, setItemPrice] = useState<number>(0)
-  const [_barcodeInput, setBarcodeInput] = useState('')
-  const [_showBarcodeInput, setShowBarcodeInput] = useState(false)
+  const [warehouses, setWarehouses] = useState<WarehouseLocation[]>([])
 
-  // Bildiriş state
-  interface Notification {
-    id: string
-    message: string
-    type: 'success' | 'error' | 'info' | 'warning'
-  }
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  // Köhnə modal state (artıq istifadə olunmur - silinə bilər)
+  // const [showModal, setShowModal] = useState(false)
+  // const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
+  const [showSupplierModal, setShowSupplierModal] = useState(false)
+  const [showProductModal, setShowProductModal] = useState(false)
+  const [showItemSettingsModal, setShowItemSettingsModal] = useState(false)
 
-  // Bildiriş göstər funksiyası
-  const showNotification = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-    const id = `notification-${Date.now()}-${Math.random()}`
-    setNotifications(prev => [...prev, { id, message, type }])
-
-    // 4 saniyədən sonra avtomatik sil
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id))
-    }, 4000)
+  // Modal yönetim fonksiyonları - useEffect-dən əvvəl təyin etmək lazımdır
+  const handleModalUpdate = useCallback((modalId: string, updates: Partial<ModalData>) => {
+    setOpenModals(prev => {
+      const newMap = new Map(prev)
+      const currentModal = newMap.get(modalId)
+      if (currentModal) {
+        newMap.set(modalId, { ...currentModal, ...updates })
+      }
+      return newMap
+    })
   }, [])
+
+
 
   const handleDiscard = useCallback((modalId: string) => {
     // Dəyişikliyi ləğv etmək (pəncərəni bağlamaq) üçün dirty check-i bypass etmək lazımdır
@@ -167,7 +155,7 @@ export default function SatisQaimeleri() {
     }
 
     // Təsdiq pəncərəsini bağla
-    removeWindow('confirm-dialog-' + modalId)
+    useWindowStore.getState().closeWindow('confirm-dialog-' + modalId)
 
     // Modalı sil (local state və store)
     setOpenModals(prev => {
@@ -189,23 +177,40 @@ export default function SatisQaimeleri() {
       return newMap
     })
 
-    const windowId = `invoice-modal-${modalId}`
-    removeWindow(windowId)
-  }, [activeModalId, removeWindow])
+    const windowId = `purchase-invoice-modal-${modalId}`
+    useWindowStore.getState().closeWindow(windowId)
+  }, [activeModalId])
 
   const handleModalBeforeClose = useCallback((modalId: string): boolean => {
     const currentModal = openModalsRef.current.get(modalId)
     const initialData = initialDataMap.current.get(modalId)
 
-    if (!currentModal || !initialData) return true
+    console.log(`[DEBUG] Check before close for ${modalId}`)
+    console.log('[DEBUG] Current Data:', currentModal?.data)
+    console.log('[DEBUG] Initial Data:', initialData)
+
+    if (!currentModal || !initialData) {
+      console.log('[DEBUG] Missing modal or initial data, closing allowed')
+      return true
+    }
 
     const isDirty = JSON.stringify(currentModal.data) !== JSON.stringify(initialData)
+    console.log(`[DEBUG] Is Dirty: ${isDirty}`)
 
     if (isDirty) {
+      logActivity(
+        'invoice',
+        'Qaimə bağlandı (yadda saxlanmadan)',
+        `Qaimə ${currentModal.data?.invoiceNumber ? currentModal.data.invoiceNumber : (currentModal.invoiceId ? '#' + currentModal.invoiceId : '(yeni)')} saxlanmadan bağlandı - təsdiq dialoqu göstərildi`,
+        'warning',
+        { modalId, invoiceId: currentModal.invoiceId, invoiceNumber: currentModal.data?.invoiceNumber }
+      )
+
       // Təsdiq dialogunu göstər (React state ilə, UniversalWindow-suz)
       setConfirmDialog({ modalId, currentModal })
-      return false
+      return false // Stop closure
     }
+
     return true
   }, [])
 
@@ -235,43 +240,171 @@ export default function SatisQaimeleri() {
       return newMap
     })
 
-    const windowId = `invoice-modal-${modalId}`
+    const windowId = `purchase-invoice-modal-${modalId}`
     removeWindow(windowId)
   }, [activeModalId, removeWindow, handleModalBeforeClose])
 
-  // Müştəri və məhsul modal state
-  const [showCustomerModal, setShowCustomerModal] = useState(false)
-  const [showProductModal, setShowProductModal] = useState(false)
-  const [showItemSettingsModal, setShowItemSettingsModal] = useState(false)
+  const handleModalActivate = useCallback((modalId: string) => {
+    const newZIndex = baseZIndex + 1
+    setBaseZIndex(newZIndex)
+    setActiveModalId(modalId)
+    setOpenModals(prev => {
+      const newMap = new Map(prev)
+      const currentModal = newMap.get(modalId)
+      if (currentModal) {
+        newMap.set(modalId, { ...currentModal }) // zIndex artıq store tərəfindən idarə olunur
+      }
+      return newMap
+    })
+    const windowId = `purchase-invoice-modal-${modalId}`
+    useWindowStore.getState().activateWindow(windowId) // updateWindow əvəzinə birbaşa activateWindow
+  }, [baseZIndex])
 
-  // Modal state-ləri (useEffect-dən əvvəl təyin olunmalıdır)
-  const [isMinimized, setIsMinimized] = useState(false)
-  const [minimizedModals, setMinimizedModals] = useState<Array<{
-    id: string
-    title: string
-    type: 'qaime'
-    data?: any
-  }>>([])
+  const handleModalPrint = useCallback(async (modalId: string, _modalData: ModalData['data']) => {
+    const modal = openModals.get(modalId)
+    if (!modal || !modal.invoiceId) {
+      showNotification('Yalnız mövcud qaimələr çap edilə bilər', 'warning')
+      return
+    }
 
-  // Modal draggable və resizable üçün state (useEffect-dən ƏVVƏL təyin olunmalıdır)
-  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
-  const [modalSize, setModalSize] = useState({ width: 900, height: 600 })
-  const [isMaximized, setIsMaximized] = useState(false)
+    try {
+      const fullInvoice = await ordersAPI.getById(modal.invoiceId.toString())
+      const printWindow = window.open('', '_blank')
+      if (printWindow) {
+        const invoiceDate = fullInvoice.invoice_date ? new Date(fullInvoice.invoice_date).toLocaleDateString('az-AZ') : '-'
+        const items = fullInvoice.sale_invoice_items || []
+        const totalAmount = fullInvoice.total_amount ? Number(fullInvoice.total_amount) : 0
 
-  // Pəncərələri izlə və taskbar-da göstər
+        const htmlContent = `
+          <html>
+            <head>
+              <title>Alış Qaiməsi</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                .invoice-header { text-align: center; margin-bottom: 20px; }
+                .invoice-header h2 { margin: 0; }
+                .invoice-info { display: flex; justify-content: space-between; margin-bottom: 20px; }
+                .invoice-info div { flex: 1; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                .total-row { font-weight: bold; background-color: #f9f9f9; }
+                .text-right { text-align: right; }
+              </style>
+            </head>
+            <body>
+              <div class="invoice">
+                <div class="invoice-header">
+                  <h2>ALIŞ QAIMƏSİ</h2>
+                </div>
+                <div class="invoice-info">
+                  <div>
+                    <p><strong>Faktura №:</strong> ${fullInvoice.invoice_number || ''}</p>
+                    <p><strong>Tarix:</strong> ${invoiceDate}</p>
+                  </div>
+                  <div>
+                    <p><strong>Müştəri:</strong> ${fullInvoice.customers?.name || '-'}</p>
+                    ${fullInvoice.customers?.phone ? `<p><strong>Telefon:</strong> ${fullInvoice.customers.phone}</p>` : ''}
+                    ${fullInvoice.customers?.address ? `<p><strong>Ünvan:</strong> ${fullInvoice.customers.address}</p>` : ''}
+                  </div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>№</th>
+                      <th>Məhsul</th>
+                      <th class="text-right">Miqdar</th>
+                      <th class="text-right">Vahid qiymət</th>
+                      <th class="text-right">Cəmi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${items.map((item: any, idx: number) => `
+                      <tr>
+                        <td>${idx + 1}</td>
+                        <td>${item.products?.name || 'Naməlum məhsul'}</td>
+                        <td class="text-right">${Number(item.quantity).toFixed(2)}</td>
+                        <td class="text-right">${Number(item.unit_price).toFixed(2)} ₼</td>
+                        <td class="text-right">${Number(item.total_price).toFixed(2)} ₼</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                  <tfoot>
+                    <tr class="total-row">
+                      <td colspan="4" class="text-right"><strong>Ümumi məbləğ:</strong></td>
+                      <td class="text-right"><strong>${totalAmount.toFixed(2)} ₼</strong></td>
+                    </tr>
+                  </tfoot>
+                </table>
+                ${fullInvoice.notes ? `<p style="margin-top: 20px;"><strong>Qeydlər:</strong> ${fullInvoice.notes}</p>` : ''}
+              </div>
+            </body>
+          </html>
+        `
+        printWindow.document.write(htmlContent)
+        printWindow.document.close()
+        printWindow.print()
+      }
+    } catch (err: any) {
+      showNotification(err.response?.data?.message || 'Qaimə çap edilərkən xəta baş verdi', 'error')
+    }
+  }, [openModals])
+
+  // loadInvoices funksiyasını useEffect-dən əvvəl təyin et (handleModalSave-dən əvvəl lazımdır)
+  const loadInvoices = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await ordersAPI.getAll()
+      setInvoices(data)
+    } catch (err: any) {
+      console.error('Qaimələr yüklənərkən xəta:', err)
+      addNotification(
+        'error',
+        'Xəta',
+        err.response?.data?.message || 'Qaimələr yüklənərkən xəta baş verdi'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [addNotification])
+
+  // Pəncərələri izlə və global store-a əlavə et
   useEffect(() => {
     // Qaimə modalları - global store-a əlavə et
-    Array.from(openModals.values()).forEach(modal => {
-      const windowId = `invoice-modal-${modal.id}`
+    // Qaimə modalları - global store-a əlavə et
+    // devLog removed to reduce noise
+
+    // Silinmiş modalları store-dan sil
+    const store = useWindowStore.getState()
+    const currentModalIds = new Set(Array.from(openModals.keys()))
+
+    // Köhnə window-ları təmizlə
+    Array.from(store.windows.values())
+      .filter(w => w.id.startsWith('purchase-invoice-modal-'))
+      .forEach(window => {
+        const modalId = window.id.replace('purchase-invoice-modal-', '')
+        if (!currentModalIds.has(modalId)) {
+          // Window-u sil (handleModalClose artıq bunu edir, amma burada da təmizlik üçün)
+          store.closeWindow(window.id)
+        }
+      })
+
+    // Sonra mövcud modalları yarad və ya yenilə
+    Array.from(openModals.values()).forEach((modal) => {
+      const windowId = `purchase-invoice-modal-${modal.id}`
       const store = useWindowStore.getState()
       const existingWindow = store.windows.get(windowId)
 
+      // devLog removed
+
       if (!existingWindow) {
+
         addWindow({
           id: windowId,
-          title: modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Qaimə',
+          title: modal.data.invoiceNumber || (modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Satış Qaiməsi'),
           type: 'modal',
-          modalType: 'qaime',
+          modalType: 'invoice-edit',
+          pageId: 'purchase-invoice-modal',
           isVisible: true,
           isMinimized: false,
           // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
@@ -279,20 +412,46 @@ export default function SatisQaimeleri() {
           size: modal.size,
           isMaximized: modal.isMaximized,
           onBeforeClose: () => handleModalBeforeClose(modal.id),
-          onActivate: () => {
-            const newZIndex = baseZIndex + 1
-            setBaseZIndex(newZIndex)
-            setActiveModalId(modal.id)
-            setOpenModals(prev => {
-              const newMap = new Map(prev)
-              const currentModal = newMap.get(modal.id)
-              if (currentModal) {
-                newMap.set(modal.id, { ...currentModal }) // zIndex store tərəfindən
-              }
-              return newMap
-            })
-            useWindowStore.getState().activateWindow(windowId)
-          },
+          content: (
+            <InvoiceModal
+              modal={modal}
+              suppliers={customers}
+              products={products}
+              modalIndex={Array.from(openModals.values()).indexOf(modal)}
+              isActive={activeModalId === modal.id}
+              onClose={handleModalClose}
+              onUpdate={handleModalUpdate}
+              onSave={handleModalSave}
+              onSaveAndConfirm={handleModalSaveAndConfirm}
+              onActivate={handleModalActivate}
+              onPrint={handleModalPrint}
+              windowId={windowId}
+              isEmbedded={true}
+              warehouses={warehouses}
+              activeConfirmDialog={confirmDialog?.modalId === modal.id ? {
+                isOpen: true,
+                modalZIndex: 1000,
+                onConfirm: async () => {
+                  if (!confirmDialog) return
+                  try {
+                    await handleModalSave(confirmDialog.modalId, confirmDialog.currentModal.data)
+                    initialDataMap.current.set(confirmDialog.modalId, JSON.parse(JSON.stringify(confirmDialog.currentModal.data)))
+                    setConfirmDialog(null)
+                    const wId = `purchase-invoice-modal-${confirmDialog.modalId}`
+                    useWindowStore.getState().closeWindow(wId)
+                  } catch (e) {
+                    console.error(e)
+                  }
+                },
+                onDiscard: async () => {
+                  if (!confirmDialog) return
+                  setConfirmDialog(null)
+                  handleDiscard(confirmDialog.modalId)
+                },
+                onCancel: () => setConfirmDialog(null)
+              } : undefined}
+            />
+          ),
           onRestore: () => {
             setActiveModalId(modal.id)
             setOpenModals(prev => {
@@ -304,171 +463,115 @@ export default function SatisQaimeleri() {
               return newMap
             })
           },
-          onClose: () => handleModalClose(modal.id)
+          onClose: () => {
+            // handleModalClose funksiyasını çağır (duplicate logic-i aradan qaldırır)
+            handleModalClose(modal.id)
+          }
         })
+
+        // Window yaradıldıqdan sonra yoxla
+
+        /* setTimeout(() => {
+          const checkStore = useWindowStore.getState()
+          const createdWindow = checkStore.windows.get(windowId)
+           devLog removed
+        }, 100) */
       } else {
-        // Mövcud window-u yenilə - yalnız həqiqətən dəyişiklik varsa
         const storeWindow = existingWindow
-        // Store-dan isMinimized statusunu oxu - minimize olunmuşsa modal görünməməlidir
         const storeIsMinimized = storeWindow.isMinimized || false
 
-        // Z-index dəyişikliyini yalnız əhəmiyyətli fərq varsa nəzərə al (1-dən çox)
-        const zIndexChanged = storeWindow.zIndex !== modal.zIndex
-        const zIndexDiffSignificant = zIndexChanged && Math.abs(storeWindow.zIndex - modal.zIndex) > 1
 
-        // Position və size dəyişiklikləri
-        const positionChanged = storeWindow.position?.x !== modal.position.x || storeWindow.position?.y !== modal.position.y
-        const sizeChanged = storeWindow.size?.width !== modal.size.width || storeWindow.size?.height !== modal.size.height
 
-        // Yalnız həqiqətən dəyişiklik varsa yenilə
-        // QEYD: isMinimized və isVisible store-dan gəlir, modal state-dən deyil
-        // Minimize statusunu store-dan oxuyuruq və ona uyğun təyin edirik
-        const expectedIsVisible = !storeIsMinimized // Minimize olunmuşsa görünməməlidir
+        // devLog removed
 
-        // Yalnız position, size, zIndex və ya isMaximized dəyişibsə yenilə
-        // isMinimized və isVisible store-dan gəlir və biz onu dəyişdirmirik
-        const needsUpdate =
-          (zIndexChanged && zIndexDiffSignificant) ||
-          positionChanged ||
-          sizeChanged ||
-          storeWindow.isMaximized !== modal.isMaximized
+        const currentTitle = modal.data.invoiceNumber || (modal.invoiceId ? `Qaimə #${modal.invoiceId}` : 'Yeni Satış Qaiməsi')
 
-        if (needsUpdate) {
-          updateWindow(windowId, {
-            isVisible: expectedIsVisible,
-            isMinimized: storeIsMinimized,
-            // zIndex: modal.zIndex, // Store tərəfindən idarə olunur
-            // position və size burdan çıxarılır
-            isMaximized: modal.isMaximized,
-            onBeforeClose: () => handleModalBeforeClose(modal.id)
-          })
-        }
+        // Dirty check LƏĞV EDİLDİ: ConfirmDialog və digər daxili state dəyişikliklərinin (məs: activeConfirmDialog) 
+        // prop kimi InvoiceModal-a ötürülməsi üçün updateWindow hər zaman çağırılmalıdır.
+        // if (storeWindow.title !== currentTitle || storeWindow.isMinimized !== storeIsMinimized || !storeWindow.isVisible) {
+        updateWindow(windowId, {
+          isVisible: true,
+          isMinimized: storeIsMinimized,
+          title: currentTitle,
+          onBeforeClose: () => handleModalBeforeClose(modal.id),
+          content: (
+            <InvoiceModal
+              modal={modal}
+              suppliers={customers}
+              products={products}
+              modalIndex={Array.from(openModals.values()).indexOf(modal)}
+              isActive={activeModalId === modal.id}
+              onClose={handleModalClose}
+              onUpdate={handleModalUpdate}
+              onSave={handleModalSave}
+              onSaveAndConfirm={handleModalSaveAndConfirm}
+              onActivate={handleModalActivate}
+              onPrint={handleModalPrint}
+              windowId={windowId}
+              isEmbedded={true}
+              warehouses={warehouses}
+              activeConfirmDialog={confirmDialog?.modalId === modal.id ? {
+                isOpen: true,
+                modalZIndex: 1000,
+                onConfirm: async () => {
+                  if (!confirmDialog) return
+                  try {
+                    await handleModalSave(confirmDialog.modalId, confirmDialog.currentModal.data)
+                    initialDataMap.current.set(confirmDialog.modalId, JSON.parse(JSON.stringify(confirmDialog.currentModal.data)))
+                    setConfirmDialog(null)
+                    const wId = `purchase-invoice-modal-${confirmDialog.modalId}`
+                    useWindowStore.getState().closeWindow(wId)
+                  } catch (e) {
+                    console.error(e)
+                  }
+                },
+                onDiscard: async () => {
+                  if (!confirmDialog) return
+                  setConfirmDialog(null)
+                  handleDiscard(confirmDialog.modalId)
+                },
+                onCancel: () => setConfirmDialog(null)
+              } : undefined}
+            />
+          ),
+          onClose: () => {
+            // handleModalClose funksiyasını çağır (duplicate logic-i aradan qaldırır)
+            handleModalClose(modal.id)
+          }
+        })
       }
     })
 
-    // Silinmiş modalları store-dan da sil
-    const store = useWindowStore.getState()
-    Array.from(store.windows.values())
-      .filter(w => w.id.startsWith('invoice-modal-'))
-      .forEach(window => {
-        const modalId = window.id.replace('invoice-modal-', '')
-        if (!openModals.has(modalId)) {
-          removeWindow(window.id)
-        }
-      })
 
-    // Köhnə qaimə modalı
-    // Modal açıq olduqda store-a əlavə et, amma bağlandıqda silmə (səhifə dəyişəndə bağlanmamalıdır)
-    const existingWindow = useWindowStore.getState().windows.get('old-invoice-modal')
-    if (showModal) {
-      // Yalnız əgər store-da yoxdursa əlavə et
-      if (!existingWindow) {
+    // Köhnə modal sistemi silindi - yeni sistem istifadə olunur (openModals Map)
+
+
+    // Təchizatçı modalı
+    const existingSupplierWindow = useWindowStore.getState().windows.get('supplier-modal')
+    if (showSupplierModal) {
+      if (!existingSupplierWindow) {
         addWindow({
-          id: 'old-invoice-modal',
-          title: editingInvoiceId ? 'Qaiməni Redaktə Et' : 'Yeni Satış Qaiməsi',
+          id: 'supplier-modal',
+          title: 'Təchizatçı seçin',
           type: 'modal',
-          modalType: 'invoice-edit',
-          isVisible: showModal && !isMinimized,
-          isMinimized: isMinimized,
-          zIndex: 1000,
-          position: modalPosition,
-          size: modalSize,
-          isMaximized: isMaximized,
-          onActivate: () => {
-            // Local state-i yenilə
-            setIsMinimized(false)
-            setShowModal(true)
-            // Store-da isVisible true et (activateWindow artıq bunu edir, amma təminat üçün)
-            const store = useWindowStore.getState()
-            store.updateWindow('old-invoice-modal', { isVisible: true, isMinimized: false })
-          },
-          onRestore: () => {
-            // Local state-i yenilə
-            setIsMinimized(false)
-            setShowModal(true)
-          },
-          onClose: () => {
-            setShowModal(false)
-            setIsMinimized(false)
-            setActiveModalId(null)
-            setEditingInvoiceId(null)
-            setEditingInvoiceIsActive(false)
-            setSelectedCustomerId(null)
-            setSelectedCustomer(null)
-            setInvoiceItems([])
-            setNotes('')
-            setPaymentDate('')
-            setInvoiceNumber('')
-            setInvoiceDate('')
-            setSelectedProductId(null)
-            setSelectedProduct(null)
-            setItemQuantity(1)
-            setItemPrice(0)
-            setBarcodeInput('')
-            setShowBarcodeInput(false)
-            setCustomerSearchTerm('')
-            setProductSearchTerm('')
-            setShowCustomerDropdown(false)
-            setShowProductDropdown(false)
-            setSelectedItemIndices([])
-            removeWindow('old-invoice-modal')
-          }
-        })
-      } else {
-        // Mövcud pəncərəni yenilə (isVisible, zIndex, position, size)
-        // Amma yalnız dəyişiklik varsa yenilə (sonsuz döngünü qarşısını almaq üçün)
-        const currentWindow = existingWindow
-        const needsUpdate =
-          currentWindow.isVisible !== (showModal && !isMinimized) ||
-          currentWindow.isMinimized !== isMinimized ||
-          currentWindow.title !== (editingInvoiceId ? 'Qaiməni Redaktə Et' : 'Yeni Satış Qaiməsi')
-
-        if (needsUpdate) {
-          updateWindow('old-invoice-modal', {
-            isVisible: showModal && !isMinimized,
-            isMinimized: isMinimized,
-            title: editingInvoiceId ? 'Qaiməni Redaktə Et' : 'Yeni Satış Qaiməsi',
-            position: modalPosition,
-            size: modalSize,
-            isMaximized: isMaximized
-          })
-        }
-      }
-    } else {
-      // showModal false olsa belə, store-dan silmə (səhifə dəyişəndə bağlanmamalıdır)
-      // Yalnız isVisible false et (yalnız dəyişiklik varsa)
-      if (existingWindow && existingWindow.isVisible) {
-        updateWindow('old-invoice-modal', { isVisible: false })
-      }
-    }
-
-    // Müştəri modalı
-    const existingCustomerWindow = useWindowStore.getState().windows.get('customer-modal')
-    if (showCustomerModal) {
-      if (!existingCustomerWindow) {
-        addWindow({
-          id: 'customer-modal',
-          title: 'Müştəri seçin',
-          type: 'modal',
-          modalType: 'customer',
-          isVisible: showCustomerModal,
+          modalType: 'supplier',
+          isVisible: showSupplierModal,
           isMinimized: false,
           zIndex: 2000,
           onActivate: () => {
-            setShowCustomerModal(true)
+            setShowSupplierModal(true)
           },
           onClose: () => {
-            setShowCustomerModal(false)
-            setCustomerModalSearchTerm('')
-            removeWindow('customer-modal')
+            setShowSupplierModal(false)
+            removeWindow('supplier-modal')
           }
         })
       } else {
-        updateWindow('customer-modal', { isVisible: showCustomerModal })
+        useWindowStore.getState().updateWindow('supplier-modal', { isVisible: showSupplierModal })
       }
     } else {
-      if (existingCustomerWindow) {
-        updateWindow('customer-modal', { isVisible: false })
+      if (existingSupplierWindow) {
+        useWindowStore.getState().updateWindow('supplier-modal', { isVisible: false })
       }
     }
 
@@ -489,16 +592,15 @@ export default function SatisQaimeleri() {
           },
           onClose: () => {
             setShowProductModal(false)
-            setProductModalSearchTerm('')
             removeWindow('product-modal')
           }
         })
       } else {
-        updateWindow('product-modal', { isVisible: showProductModal })
+        useWindowStore.getState().updateWindow('product-modal', { isVisible: showProductModal })
       }
     } else {
       if (existingProductWindow) {
-        updateWindow('product-modal', { isVisible: false })
+        useWindowStore.getState().updateWindow('product-modal', { isVisible: false })
       }
     }
 
@@ -523,176 +625,156 @@ export default function SatisQaimeleri() {
           }
         })
       } else {
-        updateWindow('item-settings-modal', { isVisible: showItemSettingsModal })
+        useWindowStore.getState().updateWindow('item-settings-modal', { isVisible: showItemSettingsModal })
       }
     } else {
       if (existingSettingsWindow) {
-        updateWindow('item-settings-modal', { isVisible: false })
+        useWindowStore.getState().updateWindow('item-settings-modal', { isVisible: false })
       }
     }
-  }, [openModals, showModal, editingInvoiceId, isMinimized, showCustomerModal, showProductModal, showItemSettingsModal, baseZIndex, activeModalId, modalPosition, modalSize, isMaximized])
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
-  const [_productSearchTerm, setProductSearchTerm] = useState('')
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
-  const [_showProductDropdown, setShowProductDropdown] = useState(false)
-  const [customerModalSearchTerm, setCustomerModalSearchTerm] = useState('')
-  const [productModalSearchTerm, setProductModalSearchTerm] = useState('')
+  }, [openModals, activeModalId, showSupplierModal, showProductModal, showItemSettingsModal, customers, products, warehouses, handleModalClose, handleModalUpdate, handleModalActivate, handleModalPrint, confirmDialog])
 
-  // Məhsul cədvəli üçün state
-  const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([])
-
-  // Məhsul cədvəli sütunları üçün state
-  const [itemTableColumns, setItemTableColumns] = useState({
-    showNumber: true,
-    showProduct: true,
-    showQuantity: true,
-    showUnitPrice: true,
-    showTotal: true,
-  })
-
-  // Modal draggable və resizable üçün state (digər state-lər)
-  const [isDragging, setIsDragging] = useState(false)
-  const [isResizing, setIsResizing] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 })
-  const [savedModalState, setSavedModalState] = useState<{ position: { x: number, y: number }, size: { width: number, height: number } } | null>(null)
-
-  const loadInvoices = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError('')
-      const data = await ordersAPI.getAll()
-      setInvoices(data)
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Qaimələr yüklənərkən xəta baş verdi')
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    loadInvoices()
+    loadCustomers()
+    loadProducts()
+    loadWarehouses()
   }, [])
+
+  useEffect(() => {
+    filterInvoices()
+  }, [searchTerm, invoices])
+
+  const loadCustomers = async () => {
+    try {
+      const data = await customersAPI.getAll()
+      setCustomers(data)
+    } catch (err: any) {
+      console.error('Müştərilər yüklənərkən xəta:', err)
+    }
+  }
+
+  const loadProducts = async () => {
+    try {
+      const data = await productsAPI.getAll()
+      setProducts(data)
+    } catch (err: any) {
+      console.error('Məhsullar yüklənərkən xəta:', err)
+    }
+  }
+
+  const loadWarehouses = async () => {
+    try {
+      const data = await warehousesAPI.getAll()
+      setWarehouses(data)
+    } catch (err: any) {
+      console.error('Anbarlar yüklənərkən xəta:', err)
+    }
+  }
+
+  const filterInvoices = () => {
+    if (!searchTerm.trim()) {
+      setFilteredInvoices(invoices)
+      return
+    }
+
+    const term = searchTerm.toLowerCase()
+    const filtered = invoices.filter(invoice => {
+      return (
+        invoice.invoice_number?.toLowerCase().includes(term) ||
+        invoice.customers?.name?.toLowerCase().includes(term) ||
+        invoice.notes?.toLowerCase().includes(term) ||
+        invoice.total_amount?.toString().includes(term)
+      )
+    })
+    setFilteredInvoices(filtered)
+  }
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term)
   }, [])
 
-  // Modal save handler
-  const handleModalSave = useCallback(async (modalId: string, modalData: ModalData['data']) => {
-    try {
-      const modal = openModalsRef.current.get(modalId)
-      if (!modal) throw new Error('Modal tapılmadı')
-
-      // Validation
-      if (!modalData.selectedCustomerId) {
-        alert('Zəhmət olmasa müştəri seçin')
-        return
-      }
-
-      if (modalData.invoiceItems.length === 0) {
-        alert('Zəhmət olmasa ən azı bir məhsul əlavə edin')
-        return
-      }
-
-      // Format data for API
-      const invoiceData = {
-        payment_date: modalData.paymentDate ? modalData.paymentDate : undefined,
-        notes: modalData.notes,
-        items: modalData.invoiceItems.map(item => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          discount_manual: item.discount_manual || 0,
-          discount_auto: item.discount_auto || 0,
-          vat_rate: item.vat_rate || 0,
-        }))
-      }
-
-      let savedInvoice
-      if (modal.invoiceId) {
-        // Update
-        savedInvoice = await ordersAPI.update(modal.invoiceId.toString(), invoiceData)
-        showNotification('Qaimə yeniləndi', 'success')
-        // Global event dispatch
-        window.dispatchEvent(new Event('invoice-update'))
-      } else {
-        // Create
-        // Add total_price to each item and filter out null product_ids
-        const invoiceDataWithTotals = {
-          ...invoiceData,
-          items: invoiceData.items
-            .filter(item => item.product_id !== null)
-            .map(item => ({
-              product_id: item.product_id!,
-              quantity: item.quantity,
-              unit_price: item.unit_price,
-              total_price: item.quantity * item.unit_price,
-              discount_manual: item.discount_manual || 0,
-              discount_auto: item.discount_auto || 0,
-              vat_rate: item.vat_rate || 0,
-            }))
-        }
-        savedInvoice = await ordersAPI.create(invoiceDataWithTotals)
-        showNotification('Qaimə yaradıldı', 'success')
-        // Global event dispatch
-        window.dispatchEvent(new Event('invoice-update'))
-      }
-
-      // Initial datanı yenilə ki, subsequent save-lərdə dirty olmasın
-      initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(modalData)))
-
-      // Modalı update et (həm ID, həm də data)
-      setOpenModals(prev => {
-        const newMap = new Map(prev)
-        const current = newMap.get(modalId)
-        if (current) {
-          const updates: any = {
-            data: modalData // Yadda saxlanmış datanı state-ə yaz ki, dirty check düzgün işləsin
-          }
-
-          if (!modal.invoiceId && savedInvoice?.id) {
-            updates.invoiceId = savedInvoice.id
-          }
-
-          newMap.set(modalId, { ...current, ...updates })
-        }
-        return newMap
-      })
-
-      loadInvoices()
-    } catch (err: any) {
-      console.error('Save error:', err)
-      throw new Error(err.response?.data?.message || 'Yadda saxlanılarkən xəta baş verdi')
-    }
-  }, [loadInvoices, showNotification])
-
   // Çoxlu modal açmaq üçün funksiya
-  const openModalForInvoice = useCallback(async (invoiceId: number | null = null) => {
+  const openModalForInvoice = async (invoiceId: number | null = null) => {
     try {
+      // Əgər invoiceId varsa, eyni qaimə artıq açıqdırsa, onu fokusla
+      if (invoiceId) {
+        const existingModal = Array.from(openModalsRef.current.values()).find(
+          modal => modal.invoiceId === invoiceId
+        )
+
+        if (existingModal) {
+          devLog('[Alis.tsx] Eyni qaimə artıq açıqdır, fokuslanır:', invoiceId)
+          const windowId = `purchase-invoice-modal-${existingModal.id}`
+          const store = useWindowStore.getState()
+          const windowInfo = store.windows.get(windowId)
+
+          if (!windowInfo) {
+            console.warn('[Alis.tsx] Modal openModals-da var amma windowStore-da yoxdur (phantom). Təmizlənir...', existingModal.id)
+            // Phantom modal - təmizlə və yenidən açmağa icazə ver
+            setOpenModals(prev => {
+              const newMap = new Map(prev)
+              newMap.delete(existingModal.id)
+              return newMap
+            })
+            // Return etmə - funksiya davam edəcək və yeni modal yaradacaq
+          } else {
+            // Normal hal - pəncərə var, aktiv et
+            if (windowInfo.isMinimized) {
+              store.restoreWindow(windowId)
+            }
+            store.activateWindow(windowId)
+            setActiveModalId(existingModal.id)
+            showNotification('Qaimə artıq açıqdır', 'info')
+            return
+          }
+        }
+      }
+
+      // Load invoice data FIRST if editing
       let fullInvoice: SaleInvoice | null = null
       if (invoiceId) {
         fullInvoice = await ordersAPI.getById(invoiceId.toString())
       }
 
-      const modalId = invoiceId ? `modal-${invoiceId}-${Date.now()}` : `modal-new-${Date.now()}`
+      // Eyni invoice üçün eyni modal ID istifadə et (fokuslanma üçün)
+      const modalId = invoiceId ? `modal-${invoiceId}` : `modal-new-${Date.now()}`
 
-      // Modal ölçüsü
-      const modalWidth = Math.min(900, window.innerWidth - 40)
-      const modalHeight = Math.min(700, window.innerHeight - 140) // Navbar və taskbar üçün yer
-
-      // Payment date formatla
-      let paymentDateStr = ''
-      if (fullInvoice?.payment_date) {
-        const date = new Date(fullInvoice.payment_date)
-        paymentDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      // Saxlanılan ayarları yüklə
+      let savedPrefs: any = null
+      try {
+        const stored = localStorage.getItem('window-pref-sale-invoice-modal')
+        if (stored) {
+          savedPrefs = JSON.parse(stored)
+          devLog('[Alis] Saxlanılan ayarlar yükləndi:', savedPrefs)
+        }
+      } catch (e) {
+        console.error('[Alis] Ayarları yükləmək uğursuz oldu:', e)
       }
+
+      const screenWidth = window.innerWidth
+      const screenHeight = window.innerHeight
+
+      // Əgər saxlanılan ayarlar varsa, onları istifadə et
+      const modalWidth = savedPrefs?.size?.width || Math.min(900, Math.floor((screenWidth - 60) / 2))
+      const modalHeight = savedPrefs?.size?.height || Math.min(700, screenHeight - 80)
+
+      // Modalı həmişə mərkəzdə aç
+      const positionX = Math.max(0, (screenWidth - modalWidth) / 2)
+      const positionY = Math.max(0, (screenHeight - modalHeight) / 2)
 
       // Invoice date formatla - saat, dəqiqə, saniyə ilə
       let invoiceDateStr = ''
       if (fullInvoice?.invoice_date) {
         const date = new Date(fullInvoice.invoice_date)
         invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+      } else if (!invoiceId) {
+        const date = new Date()
+        invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
       }
 
       // Invoice items formatla
-      const invoiceItemsData = fullInvoice ? ((fullInvoice as any).sale_invoice_items || (fullInvoice as any).items || []) : []
+      const invoiceItemsData = fullInvoice ? (fullInvoice.sale_invoice_items || []) : []
       const items: InvoiceItem[] = invoiceItemsData.map((item: any) => ({
         product_id: item.product_id,
         product_name: item.products?.name || 'Naməlum məhsul',
@@ -706,73 +788,494 @@ export default function SatisQaimeleri() {
 
       const newZIndex = baseZIndex + 1
 
+      // Create modal with loaded data
       const newModal: ModalData = {
         id: modalId,
         invoiceId: invoiceId,
-        // Modalı həmişə mərkəzdə aç
-        position: calculateCenteredPosition(modalWidth, modalHeight),
+        position: {
+          x: positionX,
+          y: positionY
+        },
         size: {
           width: modalWidth,
           height: modalHeight
         },
-        isMaximized: false,
+        isMaximized: savedPrefs?.isMaximized || false,
         zIndex: newZIndex,
-        invoiceType: 'sale',
-        isActive: fullInvoice ? (fullInvoice as any).is_active || false : undefined, // Qaimənin təsdiq statusu
+        invoiceType: 'purchase',
+        isActive: fullInvoice ? (fullInvoice.is_active ?? false) : undefined,
         data: {
-          selectedCustomerId: fullInvoice?.customer_id || null,
-          selectedCustomer: fullInvoice?.customers || null,
+          selectedSupplierId: fullInvoice?.customer_id || null,
+          selectedSupplier: fullInvoice?.customers || null,
           invoiceItems: items,
           notes: fullInvoice?.notes || '',
-          paymentDate: paymentDateStr,
           invoiceNumber: fullInvoice?.invoice_number || '',
           invoiceDate: invoiceDateStr
         }
-      }
+      } as any // normalState type error-ını aradan qaldırmaq üçün
 
       setBaseZIndex(newZIndex)
+      devLog('[Alis.tsx] openModalForInvoice - Modal yaradılır:', { modalId, newModal })
       setOpenModals(prev => {
         const newMap = new Map(prev)
         newMap.set(modalId, newModal)
+        devLog('[Alis.tsx] openModalForInvoice - openModals yeniləndi:', {
+          modalId,
+          mapSize: newMap.size,
+          mapKeys: Array.from(newMap.keys())
+        })
         return newMap
       })
+      // Initial datanı saxla
+      const initialSnapshot = JSON.parse(JSON.stringify(newModal.data))
+      initialDataMap.current.set(modalId, initialSnapshot)
+      console.log(`[DEBUG] Initial data set for ${modalId}`, initialSnapshot)
+
       setActiveModalId(modalId)
+      devLog('[Alis.tsx] openModalForInvoice - Modal yaradıldı və state yeniləndi:', modalId)
 
-      // İlk data-nı yadda saxla
-      initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(newModal.data)))
+      // Log invoice open
+      logActivity(
+        'invoice',
+        invoiceId ? 'Qaimə redaktə edildi' : 'Yeni qaimə açıldı',
+        invoiceId
+          ? `Qaimə ${fullInvoice?.invoice_number || ('#' + invoiceId)} redaktə üçün açıldı (${items.length} məhsul)`
+          : `Yeni satış qaiməsi yaradıldı`,
+        'info',
+        { invoiceId, itemCount: items.length, customerId: fullInvoice?.customer_id, invoiceNumber: fullInvoice?.invoice_number }
+      )
 
+      // Window useEffect-də avtomatik yaradılacaq
     } catch (err: any) {
-      console.error('openModalForInvoice xətası:', err)
-      showNotification(err.response?.data?.message || 'Qaimə yüklənərkən xəta baş verdi', 'error')
+      console.error('Modal açılarkən xəta:', err)
+      showNotification('Modal açılarkən xəta baş verdi', 'error')
     }
-  }, [baseZIndex, showNotification])
+  }
 
-  const handleEdit = useCallback(async (selectedIds: (number | string)[]) => {
+  const handleEdit = async (selectedIds: (number | string)[]) => {
     if (selectedIds.length === 1) {
       const invoiceId = parseInt(selectedIds[0].toString())
       await openModalForInvoice(invoiceId)
     }
-  }, [openModalForInvoice])
+  }
 
-  const handleDelete = useCallback(async (selectedIds: (number | string)[]) => {
+  const handleDelete = async (selectedIds: (number | string)[]) => {
     if (confirm(`${selectedIds.length} qaimə silinsin?`)) {
       try {
-        // TODO: Backend-də delete endpoint əlavə et
-        // await Promise.all(selectedIds.map(id => ordersAPI.delete(id.toString())))
+        // Silinəcək qaimələrin nömrələrini tap
+        const deletedInvoices = invoices.filter(inv => selectedIds.includes(inv.id))
+        const deletedInvoiceNumbers = deletedInvoices.map(inv => inv.invoice_number).filter(Boolean)
+
+        await Promise.all(selectedIds.map(id => ordersAPI.delete(id.toString())))
         await loadInvoices()
-        showNotification('Qaimələr silindi', 'success')
+
+        if (deletedInvoiceNumbers.length > 0) {
+          showNotification(`Qaimələr silindi: ${deletedInvoiceNumbers.join(', ')}`, 'success')
+        } else {
+          showNotification('Qaimələr silindi', 'success')
+        }
       } catch (err: any) {
         showNotification(err.response?.data?.message || 'Silinərkən xəta baş verdi', 'error')
       }
     }
-  }, [loadInvoices, showNotification])
+  }
 
-  const handleCopy = useCallback((_selectedIds: (number | string)[]) => {
+  const handleCopy = (_selectedIds: (number | string)[]) => {
     // TODO: Kopyalama funksiyası
     showNotification('Kopyalama funksiyası hazırlanır...', 'info')
-  }, [showNotification])
+  }
 
-  const handlePrint = useCallback(async () => {
+  // F4 qısayolu InvoiceModal-da idarə olunur
+
+
+  const handleModalSave = useCallback(async (modalId: string, modalData: ModalData['data']) => {
+    devLog('[Alis.tsx] ========== handleModalSave FUNKSİYASI ÇAĞIRILDI ==========')
+    devLog('[Alis.tsx] handleModalSave çağırıldı', {
+      modalId,
+      modalData,
+      modalDataKeys: Object.keys(modalData),
+      invoiceItemsCount: modalData.invoiceItems?.length || 0
+    })
+
+    // Modalı ref-dən oxu (state-dən asılılığı aradan qaldırır)
+    const modal = openModalsRef.current.get(modalId)
+
+    if (!modal) {
+      console.error('[Alis.tsx] handleModalSave - XƏTA: Modal tapılmadı!', modalId)
+      return
+    }
+
+    const modalDataToUse = modal.data
+    // modalData arqumenti varsa, onu istifadə et (ən son dəyişikliklər)
+    const finalData = modalData ? { ...modalDataToUse, ...modalData } : modalDataToUse
+
+    devLog('[Alis.tsx] handleModalSave - Modal tapıldı:', { id: modal.id, invoiceId: modal.invoiceId })
+
+    // Promise-dən modal-ı alırıq
+
+    devLog('[Alis.tsx] handleModalSave - Promise-dən modal alındı:', modal)
+
+    if (!modal) {
+      console.error('[Alis.tsx] handleModalSave - XƏTA: Modal tapılmadı, funksiya dayandırılır')
+      return
+    }
+
+    devLog('[Alis.tsx] handleModalSave - Modal istifadəyə hazırdır:', { id: modal.id, invoiceId: modal.invoiceId })
+    devLog('[Alis.tsx] handleModalSave - modalData:', finalData)
+
+    const validItems = finalData.invoiceItems.filter(item => item.product_id !== null)
+    devLog('[Alis.tsx] handleModalSave - Valid items:', validItems.length)
+    devLog('[Alis.tsx] handleModalSave - Valid items details:', validItems)
+
+    // Yadda saxla düyməsi üçün validasiya yoxdur - boş qaimə yarada bilər
+    // Validasiya yalnız OK düyməsi üçün InvoiceModal komponentindədir
+
+    try {
+      const items = validItems.map(item => ({
+        product_id: item.product_id!,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total_price: item.total_price,
+        discount_manual: item.discount_manual || 0,
+        discount_auto: item.discount_auto || 0,
+        vat_rate: item.vat_rate || 0,
+      }))
+
+      devLog('[Alis.tsx] handleModalSave - Items hazırlandı:', items)
+      devLog('[Alis.tsx] handleModalSave - Modal invoiceId:', modal.invoiceId)
+
+      if (modal.invoiceId) {
+        // Mövcud qaimə - yenilə
+        console.log('[Alis.tsx] ========== MÖVCUD QAIMƏ YENİLƏNİR ==========')
+        console.log('[Alis.tsx] Mövcud qaimə yenilənir:', modal.invoiceId)
+        console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.update')
+        console.log('[Alis.tsx] Request data:', {
+          supplier_id: finalData.selectedSupplierId || undefined,
+          items,
+          notes: finalData.notes || undefined,
+        })
+
+        const updateResult = await ordersAPI.update(modal.invoiceId.toString(), {
+          customer_id: finalData.selectedSupplierId || undefined,
+          items,
+          notes: finalData.notes || undefined,
+          invoice_date: finalData.invoiceDate || undefined,
+          payment_date: finalData.paymentDate || undefined,
+        })
+
+        console.log('[Alis.tsx] API cavabı (update):', updateResult)
+
+        // Change saved: update initial data to prevent unsaved changes warning
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(finalData)))
+
+        // Modalı yenilə ki, dirty check düzgün işləsin (data-nı yenilə)
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const current = newMap.get(modalId)
+          if (current) {
+            newMap.set(modalId, {
+              ...current,
+              data: { ...current.data, ...finalData }
+            })
+          }
+          return newMap
+        })
+
+        // Vəziyyəti dəyişdirmə - mövcud vəziyyəti saxla
+        if (modal.isActive !== undefined) {
+          console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus')
+          console.log('[Alis.tsx] Status update:', { id: modal.invoiceId, isActive: modal.isActive })
+          const statusResult = await ordersAPI.updateStatus(modal.invoiceId.toString(), modal.isActive)
+          console.log('[Alis.tsx] API cavabı (updateStatus - confirm):', statusResult)
+        }
+
+        logActivity(
+          'invoice',
+          'Qaimə təsdiqləndi',
+          `Qaimə ${finalData.invoiceNumber || ('#' + modal.invoiceId)} təsdiqləndi və yadda saxlanıldı`,
+          'success',
+          { invoiceId: modal.invoiceId, itemCount: validItems.length, invoiceNumber: finalData.invoiceNumber }
+        )
+
+        console.log('[Alis.tsx] Qaimə yeniləndi')
+        showNotification(`Satış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
+
+        logActivity(
+          'invoice',
+          'Qaimə yadda saxlanıldı',
+          `Qaimə ${finalData.invoiceNumber || ('#' + modal.invoiceId)} yeniləndi (${validItems.length} məhsul)`,
+          'success',
+          { invoiceId: modal.invoiceId, itemCount: validItems.length, supplierId: finalData.selectedSupplierId, invoiceNumber: finalData.invoiceNumber }
+        )
+      } else {
+        // Yeni qaimə - yarad, amma tesdiqsiz saxla
+        console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR ==========')
+        console.log('[Alis.tsx] Yeni qaimə yaradılır (təsdiqsiz)...')
+        console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.create')
+        console.log('[Alis.tsx] Request data:', {
+          supplier_id: finalData.selectedSupplierId || undefined,
+          items,
+          notes: finalData.notes || undefined,
+        })
+
+        const newInvoice = await ordersAPI.create({
+          customer_id: finalData.selectedSupplierId || undefined,
+          items,
+          notes: finalData.notes || undefined,
+          invoice_date: finalData.invoiceDate || undefined,
+          payment_date: finalData.paymentDate || undefined,
+        })
+
+        console.log('[Alis.tsx] API cavabı (create):', newInvoice)
+        console.log('[Alis.tsx] Yeni qaimə ID:', newInvoice.id)
+
+        // Tesdiqsiz saxla (default olaraq tesdiqsizdir, amma açıq şəkildə təyin edək)
+        if (newInvoice.id) {
+          console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus (false)')
+          const statusResult = await ordersAPI.updateStatus(newInvoice.id.toString(), false)
+          console.log('[Alis.tsx] API cavabı (updateStatus):', statusResult)
+        }
+
+        // Qaimə tarixini formatla (saat, dəqiqə, saniyə ilə)
+        let invoiceDateStr = ''
+        if (newInvoice.invoice_date) {
+          const date = new Date(newInvoice.invoice_date)
+          invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+        }
+
+        // Modalı yenilə - qaimə nömrəsi və tarixi əlavə et
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const currentModal = newMap.get(modalId)
+          if (currentModal) {
+            newMap.set(modalId, {
+              ...currentModal,
+              invoiceId: newInvoice.id,
+              isActive: false,
+              data: {
+                ...currentModal.data,
+                ...modalData, // Ensure validItems and other changes are preserved
+                invoiceNumber: newInvoice.invoice_number || '',
+                invoiceDate: invoiceDateStr
+              }
+            })
+          }
+          return newMap
+        })
+
+        console.log('[Alis.tsx] API cavabı (create):', newInvoice)
+
+        showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
+      }
+
+      console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
+      console.log('[Alis.tsx] Cədvəl yenilənir (loadInvoices)...')
+      await loadInvoices()
+      console.log('[Alis.tsx] Cədvəl yeniləndi')
+      devLog('[Alis.tsx] ========== handleModalSave TAMAMLANDI ==========')
+    } catch (err: any) {
+      console.error('[Alis.tsx] ========== XƏTA BAŞ VERDİ ==========')
+      console.error('[Alis.tsx] Xəta:', err)
+      console.error('[Alis.tsx] Xəta mesajı:', err.message)
+      console.error('[Alis.tsx] Xəta response:', err.response)
+      console.error('[Alis.tsx] Xəta response data:', err.response?.data)
+      console.error('[Alis.tsx] Xəta response status:', err.response?.status)
+      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
+      throw err // Xətanı yuxarı at ki, modal bağlanmasın
+    }
+  }, [showNotification, loadInvoices])
+
+  const handleModalSaveAndConfirm = useCallback(async (modalId: string, modalData: ModalData['data']) => {
+    console.log('[Alis.tsx] ========== handleModalSaveAndConfirm FUNKSİYASI ÇAĞIRILDI ==========')
+    devLog('[Alis.tsx] handleModalSaveAndConfirm çağırıldı', {
+      modalId,
+      modalData,
+      modalDataKeys: Object.keys(modalData),
+      invoiceItemsCount: modalData.invoiceItems?.length || 0
+    })
+
+    // Modalı ref-dən oxu
+    const modal = openModalsRef.current.get(modalId)
+
+    if (!modal) {
+      console.error('[Alis.tsx] handleModalSaveAndConfirm - XƏTA: Modal tapılmadı!', modalId)
+      return
+    }
+
+    const modalDataToUse = modal.data
+    const finalData = modalData ? { ...modalDataToUse, ...modalData } : modalDataToUse
+
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal tapıldı:', { id: modal.id, invoiceId: modal.invoiceId })
+
+    // Promise-dən modal-ı alırıq
+
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - Promise-dən modal alındı:', modal)
+
+    if (!modal) {
+      console.error('[Alis.tsx] handleModalSaveAndConfirm - XƏTA: Modal tapılmadı, funksiya dayandırılır')
+      return
+    }
+
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal istifadəyə hazırdır:', { id: modal.id, invoiceId: modal.invoiceId })
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - modalData:', finalData)
+
+    const validItems = finalData.invoiceItems.filter(item => item.product_id !== null)
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - Valid items:', validItems.length)
+    devLog('[Alis.tsx] handleModalSaveAndConfirm - Valid items details:', validItems)
+
+    if (validItems.length === 0) {
+      console.log('[Alis.tsx] Validasiya xətası: məhsul seçilməyib')
+      showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
+      return
+    }
+
+    try {
+      const items = validItems.map(item => ({
+        product_id: item.product_id!,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total_price: item.total_price,
+        discount_manual: item.discount_manual || 0,
+        discount_auto: item.discount_auto || 0,
+        vat_rate: item.vat_rate || 0,
+      }))
+
+      devLog('[Alis.tsx] handleModalSaveAndConfirm - Items hazırlandı:', items)
+      devLog('[Alis.tsx] handleModalSaveAndConfirm - Modal invoiceId:', modal.invoiceId)
+
+      if (modal.invoiceId) {
+        // Mövcud qaimə - yenilə və təsdiqlə
+        console.log('[Alis.tsx] ========== MÖVCUD QAIMƏ YENİLƏNİR VƏ TƏSDİQLƏNİR ==========')
+        console.log('[Alis.tsx] Mövcud qaimə yenilənir və təsdiqlənir:', modal.invoiceId)
+        console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.update')
+        console.log('[Alis.tsx] Request data:', {
+          supplier_id: modalData.selectedSupplierId || undefined,
+          items,
+          notes: modalData.notes || undefined,
+        })
+
+        const updateResult = await ordersAPI.update(modal.invoiceId.toString(), {
+          customer_id: modalData.selectedSupplierId || undefined,
+          items,
+          notes: modalData.notes || undefined,
+          invoice_date: modalData.invoiceDate || undefined,
+          payment_date: modalData.paymentDate || undefined,
+        })
+
+        console.log('[Alis.tsx] API cavabı (update):', updateResult)
+
+        // Təsdiqlə
+        console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus (true)')
+        const statusResult = await ordersAPI.updateStatus(modal.invoiceId.toString(), true)
+        console.log('[Alis.tsx] API cavabı (updateStatus):', statusResult)
+
+        console.log('[Alis.tsx] Qaimə yeniləndi və təsdiq edildi')
+
+        // Change saved: update initial data
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify(finalData)))
+
+        // Modalı yenilə (data və status)
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const current = newMap.get(modalId)
+          if (current) {
+            newMap.set(modalId, {
+              ...current,
+              isActive: true,
+              data: { ...current.data, ...finalData }
+            })
+          }
+          return newMap
+        })
+
+        showNotification(`Satış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
+      } else {
+        // Yeni qaimə - yarad və təsdiqlə
+        console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR VƏ TƏSDİQLƏNİR ==========')
+        console.log('[Alis.tsx] Yeni qaimə yaradılır və təsdiqlənir...')
+        console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.create')
+        console.log('[Alis.tsx] Request data:', {
+          supplier_id: modalData.selectedSupplierId || undefined,
+          items,
+          notes: modalData.notes || undefined,
+        })
+
+        const newInvoice = await ordersAPI.create({
+          customer_id: modalData.selectedSupplierId || undefined,
+          items,
+          notes: modalData.notes || undefined,
+          invoice_date: modalData.invoiceDate || undefined,
+          payment_date: modalData.paymentDate || undefined,
+        })
+
+        console.log('[Alis.tsx] API cavabı (create):', newInvoice)
+        console.log('[Alis.tsx] Yeni qaimə ID:', newInvoice.id)
+
+        // Təsdiqlə
+        if (newInvoice.id) {
+          console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.updateStatus (true)')
+          const statusResult = await ordersAPI.updateStatus(newInvoice.id.toString(), true)
+          console.log('[Alis.tsx] API cavabı (updateStatus):', statusResult)
+        }
+
+        // Qaimə tarixini formatla (saat, dəqiqə, saniyə ilə)
+        let invoiceDateStr = ''
+        if (newInvoice.invoice_date) {
+          const date = new Date(newInvoice.invoice_date)
+          invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+        }
+
+        // Modalı yenilə - qaimə nömrəsi və tarixi əlavə et
+        setOpenModals(prev => {
+          const newMap = new Map(prev)
+          const currentModal = newMap.get(modalId)
+          if (currentModal) {
+            newMap.set(modalId, {
+              ...currentModal,
+              invoiceId: newInvoice.id,
+              isActive: true,
+              data: {
+                ...currentModal.data,
+                ...modalData, // Ensure validItems and other changes are preserved
+                invoiceNumber: newInvoice.invoice_number || '',
+                invoiceDate: invoiceDateStr
+              }
+            })
+          }
+          return newMap
+        })
+
+        console.log('[Alis.tsx] Yeni qaimə yaradıldı və təsdiq edildi:', newInvoice.id)
+
+        // Change saved: update initial data
+        initialDataMap.current.set(modalId, JSON.parse(JSON.stringify({
+          ...finalData,
+          invoiceNumber: newInvoice.invoice_number || '',
+          invoiceDate: invoiceDateStr
+        })))
+
+        showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
+      }
+
+      console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
+      console.log('[Alis.tsx] Cədvəl yenilənir (loadInvoices)...')
+      await loadInvoices()
+      console.log('[Alis.tsx] Cədvəl yeniləndi')
+      devLog('[Alis.tsx] ========== handleModalSaveAndConfirm TAMAMLANDI ==========')
+    } catch (err: any) {
+      console.error('[Alis.tsx] ========== XƏTA BAŞ VERDİ ==========')
+      console.error('[Alis.tsx] Xəta:', err)
+      console.error('[Alis.tsx] Xəta mesajı:', err.message)
+      console.error('[Alis.tsx] Xəta response:', err.response)
+      console.error('[Alis.tsx] Xəta response data:', err.response?.data)
+      console.error('[Alis.tsx] Xəta response status:', err.response?.status)
+      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
+      throw err // Xətanı yuxarı at ki, modal bağlanmasın
+    }
+  }, [showNotification, loadInvoices])
+
+
+  const handlePrint = async () => {
     // Seçilmiş sənədləri al
     const invoicesToPrint = selectedInvoiceIds.length > 0
       ? invoices.filter(inv => selectedInvoiceIds.includes(inv.id))
@@ -825,20 +1328,18 @@ export default function SatisQaimeleri() {
 
       fullInvoices.forEach((invoice: SaleInvoice, index: number) => {
         const invoiceDate = invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString('az-AZ') : '-'
-        const paymentDate = invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('az-AZ') : '-'
         const items = invoice.sale_invoice_items || []
         const totalAmount = invoice.total_amount ? Number(invoice.total_amount) : 0
 
         htmlContent += `
           <div class="invoice ${index < fullInvoices.length - 1 ? 'invoice-break' : ''}">
             <div class="invoice-header">
-              <h2>SATIŞ QAIMƏSİ</h2>
+              <h2>ALIŞ QAIMƏSİ</h2>
             </div>
             <div class="invoice-info">
               <div>
                 <p><strong>Faktura №:</strong> ${invoice.invoice_number || ''}</p>
                 <p><strong>Tarix:</strong> ${invoiceDate}</p>
-                ${paymentDate !== '-' ? `<p><strong>Son ödəniş tarixi:</strong> ${paymentDate}</p>` : ''}
               </div>
               <div>
                 <p><strong>Müştəri:</strong> ${invoice.customers?.name || '-'}</p>
@@ -888,943 +1389,53 @@ export default function SatisQaimeleri() {
       printWindow.document.close()
       printWindow.print()
     }
-  }, [selectedInvoiceIds, invoices, showNotification])
-
-  useEffect(() => {
-    loadInvoices()
-    loadCustomers()
-    loadProducts()
-
-    // localStorage-dan modal ölçüsünü yüklə
-    const savedSize = localStorage.getItem('satis-qaime-modal-size')
-    if (savedSize) {
-      try {
-        const parsed = JSON.parse(savedSize)
-        setModalSize(parsed)
-      } catch (e) {
-        console.error('Modal ölçüsü yüklənərkən xəta:', e)
-      }
-    }
-
-    // Global event listener
-    const handleInvoiceUpdate = () => {
-      console.log('[Satis.tsx] invoice-update event received')
-      loadInvoices()
-    }
-    window.addEventListener('invoice-update', handleInvoiceUpdate)
-
-    return () => {
-      window.removeEventListener('invoice-update', handleInvoiceUpdate)
-    }
-  }, [loadInvoices])
-
-  // Qısa yollar (yalnız modal açıq deyilsə)
-  useEffect(() => {
-    // Modal açıq olduqda qısa yolları deaktiv et
-    const hasOpenModals = openModals.size > 0
-    if (hasOpenModals) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Input və textarea elementlərində qısa yolları deaktiv et
-      const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        // Ctrl+F və Ctrl+P istisna olaraq işləsin
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-          e.preventDefault()
-          const searchInput = document.querySelector('input[placeholder*="Axtarış"]') as HTMLInputElement
-          if (searchInput) {
-            searchInput.focus()
-            searchInput.select()
-          }
-          return
-        }
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
-          e.preventDefault()
-          handlePrint()
-          return
-        }
-        // Digər qısa yollar input içində işləməsin
-        if (e.key === 'Insert' || e.key === 'F2' || e.key === 'F9' || e.key === 'Delete' || e.key === 'F5') {
-          return
-        }
-      }
-
-      // F5: Cədvəli yenilə
-      if (e.key === 'F5') {
-        e.preventDefault()
-        loadInvoices()
-        return
-      }
-
-      // Insert: Yeni qaimə
-      if (e.key === 'Insert') {
-        e.preventDefault()
-        openModalForInvoice(null)
-        return
-      }
-
-      // Ctrl+F: Axtarış
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-        console.log('[Satis.tsx] Ctrl+F basıldı')
-        e.preventDefault()
-        e.stopPropagation()
-
-        // Cədvəl sütun header-ında basılıbsa, həmin sütunu müəyyən et
-        // Əvvəlcə e.target-dən, sonra document.activeElement-dən yoxla
-        const target = (e.target as HTMLElement) || document.activeElement as HTMLElement
-        console.log('[Satis.tsx] Ctrl+F target:', target, 'tagName:', target.tagName, 'className:', target.className)
-        console.log('[Satis.tsx] Ctrl+F activeElement:', document.activeElement, 'tagName:', document.activeElement?.tagName)
-
-        // Əvvəlcə target-dən yoxla
-        let th = target.closest('th[data-column-id]') as HTMLElement
-        console.log('[Satis.tsx] Ctrl+F target-dən closest th:', th)
-
-        // Əgər tapılmadısa, activeElement-dən yoxla
-        if (!th && document.activeElement) {
-          th = (document.activeElement as HTMLElement).closest('th[data-column-id]') as HTMLElement
-          console.log('[Satis.tsx] Ctrl+F activeElement-dən closest th:', th)
-        }
-
-        // Əgər hələ də tapılmadısa, son kliklənən sütundan istifadə et
-        let selectedColumnId: string | null = null
-
-        console.log('[Satis.tsx] Ctrl+F th tapıldı:', !!th, 'lastClickedColumn:', lastClickedColumn)
-
-        if (th) {
-          selectedColumnId = th.getAttribute('data-column-id')
-          console.log('[Satis.tsx] Ctrl+F columnId tapıldı (th-dən):', selectedColumnId)
-        } else if (lastClickedColumn) {
-          selectedColumnId = lastClickedColumn
-          console.log('[Satis.tsx] Ctrl+F son kliklənən sütundan istifadə edilir:', lastClickedColumn)
-        } else {
-          console.log('[Satis.tsx] Ctrl+F sütun header-ında deyil və son kliklənən sütun yoxdur, bütün sütunlarda axtar')
-          console.log('[Satis.tsx] Ctrl+F lastClickedColumn state dəyəri:', lastClickedColumn)
-        }
-
-        console.log('[Satis.tsx] Ctrl+F selectedColumnId:', selectedColumnId)
-
-        if (selectedColumnId && selectedColumnId !== 'checkbox' && selectedColumnId !== 'is_active_status') {
-          console.log('[Satis.tsx] Ctrl+F sütun seçildi:', selectedColumnId)
-          console.log('[Satis.tsx] Ctrl+F setCurrentSearchColumn çağırılır:', selectedColumnId)
-          setCurrentSearchColumn(selectedColumnId)
-          if (th) {
-            console.log('[Satis.tsx] Ctrl+F setLastClickedColumn çağırılır:', selectedColumnId)
-            setLastClickedColumn(selectedColumnId) // Son kliklənən sütunu yenilə
-          }
-        } else {
-          console.log('[Satis.tsx] Ctrl+F sütun seçilmədi - selectedColumnId:', selectedColumnId, 'is checkbox:', selectedColumnId === 'checkbox', 'is is_active_status:', selectedColumnId === 'is_active_status')
-          setCurrentSearchColumn(null)
-        }
-
-        const searchInput = document.querySelector('input[placeholder*="Axtarış"]') as HTMLInputElement
-        console.log('[Satis.tsx] Ctrl+F searchInput tapıldı:', searchInput)
-        if (searchInput) {
-          searchInput.focus()
-          searchInput.select()
-          console.log('[Satis.tsx] Ctrl+F searchInput focus və select edildi')
-        } else {
-          console.warn('[Satis.tsx] Ctrl+F searchInput tapılmadı!')
-        }
-        return
-      }
-
-      // F2: Redaktə (seçilmiş qaiməni aç)
-      if (e.key === 'F2') {
-        e.preventDefault()
-        if (selectedInvoiceIds.length === 1) {
-          handleEdit(selectedInvoiceIds)
-        } else if (selectedInvoiceIds.length > 1) {
-          showNotification('Yalnız bir qaimə seçilməlidir', 'warning')
-        } else {
-          showNotification('Qaimə seçilməyib', 'warning')
-        }
-        return
-      }
-
-      // Delete: Silmək
-      if (e.key === 'Delete') {
-        e.preventDefault()
-        if (selectedInvoiceIds.length > 0) {
-          handleDelete(selectedInvoiceIds)
-        } else {
-          showNotification('Qaimə seçilməyib', 'warning')
-        }
-        return
-      }
-
-      // F9: Kopyala
-      if (e.key === 'F9') {
-        e.preventDefault()
-        if (selectedInvoiceIds.length > 0) {
-          handleCopy(selectedInvoiceIds)
-        } else {
-          showNotification('Qaimə seçilməyib', 'warning')
-        }
-        return
-      }
-
-      // Ctrl+P: Çap
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
-        e.preventDefault()
-        handlePrint()
-        return
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [loadInvoices, selectedInvoiceIds, handleEdit, handleDelete, handleCopy, handlePrint, openModalForInvoice, openModals, showNotification])
-
-  const loadCustomers = async () => {
-    try {
-      const data = await customersAPI.getAll()
-      setCustomers(data)
-    } catch (err: any) {
-      console.error('Müştərilər yüklənərkən xəta:', err)
-    }
   }
-
-  const loadProducts = async () => {
-    try {
-      const data = await productsAPI.getAll()
-      setProducts(data)
-    } catch (err: any) {
-      console.error('Məhsullar yüklənərkən xəta:', err)
-    }
-  }
-
-  const filterInvoices = useCallback(() => {
-    let filtered = [...invoices]
-
-    // Axtarış termini ilə filtr
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(invoice => {
-        // Əgər konkret sütun seçilibsə, yalnız həmin sütunda axtar
-        if (currentSearchColumn) {
-          switch (currentSearchColumn) {
-            case 'invoice_number':
-              return invoice.invoice_number?.toLowerCase().includes(term)
-            case 'customer_name':
-              return invoice.customers?.name?.toLowerCase().includes(term)
-            case 'notes':
-              return invoice.notes?.toLowerCase().includes(term)
-            case 'total_amount':
-              return invoice.total_amount?.toString().includes(term)
-            case 'id':
-              return invoice.id?.toString().includes(term)
-            default:
-              return true
-          }
-        }
-        // Əgər sütun seçilməyibsə, bütün sütunlarda axtar
-        return (
-          invoice.invoice_number?.toLowerCase().includes(term) ||
-          invoice.customers?.name?.toLowerCase().includes(term) ||
-          invoice.notes?.toLowerCase().includes(term) ||
-          invoice.total_amount?.toString().includes(term)
-        )
-      })
-    }
-
-    // Aktiv filtrlər ilə filtr
-    if (activeFilters.length > 0) {
-      filtered = filtered.filter(invoice => {
-        return activeFilters.every(filter => {
-          switch (filter.columnId) {
-            case 'customer_id':
-              if (filter.type === 'single') {
-                return invoice.customer_id === filter.value
-              } else if (filter.type === 'multiple' && filter.values) {
-                return filter.values.includes(invoice.customer_id)
-              }
-              return true
-            case 'invoice_number':
-              if (filter.type === 'single') {
-                return invoice.invoice_number?.toLowerCase().includes(String(filter.value).toLowerCase())
-              } else if (filter.type === 'multiple' && filter.values) {
-                return filter.values.some(v => invoice.invoice_number?.toLowerCase().includes(String(v).toLowerCase()))
-              }
-              return true
-            case 'total_amount':
-              if (filter.type === 'single') {
-                return Number(invoice.total_amount) === Number(filter.value)
-              } else if (filter.type === 'multiple' && filter.values) {
-                return filter.values.some(v => Number(invoice.total_amount) === Number(v))
-              }
-              return true
-            case 'product_id':
-              // Məhsul filtrini tətbiq et - qaimədə seçilən məhsullardan hər hansı biri varsa
-              if (filter.type === 'multiple' && filter.values && filter.values.length > 0) {
-                // Qaimənin məhsullarını yoxla
-                if (invoice.sale_invoice_items && invoice.sale_invoice_items.length > 0) {
-                  return invoice.sale_invoice_items.some((item: any) =>
-                    item.product_id && filter.values!.includes(item.product_id)
-                  )
-                }
-                return false
-              }
-              return true
-            default:
-              return true
-          }
-        })
-      })
-    }
-
-    setFilteredInvoices(filtered)
-  }, [invoices, searchTerm, currentSearchColumn, activeFilters])
-
-  useEffect(() => {
-    filterInvoices()
-  }, [filterInvoices])
-
-  const handleAddEmptyRow = () => {
-    const newItem: InvoiceItem = {
-      product_id: null,
-      product_name: '',
-      quantity: 1,
-      unit_price: 0,
-      total_price: 0,
-      searchTerm: ''
-    }
-    setInvoiceItems([...invoiceItems, newItem])
-  }
-
-  const handleProductSelectInRow = (index: number, productId: number) => {
-    const product = products.find(p => p.id === productId)
-    if (!product) return
-
-    const updatedItems = [...invoiceItems]
-    updatedItems[index] = {
-      ...updatedItems[index],
-      product_id: productId,
-      product_name: product.name,
-      unit_price: Number(product.sale_price) || 0,
-      total_price: updatedItems[index].quantity * (Number(product.sale_price) || 0),
-      searchTerm: ''
-    }
-    setInvoiceItems(updatedItems)
-  }
-
-  const handleProductSearchInRow = (index: number, searchTerm: string) => {
-    const updatedItems = [...invoiceItems]
-    updatedItems[index] = {
-      ...updatedItems[index],
-      searchTerm: searchTerm
-    }
-    setInvoiceItems(updatedItems)
-  }
-
-
-  const handleRemoveSelectedItems = () => {
-    if (selectedItemIndices.length === 0) {
-      showNotification('Sətir seçilməyib', 'warning')
-      return
-    }
-    const sortedIndices = [...selectedItemIndices].sort((a, b) => b - a) // Ən böyükdən kiçiyə
-    const newItems = [...invoiceItems]
-    sortedIndices.forEach(index => {
-      newItems.splice(index, 1)
-    })
-    setInvoiceItems(newItems)
-    setSelectedItemIndices([])
-  }
-
-  const handleCopySelectedItems = () => {
-    if (selectedItemIndices.length === 0) {
-      showNotification('Sətir seçilməyib', 'warning')
-      return
-    }
-    const sortedIndices = [...selectedItemIndices].sort((a, b) => a - b) // Kiçikdən böyüyə
-    const copiedItems = sortedIndices.map(index => ({ ...invoiceItems[index] }))
-    const newItems = [...invoiceItems, ...copiedItems]
-    setInvoiceItems(newItems)
-    setSelectedItemIndices([])
-  }
-
-  const handleMoveItemUp = () => {
-    if (selectedItemIndices.length !== 1) {
-      showNotification('Yalnız bir sətir seçilməlidir', 'warning')
-      return
-    }
-    const index = selectedItemIndices[0]
-    if (index === 0) return
-
-    const newItems = [...invoiceItems]
-    const temp = newItems[index]
-    newItems[index] = newItems[index - 1]
-    newItems[index - 1] = temp
-    setInvoiceItems(newItems)
-    setSelectedItemIndices([index - 1])
-  }
-
-  const handleMoveItemDown = () => {
-    if (selectedItemIndices.length !== 1) {
-      showNotification('Yalnız bir sətir seçilməlidir', 'warning')
-      return
-    }
-    const index = selectedItemIndices[0]
-    if (index === invoiceItems.length - 1) return
-
-    const newItems = [...invoiceItems]
-    const temp = newItems[index]
-    newItems[index] = newItems[index + 1]
-    newItems[index + 1] = temp
-    setInvoiceItems(newItems)
-    setSelectedItemIndices([index + 1])
-  }
-
-  const handleToggleItemSelection = (index: number) => {
-    if (selectedItemIndices.includes(index)) {
-      setSelectedItemIndices(selectedItemIndices.filter(i => i !== index))
-    } else {
-      setSelectedItemIndices([...selectedItemIndices, index])
-    }
-  }
-
-  const handleSelectAllItems = () => {
-    if (selectedItemIndices.length === invoiceItems.length) {
-      setSelectedItemIndices([])
-    } else {
-      setSelectedItemIndices(invoiceItems.map((_, i) => i))
-    }
-  }
-
-  // Modal drag və resize funksiyaları
-  const handleModalMouseDown = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement
-    // Düymələrə klikləyəndə drag işləməsin
-    if (target.tagName === 'BUTTON' || target.closest('button')) {
-      return
-    }
-    if ((target.classList.contains('modal-header') || target.closest('.modal-header')) && !isMaximized) {
-      setIsDragging(true)
-      setDragStart({ x: e.clientX - modalPosition.x, y: e.clientY - modalPosition.y })
-    }
-  }
-
-  const handleModalResizeMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsResizing(true)
-    setResizeStart({ x: e.clientX, y: e.clientY })
-  }
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging && !isMaximized) {
-        // Ekran sərhədləri daxilində saxla
-        const newX = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - modalSize.width))
-        const newY = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - modalSize.height))
-        setModalPosition({
-          x: newX,
-          y: newY
-        })
-      }
-      if (isResizing && !isMaximized) {
-        const deltaX = e.clientX - resizeStart.x
-        const deltaY = e.clientY - resizeStart.y
-        setModalSize({
-          width: Math.max(400, Math.min(modalSize.width + deltaX, window.innerWidth - modalPosition.x)),
-          height: Math.max(300, Math.min(modalSize.height + deltaY, window.innerHeight - modalPosition.y))
-        })
-        setResizeStart({ x: e.clientX, y: e.clientY })
-      }
-    }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-      setIsResizing(false)
-    }
-
-    if (isDragging || isResizing) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-    }
-  }, [isDragging, isResizing, dragStart, resizeStart, modalSize, modalPosition, isMaximized])
-
-  // Modal açılanda mərkəzə yerləşdir və ya yadda saxlanılmış ölçüdə aç
-  useEffect(() => {
-    if (!showModal) return
-
-    // Layout constraints-i al
-    const constraints = getLayoutConstraints()
-
-    // Əgər taskbar-dan açılırsa, onun öz ölçüsünü istifadə et
-    if (activeModalId) {
-      const minimizedModal = minimizedModals.find(m => m.id === activeModalId)
-      if (minimizedModal?.data?.modalSize) {
-        setModalSize(minimizedModal.data.modalSize)
-        const savedPosition = minimizedModal.data.modalPosition
-        if (savedPosition) {
-          // Navbar altında olduğundan əmin ol
-          const newY = Math.max(constraints.navbarHeight, savedPosition.y)
-          setModalPosition({ x: savedPosition.x, y: newY })
-        } else {
-          const centered = calculateCenteredPosition(minimizedModal.data.modalSize.width, minimizedModal.data.modalSize.height)
-          setModalPosition(centered)
-        }
-        setIsMaximized(false)
-        return
-      }
-    }
-
-    // Yeni modal və ya taskbar-dan olmayan modal üçün localStorage-dan yüklə
-    const savedSize = localStorage.getItem('satis-qaime-modal-size')
-    if (savedSize) {
-      try {
-        const parsed = JSON.parse(savedSize)
-        setModalSize(parsed)
-        const centered = calculateCenteredPosition(parsed.width, parsed.height)
-        setModalPosition(centered)
-      } catch (e) {
-        console.error('Modal ölçüsü yüklənərkən xəta:', e)
-        const defaultSize = { width: 900, height: 600 }
-        const centered = calculateCenteredPosition(defaultSize.width, defaultSize.height)
-        setModalPosition(centered)
-      }
-    } else {
-      const defaultSize = { width: 900, height: 600 }
-      const centered = calculateCenteredPosition(defaultSize.width, defaultSize.height)
-      setModalPosition(centered)
-    }
-    setIsMaximized(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showModal, activeModalId])
-
-  // Modal ölçüsü dəyişəndə localStorage-a yaz və minimize edilmiş modallarda yenilə
-  useEffect(() => {
-    if (isMaximized || modalSize.width <= 0 || modalSize.height <= 0) return
-
-    // localStorage-a yaz (ümumi default ölçü)
-    localStorage.setItem('satis-qaime-modal-size', JSON.stringify(modalSize))
-
-    // Əgər aktiv modal varsa, onun məlumatlarını da yenilə
-    if (activeModalId && showModal) {
-      setMinimizedModals(prev => prev.map(m => {
-        if (m.id === activeModalId) {
-          return {
-            ...m,
-            data: {
-              ...m.data,
-              modalSize,
-              modalPosition
-            }
-          }
-        }
-        return m
-      }))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modalSize.width, modalSize.height, modalPosition.x, modalPosition.y, isMaximized, activeModalId, showModal])
-
-  // Maximize funksiyası
-  const handleMaximize = () => {
-    if (!isMaximized) {
-      // Cari vəziyyəti yadda saxla
-      setSavedModalState({
-        position: { ...modalPosition },
-        size: { ...modalSize }
-      })
-      // Tam ekran et
-      setIsMaximized(true)
-      setModalPosition({ x: 0, y: 0 })
-      setModalSize({ width: window.innerWidth, height: window.innerHeight })
-    } else {
-      // Yadda saxlanılmış vəziyyətə qayıt
-      if (savedModalState) {
-        setModalPosition(savedModalState.position)
-        setModalSize(savedModalState.size)
-      }
-      setIsMaximized(false)
-    }
-  }
-
-  // Minimize funksiyası (taskbar-a göndər)
-  const handleMinimize = () => {
-    if (isMaximized) {
-      handleMaximize() // Maximize-dan çıx
-    }
-
-    // Store-dan minimize et (local state-i store avtomatik yeniləyəcək)
-    minimizeWindow('old-invoice-modal')
-    // Local state-i də yenilə (UI re-render üçün)
-    setIsMinimized(true)
-  }
-
-  // Taskbar-dan modalı aç (köhnə modal üçün - indi istifadə olunmur)
-  // const handleRestoreFromTaskbar = (modalId: string) => { ... }
-
-  // Taskbar-dan modalı bağla
-  const handleCloseFromTaskbar = (modalId: string) => {
-    setMinimizedModals(prev => prev.filter(m => m.id !== modalId))
-    if (activeModalId === modalId) {
-      setActiveModalId(null)
-      setIsMinimized(false)
-    }
-  }
-
-  // Modalı bağla (taskbar-dan da sil)
-  const handleCloseModal = useCallback(() => {
-    // Əgər minimize edilmişdirsə, taskbar-dan sil
-    if (isMinimized && activeModalId) {
-      handleCloseFromTaskbar(activeModalId)
-    }
-
-    setShowModal(false)
-    setIsMinimized(false)
-    setActiveModalId(null)
-    setEditingInvoiceId(null)
-    setEditingInvoiceIsActive(false)
-    setInvoiceItems([])
-    setSelectedCustomerId(null)
-    setSelectedCustomer(null)
-    setNotes('')
-    setPaymentDate('')
-    setInvoiceNumber('')
-    setInvoiceDate('')
-    setSelectedProductId(null)
-    setSelectedProduct(null)
-    setItemQuantity(1)
-    setItemPrice(0)
-    setBarcodeInput('')
-    setShowBarcodeInput(false)
-    setCustomerSearchTerm('')
-    setProductSearchTerm('')
-    setShowCustomerDropdown(false)
-    setShowProductDropdown(false)
-    setSelectedItemIndices([])
-  }, [isMinimized, activeModalId])
-
-  const handleUpdateItem = (index: number, field: 'quantity' | 'unit_price', value: number) => {
-    const updatedItems = [...invoiceItems]
-    updatedItems[index] = {
-      ...updatedItems[index],
-      [field]: value,
-      total_price: field === 'quantity'
-        ? value * updatedItems[index].unit_price
-        : updatedItems[index].quantity * value
-    }
-    setInvoiceItems(updatedItems)
-  }
-
-  // Hər sətir üçün məhsul axtarışı
-  const getFilteredProductsForRow = (searchTerm: string) => {
-    if (!searchTerm.trim()) return []
-    const term = searchTerm.toLowerCase()
-    return products.filter(product =>
-      product.name.toLowerCase().includes(term) ||
-      product.code?.toLowerCase().includes(term) ||
-      product.barcode?.toLowerCase().includes(term)
-    ).slice(0, 10)
-  }
-
-  const handleProductChange = (productId: number) => {
-    setSelectedProductId(productId)
-    const product = products.find(p => p.id === productId)
-    if (product) {
-      setSelectedProduct(product)
-      if (product.sale_price) {
-        setItemPrice(Number(product.sale_price))
-      }
-    }
-  }
-
-  // Barkod scan handler (köhnə modal üçün - indi istifadə olunmur)
-  // const handleBarcodeScan = (barcode: string) => { ... }
-
-  // Barkod input handler (köhnə modal üçün - indi istifadə olunmur)
-  // const barcodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // const handleBarcodeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { ... }
-
-  const filteredCustomers = React.useMemo(() => {
-    if (!customerSearchTerm.trim()) return []
-    const term = customerSearchTerm.toLowerCase()
-    return customers.filter(customer =>
-      customer.name.toLowerCase().includes(term) ||
-      customer.phone?.toLowerCase().includes(term) ||
-      customer.email?.toLowerCase().includes(term)
-    ).slice(0, 10) // Maksimum 10 nəticə
-  }, [customers, customerSearchTerm])
-
-
-  const filteredCustomersForModal = React.useMemo(() => {
-    if (!customerModalSearchTerm.trim()) return customers
-    const term = customerModalSearchTerm.toLowerCase()
-    return customers.filter(customer =>
-      customer.name.toLowerCase().includes(term) ||
-      customer.phone?.toLowerCase().includes(term) ||
-      customer.email?.toLowerCase().includes(term)
-    )
-  }, [customers, customerModalSearchTerm])
-
-  const filteredProductsForModal = React.useMemo(() => {
-    if (!productModalSearchTerm.trim()) return products
-    const term = productModalSearchTerm.toLowerCase()
-    return products.filter(product =>
-      product.name.toLowerCase().includes(term) ||
-      product.code?.toLowerCase().includes(term) ||
-      product.barcode?.toLowerCase().includes(term)
-    )
-  }, [products, productModalSearchTerm])
-
-  // Tarix formatlaşdırma funksiyası
-  const formatDateInput = (input: string): string => {
-    const today = new Date()
-    const currentYear = today.getFullYear()
-    const currentMonth = today.getMonth() + 1
-
-    // Təmizlə: yalnız rəqəmlər və nöqtələr
-    const cleaned = input.replace(/[^\d.]/g, '')
-
-    // Formatlar: "15", "15.11", "15.11.2025"
-    const parts = cleaned.split('.')
-
-    if (parts.length === 1 && parts[0]) {
-      // Sadəcə gün: "15" -> "15.11.2025"
-      const day = parseInt(parts[0])
-      if (day >= 1 && day <= 31) {
-        return `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      }
-    } else if (parts.length === 2 && parts[0] && parts[1]) {
-      // Gün və ay: "15.11" -> "15.11.2025"
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      }
-    } else if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
-      // Tam tarix: "15.11.2025" -> "2025-11-15"
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      const year = parseInt(parts[2])
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      }
-    }
-
-    return input // Əgər format düzgün deyilsə, olduğu kimi qaytar
-  }
-
-  // F4 qısayolu üçün useEffect
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // F4 basıldıqda
-      if (e.key === 'F4') {
-        // Aktiv element yoxla
-        const activeElement = document.activeElement as HTMLElement
-
-        // Müştəri input-undadırsa
-        if (activeElement && activeElement.getAttribute('data-customer-input') === 'true') {
-          e.preventDefault()
-          setShowCustomerModal(true)
-        }
-
-        // Məhsul input-undadırsa (modal içində)
-        if (activeElement && activeElement.getAttribute('data-product-input') === 'true') {
-          e.preventDefault()
-          setShowProductModal(true)
-        }
-
-        // Cədvəldəki məhsul input-undadırsa
-        if (activeElement && activeElement.getAttribute('data-product-row-input') === 'true') {
-          e.preventDefault()
-          const rowIndex = activeElement.getAttribute('data-row-index')
-          if (rowIndex !== null) {
-            setShowProductModal(true)
-            // Seçilmiş sətiri yadda saxla ki, modal bağlandıqdan sonra o sətirə məhsul əlavə edə bilək
-            sessionStorage.setItem('selectedProductRowIndex', rowIndex)
-          }
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  const handleSaveInvoice = async (confirmInvoice: boolean = false) => {
-    // Validasiya
-    if (!selectedCustomerId) {
-      showNotification('Müştəri seçilməlidir', 'warning')
-      return
-    }
-
-    // Validasiya - məhsul seçilməlidir
-    const validItems = invoiceItems.filter(item => item.product_id !== null)
-    if (validItems.length === 0) {
-      showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
-      return
-    }
-
-    try {
-      const items = validItems.map(item => ({
-        product_id: item.product_id!,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-      }))
-
-      if (editingInvoiceId) {
-        // Redaktə
-        await ordersAPI.update(editingInvoiceId.toString(), {
-          customer_id: selectedCustomerId,
-          items,
-          notes: notes || undefined,
-          payment_date: paymentDate || undefined,
-          invoice_number: invoiceNumber || undefined,
-          invoice_date: invoiceDate || undefined,
-        })
-
-        // Qaimə yeniləndikdən sonra siyahını yenilə
-        await loadInvoices()
-
-        // Yenilənmiş qaiməni yenidən yüklə ki, kod düzgün görünsün
-        const updatedInvoice = await ordersAPI.getById(editingInvoiceId.toString())
-        setInvoiceNumber(updatedInvoice.invoice_number || '')
-
-        // Qaimənin vəziyyətini təyin et
-        if (confirmInvoice) {
-          // OK düyməsi - həmişə təsdiq edir
-          await ordersAPI.updateStatus(editingInvoiceId.toString(), true)
-          setEditingInvoiceIsActive(true) // Statusu yenilə
-          showNotification('Qaimə uğurla yeniləndi və təsdiq edildi', 'success')
-        } else {
-          // Yadda saxla düyməsi
-          // Əgər qaimə təsdiqlidirsə, təsdiqli qalır
-          // Əgər qaimə təsdiqsizdirsə, təsdiqsiz qalır
-          await ordersAPI.updateStatus(editingInvoiceId.toString(), editingInvoiceIsActive)
-          showNotification('Qaimə uğurla yeniləndi', 'success')
-        }
-      } else {
-        // Yeni qaimə
-        const newInvoice = await ordersAPI.create({
-          customer_id: selectedCustomerId,
-          items,
-          notes: notes || undefined,
-          payment_date: paymentDate || undefined,
-          invoice_number: invoiceNumber || undefined,
-          invoice_date: invoiceDate || undefined,
-          is_active: confirmInvoice, // Təsdiq edilməlidirsə true, yoxsa false
-        })
-
-        // Qaimə yaradıldıqdan sonra siyahını yenilə ki, qaimə nömrəsi göstərilsin
-        await loadInvoices()
-
-        // Yeni yaradılan qaiməni redaktə rejiminə keçir ki, qaimə nömrəsi görünsün
-        if (newInvoice.id) {
-          setEditingInvoiceId(newInvoice.id)
-          // Backend-dən qayıdan qaimə nömrəsini göstər
-          setInvoiceNumber(newInvoice.invoice_number || '')
-
-          showNotification(confirmInvoice ? 'Qaimə uğurla yaradıldı və təsdiq edildi' : 'Qaimə uğurla yaradıldı (təsdiqsiz)', 'success')
-          // Modal açıq qalır, yalnız qaimə nömrəsi görünəcək
-        }
-
-        // Modalı bağlama, yalnız təmizləmə apar
-        // setShowModal(false) - komment edildi, modal açıq qalır
-        // setEditingInvoiceId(null) - komment edildi, yeni qaimə ID-si saxlanılır
-        // setInvoiceItems([]) - komment edildi, məhsullar saxlanılır
-        // setSelectedCustomerId(null) - komment edildi, müştəri saxlanılır
-        // setSelectedCustomer(null) - komment edildi, müştəri saxlanılır
-        // setNotes('') - komment edildi, qeydlər saxlanılır
-        // setPaymentDate('') - komment edildi, tarix saxlanılır
-        setSelectedProductId(null)
-        setSelectedProduct(null)
-        setItemQuantity(1)
-        setItemPrice(0)
-        setBarcodeInput('')
-        setShowBarcodeInput(false)
-        setCustomerSearchTerm('')
-        setProductSearchTerm('')
-        setShowCustomerDropdown(false)
-        setShowProductDropdown(false)
-        return // Funksiyadan çıx ki, modal açıq qalsın
-      }
-
-      // Redaktə üçün modalı bağla və təmizlə
-      setShowModal(false)
-      setEditingInvoiceId(null)
-      setEditingInvoiceIsActive(false)
-      setInvoiceItems([])
-      setSelectedCustomerId(null)
-      setSelectedCustomer(null)
-      setNotes('')
-      setPaymentDate('')
-      setInvoiceNumber('')
-      setInvoiceDate('')
-      setSelectedProductId(null)
-      setSelectedProduct(null)
-      setItemQuantity(1)
-      setItemPrice(0)
-      setBarcodeInput('')
-      setShowBarcodeInput(false)
-      setCustomerSearchTerm('')
-      setProductSearchTerm('')
-      setShowCustomerDropdown(false)
-      setShowProductDropdown(false)
-      await loadInvoices()
-    } catch (err: any) {
-      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanarkən xəta baş verdi', 'error')
-    }
-  }
-
-  const handleOk = async () => {
-    await handleSaveInvoice(true) // Təsdiq edilmiş qaimə
-  }
-
-  const handleSaveWithoutConfirm = async () => {
-    await handleSaveInvoice(false) // Təsdiq edilməmiş qaimə
-  }
-
-  const totalAmount = invoiceItems.reduce((sum, item) => sum + item.total_price, 0)
 
   // DataTable üçün məlumatları formatla
-  const tableData = filteredInvoices.map(invoice => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const paymentDate = invoice.payment_date ? new Date(invoice.payment_date) : null
-    let daysRemaining: number | string = '-'
+  const tableData = filteredInvoices.map(invoice => ({
+    ...invoice,
+    is_active_status: invoice.is_active ? '✓' : '',
+    customer_name: invoice.customers?.name || '-',
+    invoice_date: invoice.invoice_date ? (() => {
+      const date = new Date(invoice.invoice_date)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    })() : '-',
+    payment_date: invoice.payment_date ? (() => {
+      const date = new Date(invoice.payment_date)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    })() : '-',
+    total_amount: invoice.total_amount ? `${Number(invoice.total_amount).toFixed(2)} ₼` : '0.00 ₼',
+    created_at: invoice.created_at ? (() => {
+      const date = new Date(invoice.created_at)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
+    })() : '-',
+  }))
 
-    if (paymentDate) {
-      paymentDate.setHours(0, 0, 0, 0)
-      const diff = calculateDaysDifference(today, paymentDate)
-      daysRemaining = diff
-    }
 
-    const { invoice_date, ...invoiceWithoutDate } = invoice
-    return {
-      ...invoiceWithoutDate,
-      is_active_status: (invoice as any).is_active ? '✓' : '',
-      customer_name: invoice.customers?.name || '-',
-      created_at: invoice.created_at ? new Date(invoice.created_at).toLocaleString('az-AZ', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      }) : '-',
-      payment_date: invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('az-AZ') : '-',
-      days_remaining: daysRemaining === '-' ? '-' : (typeof daysRemaining === 'number' ? (daysRemaining < 0 ? `${Math.abs(daysRemaining)} gün keçib` : `${daysRemaining} gün qalıb`) : daysRemaining),
-      total_amount: invoice.total_amount ? `${Number(invoice.total_amount).toFixed(2)} ₼` : '0.00 ₼',
-    }
-  })
 
   return (
     <UniversalContainer>
       <style>{notificationStyles}</style>
-      <UniversalNavbar
-        onAdd={async () => {
-          await openModalForInvoice(null)
-        }}
+      <UniversalToolBar
+        onAdd={() => openModalForInvoice(null)}
         onEdit={() => {
           if (selectedInvoiceIds.length === 1) {
             handleEdit(selectedInvoiceIds)
@@ -1842,72 +1453,20 @@ export default function SatisQaimeleri() {
         }}
         onPrint={handlePrint}
         onRefresh={loadInvoices}
-        onSettings={() => { }}
         onSearch={handleSearch}
-        onFilter={() => setShowFilterModal(true)}
+        onFilter={() => {
+          // Filter logic
+        }}
       />
 
       {/* Aktiv filtrlər */}
-      {activeFilters.length > 0 && (
+      {/* activeFilters.length > 0 && (
         <div style={{ display: 'flex', gap: '8px', padding: '0 15px', flexWrap: 'wrap', marginBottom: '10px' }}>
           {activeFilters.map((filter, index) => {
-            let label = ''
-            let value = ''
-
-            if (filter.columnId === 'customer_id') {
-              const customer = customers.find(c => c.id === Number(filter.value))
-              label = 'Müştəri'
-              value = customer ? customer.name : filter.value
-            } else if (filter.columnId === 'product_id') {
-              if (Array.isArray(filter.value)) {
-                label = 'Məhsul'
-                value = `${filter.value.length} məhsul`
-              }
-            } else {
-              label = defaultColumns.find(c => c.id === filter.columnId)?.label || filter.columnId
-              value = filter.value.toString()
-            }
-
-            return (
-              <div
-                key={index}
-                style={{
-                  background: '#e9ecef',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  border: '1px solid #ced4da'
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{label}:</span>
-                <span>{value}</span>
-                <button
-                  onClick={() => {
-                    const newFilters = activeFilters.filter((_, i) => i !== index)
-                    setActiveFilters(newFilters)
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#dc3545',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '0',
-                    lineHeight: '1',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )
+             ...
           })}
         </div>
-      )}
+      ) */}
 
       <UniversalTable
         data={tableData}
@@ -1923,1793 +1482,39 @@ export default function SatisQaimeleri() {
         selectedCount={selectedInvoiceIds.length}
       />
 
-      {/* Çoxlu Modallar */}
-      {Array.from(openModals.values()).map((modal, index) => (
-        <InvoiceModal
-          key={modal.id}
-          modal={modal}
-          customers={customers}
-          products={products}
-          modalIndex={index}
-          isActive={activeModalId === modal.id}
-          onActivate={(modalId) => {
-            const currentModal = openModals.get(modalId)
-            if (currentModal) {
-              const windowId = `invoice-modal-${modalId}`
-              const newZIndex = baseZIndex + 1
-              setBaseZIndex(newZIndex)
-              setActiveModalId(modalId)
-              setOpenModals(prev => {
-                const newMap = new Map(prev)
-                newMap.set(modalId, { ...currentModal, zIndex: newZIndex })
-                return newMap
-              })
-              updateWindow(windowId, { zIndex: newZIndex, isVisible: true, isMinimized: false })
-            }
-          }}
-          windowId={`invoice-modal-${modal.id}`}
-          onClose={(modalId) => {
-            console.log('[Satis.tsx] onClose called with modalId:', modalId)
-            const windowId = `invoice-modal-${modalId}`
-            console.log('[Satis.tsx] Removing window:', windowId)
-            removeWindow(windowId)
-            setOpenModals(prev => {
-              console.log('[Satis.tsx] Current openModals size:', prev.size)
-              const newMap = new Map(prev)
-              newMap.delete(modalId)
-              console.log('[Satis.tsx] After delete, newMap size:', newMap.size)
-              return newMap
-            })
-            if (activeModalId === modalId) {
-              const remainingModals = Array.from(openModals.values()).filter(m => m.id !== modalId)
-              if (remainingModals.length > 0) {
-                const topModal = remainingModals.reduce((prev, curr) =>
-                  curr.zIndex > prev.zIndex ? curr : prev
-                )
-                console.log('[Satis.tsx] Setting new active modal:', topModal.id)
-                setActiveModalId(topModal.id)
-              } else {
-                console.log('[Satis.tsx] No remaining modals, setting activeModalId to null')
-                setActiveModalId(null)
-              }
-            }
-          }}
-          onUpdate={(modalId, updates) => {
-            setOpenModals(prev => {
-              const newMap = new Map(prev)
-              const existing = newMap.get(modalId)
-              if (existing) {
-                newMap.set(modalId, { ...existing, ...updates })
-              }
-              return newMap
-            })
-          }}
-          onSave={async (_modalId, modalData) => {
-            console.log('[Satis.tsx] onSave çağırıldı', { modalId: _modalId, modalData })
-            try {
-              // Validasiya - məhsul seçilməlidir
-              const validItems = modalData.invoiceItems.filter(item => item.product_id !== null)
-              console.log('[Satis.tsx] Valid items:', validItems.length)
-              if (validItems.length === 0) {
-                console.log('[Satis.tsx] Validasiya xətası: məhsul seçilməyib')
-                showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
-                return
-              }
-
-              if (modal.invoiceId) {
-                // Mövcud qaimə - yenilə
-                console.log('[Satis.tsx] Mövcud qaimə yenilənir:', modal.invoiceId)
-                await ordersAPI.update(modal.invoiceId.toString(), {
-                  customer_id: modalData.selectedCustomerId ?? undefined,
-                  items: validItems.map(item => ({
-                    product_id: item.product_id!,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    total_price: item.total_price,
-                  })),
-                  notes: modalData.notes || undefined,
-                  payment_date: modalData.paymentDate || undefined,
-                  invoice_number: modalData.invoiceNumber || undefined,
-                  invoice_date: modalData.invoiceDate || undefined,
-                })
-                // Vəziyyəti dəyişdirmə - mövcud vəziyyəti saxla
-                if (modal.isActive !== undefined) {
-                  await ordersAPI.updateStatus(modal.invoiceId.toString(), modal.isActive)
-                }
-                console.log('[Satis.tsx] Qaimə yeniləndi')
-                showNotification('Qaimə uğurla yeniləndi', 'success')
-              } else {
-                // Yeni qaimə - yarad, amma tesdiqsiz saxla
-                console.log('[Satis.tsx] Yeni qaimə yaradılır (təsdiqsiz)...')
-                const newInvoice = await ordersAPI.create({
-                  customer_id: modalData.selectedCustomerId ?? undefined,
-                  items: validItems.map(item => ({
-                    product_id: item.product_id!,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    total_price: item.total_price,
-                  })),
-                  notes: modalData.notes || undefined,
-                  payment_date: modalData.paymentDate || undefined,
-                  invoice_number: modalData.invoiceNumber || undefined,
-                  is_active: false, // Tesdiqsiz saxla
-                })
-
-                // Qaimə tarixini formatla (saat, dəqiqə, saniyə ilə)
-                let invoiceDateStr = ''
-                if (newInvoice.invoice_date) {
-                  const date = new Date(newInvoice.invoice_date)
-                  invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
-                }
-
-                // Modalı yenilə - qaimə nömrəsi və tarixi əlavə et
-                setOpenModals(prev => {
-                  const newMap = new Map(prev)
-                  const currentModal = newMap.get(modal.id)
-                  if (currentModal) {
-                    newMap.set(modal.id, {
-                      ...currentModal,
-                      invoiceId: newInvoice.id,
-                      isActive: false,
-                      data: {
-                        ...currentModal.data,
-                        invoiceNumber: newInvoice.invoice_number || '',
-                        invoiceDate: invoiceDateStr
-                      }
-                    })
-                  }
-                  return newMap
-                })
-
-                console.log('[Satis.tsx] Yeni qaimə yaradıldı:', newInvoice.id)
-                showNotification('Qaimə uğurla yaradıldı (təsdiqsiz)', 'success')
-              }
-              console.log('[Satis.tsx] Cədvəl yenilənir (loadInvoices)...')
-              await loadInvoices()
-              console.log('[Satis.tsx] Cədvəl yeniləndi')
-            } catch (err: any) {
-              showNotification(err.response?.data?.message || 'Qaimə yadda saxlanarkən xəta baş verdi', 'error')
-              throw err // Xətanı yuxarı at ki, modal bağlanmasın
-            }
-          }}
-          onSaveAndConfirm={async (_modalId, modalData) => {
-            console.log('[Satis.tsx] onSaveAndConfirm çağırıldı', { modalId: _modalId, modalData })
-            try {
-              // Validasiya - məhsul seçilməlidir
-              const validItems = modalData.invoiceItems.filter(item => item.product_id !== null)
-              console.log('[Satis.tsx] Valid items:', validItems.length)
-              if (validItems.length === 0) {
-                console.log('[Satis.tsx] Validasiya xətası: məhsul seçilməyib')
-                showNotification('Ən azı bir məhsul seçilməlidir', 'warning')
-                return
-              }
-
-              const modal = openModals.get(_modalId)
-              if (!modal) return
-
-              if (modal.invoiceId) {
-                // Mövcud qaimə - yenilə və təsdiqlə
-                console.log('[Satis.tsx] Mövcud qaimə yenilənir və təsdiqlənir:', modal.invoiceId)
-                await ordersAPI.update(modal.invoiceId.toString(), {
-                  customer_id: modalData.selectedCustomerId ?? undefined,
-                  items: validItems.map(item => ({
-                    product_id: item.product_id!,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    total_price: item.total_price,
-                  })),
-                  notes: modalData.notes || undefined,
-                  payment_date: modalData.paymentDate || undefined,
-                  invoice_number: modalData.invoiceNumber || undefined,
-                  invoice_date: modalData.invoiceDate || undefined,
-                })
-                // Təsdiqlə
-                await ordersAPI.updateStatus(modal.invoiceId.toString(), true)
-                console.log('[Satis.tsx] Qaimə yeniləndi və təsdiq edildi')
-                showNotification('Qaimə uğurla yeniləndi və təsdiq edildi', 'success')
-              } else {
-                // Yeni qaimə - yarad və təsdiqlə
-                console.log('[Satis.tsx] Yeni qaimə yaradılır və təsdiqlənir...')
-                const newInvoice = await ordersAPI.create({
-                  customer_id: modalData.selectedCustomerId ?? undefined,
-                  items: validItems.map(item => ({
-                    product_id: item.product_id!,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    total_price: item.total_price,
-                  })),
-                  notes: modalData.notes || undefined,
-                  payment_date: modalData.paymentDate || undefined,
-                  invoice_number: modalData.invoiceNumber || undefined,
-                  is_active: true, // Təsdiqlə
-                })
-
-                // Qaimə tarixini formatla (saat, dəqiqə, saniyə ilə)
-                let invoiceDateStr = ''
-                if (newInvoice.invoice_date) {
-                  const date = new Date(newInvoice.invoice_date)
-                  invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
-                }
-
-                // Modalı yenilə - qaimə nömrəsi və tarixi əlavə et
-                setOpenModals(prev => {
-                  const newMap = new Map(prev)
-                  const currentModal = newMap.get(modal.id)
-                  if (currentModal) {
-                    newMap.set(modal.id, {
-                      ...currentModal,
-                      invoiceId: newInvoice.id,
-                      isActive: true,
-                      data: {
-                        ...currentModal.data,
-                        invoiceNumber: newInvoice.invoice_number || '',
-                        invoiceDate: invoiceDateStr
-                      }
-                    })
-                  }
-                  return newMap
-                })
-
-                console.log('[Satis.tsx] Yeni qaimə yaradıldı və təsdiq edildi:', newInvoice.id)
-                showNotification('Qaimə uğurla yaradıldı və təsdiq edildi', 'success')
-              }
-              console.log('[Satis.tsx] Cədvəl yenilənir (loadInvoices)...')
-              await loadInvoices()
-              console.log('[Satis.tsx] Cədvəl yeniləndi')
-            } catch (err: any) {
-              showNotification(err.response?.data?.message || 'Qaimə yadda saxlanarkən xəta baş verdi', 'error')
-              throw err // Xətanı yuxarı at ki, modal bağlanmasın
-            }
-          }}
-          onPrint={async (modalId, _modalData) => {
-            const modal = openModals.get(modalId)
-            if (!modal || !modal.invoiceId) {
-              showNotification('Yalnız mövcud qaimələr çap edilə bilər', 'warning')
-              return
-            }
-
-            try {
-              const fullInvoice = await ordersAPI.getById(modal.invoiceId.toString())
-              const printWindow = window.open('', '_blank')
-              if (printWindow) {
-                const invoiceDate = fullInvoice.invoice_date ? new Date(fullInvoice.invoice_date).toLocaleDateString('az-AZ') : '-'
-                const items = fullInvoice.sale_invoice_items || []
-                const totalAmount = fullInvoice.total_amount ? Number(fullInvoice.total_amount) : 0
-
-                let htmlContent = `
-                    <html>
-                      <head>
-                        <title>Satış Qaiməsi</title>
-                        <style>
-                          body { font-family: Arial, sans-serif; padding: 20px; }
-                          .invoice { border: 1px solid #ddd; padding: 20px; }
-                          .invoice-header { text-align: center; margin-bottom: 20px; }
-                          .invoice-header h2 { margin: 0; }
-                          .invoice-info { display: flex; justify-content: space-between; margin-bottom: 20px; }
-                          .invoice-info div { flex: 1; }
-                          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                          th { background-color: #f2f2f2; }
-                          .total-row { font-weight: bold; background-color: #f9f9f9; }
-                          .text-right { text-align: right; }
-                        </style>
-                      </head>
-                      <body>
-                        <div class="invoice">
-                          <div class="invoice-header">
-                            <h2>SATIŞ QAIMƏSİ</h2>
-                          </div>
-                          <div class="invoice-info">
-                            <div>
-                              <p><strong>Faktura №:</strong> ${fullInvoice.invoice_number || ''}</p>
-                              <p><strong>Tarix:</strong> ${invoiceDate}</p>
-                            </div>
-                            <div>
-                              <p><strong>Müştəri:</strong> ${fullInvoice.customers?.name || '-'}</p>
-                              ${fullInvoice.customers?.phone ? `<p><strong>Telefon:</strong> ${fullInvoice.customers.phone}</p>` : ''}
-                            </div>
-                          </div>
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>№</th>
-                                <th>Məhsul</th>
-                                <th class="text-right">Miqdar</th>
-                                <th class="text-right">Vahid qiymət</th>
-                                <th class="text-right">Cəmi</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              ${items.map((item: any, idx: number) => `
-                                <tr>
-                                  <td>${idx + 1}</td>
-                                  <td>${item.products?.name || 'Naməlum məhsul'}</td>
-                                  <td class="text-right">${item.quantity}</td>
-                                  <td class="text-right">${Number(item.unit_price).toFixed(2)} ₼</td>
-                                  <td class="text-right">${Number(item.total_price).toFixed(2)} ₼</td>
-                                </tr>
-                              `).join('')}
-                            </tbody>
-                            <tfoot>
-                              <tr class="total-row">
-                                <td colspan="4" class="text-right"><strong>Ümumi:</strong></td>
-                                <td class="text-right"><strong>${totalAmount.toFixed(2)} ₼</strong></td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                          ${fullInvoice.notes ? `<p style="margin-top: 20px;"><strong>Qeydlər:</strong> ${fullInvoice.notes}</p>` : ''}
-                        </div>
-                      </body>
-                    </html>
-                  `
-                printWindow.document.write(htmlContent)
-                printWindow.document.close()
-                printWindow.print()
-              }
-            } catch (err: any) {
-              showNotification(err.response?.data?.message || 'Qaimə çap edilərkən xəta baş verdi', 'error')
-            }
-          }}
-        />
-      ))}
-
-      {/* Boşluğa klik edəndə aktiv modalı arxaya göndər */}
-      {openModals.size > 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 500,
-            pointerEvents: 'auto',
-          }}
-          onClick={(e) => {
-            const target = e.target as HTMLElement
-            if (!target.closest('[data-modal-container]')) {
-              if (activeModalId) {
-                const currentModal = openModals.get(activeModalId)
-                if (currentModal) {
-                  const minZIndex = Math.min(...Array.from(openModals.values()).map(m => m.zIndex))
-                  const newZIndex = minZIndex - 1
-                  setOpenModals(prev => {
-                    const newMap = new Map(prev)
-                    newMap.set(activeModalId, { ...currentModal, zIndex: newZIndex })
-                    return newMap
-                  })
-                  setActiveModalId(null)
-                }
-              }
-            }
-          }}
-        />
-      )}
-
-      {/* Yeni Qaimə Modal (köhnə sistem) */}
-      {showModal && (() => {
-        // Store-dan modalın z-index və isVisible məlumatlarını götür
-        const windowInfo = windows.get('old-invoice-modal')
-        if (!windowInfo) {
-          return null // Store-da yoxdursa göstərmə
-        }
-
-        const modalZIndex = windowInfo.zIndex || 1000
-        const storeIsMinimized = windowInfo.isMinimized || false
-        const storeIsVisible = windowInfo.isVisible && !storeIsMinimized
-        const storePosition = windowInfo.position
-        const storeSize = windowInfo.size
-        const storeIsMaximized = windowInfo.isMaximized || false
-
-        // Store-dan mövqe və ölçü varsa istifadə et
-        const currentPosition = storePosition || modalPosition
-        const currentSize = storeSize || modalSize
-        const currentIsMaximized = storeIsMaximized
-
-        // Store-dan state-i oxu, local state-dən deyil
-        if (!storeIsVisible) {
-          return null // Store-da görünmürsə göstərmə
-        }
-
-        return (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0, 0, 0, 0.5)',
-              zIndex: modalZIndex,
-            }}
-            onClick={(e) => {
-              // Boşluğa klikləyəndə modalı bağlama, yalnız arxaya göndər
-              const target = e.target as HTMLElement
-              if (target === e.currentTarget) {
-                console.log('[DEBUG] Boşluğa klikləndi - modalı arxaya göndəririk')
-                const currentWindow = windows.get('old-invoice-modal')
-                if (currentWindow) {
-                  // Bütün görünən modalları tap (həm köhnə sistem, həm də yeni sistem)
-                  const allVisibleWindows = Array.from(windows.values())
-                    .filter(w => w.isVisible && !w.isMinimized && w.id !== 'old-invoice-modal')
-                  const openModalsCount = Array.from(openModals.values()).length
-
-                  console.log('[DEBUG] Görünən modallar:', allVisibleWindows.length, 'Açıq modallar (yeni sistem):', openModalsCount)
-
-                  if (allVisibleWindows.length > 0 || openModalsCount > 0) {
-                    const minZIndex = allVisibleWindows.length > 0
-                      ? Math.min(...allVisibleWindows.map(w => w.zIndex))
-                      : currentWindow.zIndex - 100
-                    const newZIndex = minZIndex - 1
-                    console.log('[DEBUG] Yeni z-index:', newZIndex, 'Köhnə:', currentWindow.zIndex, 'Digər modallar:', allVisibleWindows.length)
-                    updateWindow('old-invoice-modal', { zIndex: newZIndex })
-                  } else {
-                    // Digər modallar yoxdursa, sadəcə z-index-i azalt
-                    const newZIndex = currentWindow.zIndex - 100
-                    console.log('[DEBUG] Digər modallar yoxdur, z-index azaldı:', newZIndex)
-                    updateWindow('old-invoice-modal', { zIndex: newZIndex })
-                  }
-                } else {
-                  console.log('[DEBUG] Modal store-da tapılmadı')
-                }
-              }
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                left: currentIsMaximized ? 0 : `${currentPosition.x}px`,
-                top: currentIsMaximized ? 0 : `${currentPosition.y}px`,
-                width: currentIsMaximized ? '100%' : `${currentSize.width}px`,
-                height: currentIsMaximized ? '100%' : `${currentSize.height}px`,
-                background: 'white',
-                borderRadius: '8px',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                overflow: 'hidden',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal başlığı - drag üçün */}
-              <div
-                className="modal-header"
-                onMouseDown={handleModalMouseDown}
-                style={{
-                  padding: '1rem',
-                  borderBottom: '1px solid #ddd',
-                  cursor: isDragging ? 'grabbing' : 'grab',
-                  background: '#f8f9fa',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  userSelect: 'none',
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>
-                  {editingInvoiceId ? 'Qaiməni Redaktə Et' : 'Yeni Satış Qaiməsi'}
-                </h2>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <button
-                    onClick={handleMinimize}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      fontSize: '1.2rem',
-                      cursor: 'pointer',
-                      padding: '0.25rem 0.5rem',
-                      lineHeight: 1,
-                      color: '#666',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '4px',
-                    }}
-                    title="Kiçilt"
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#e9ecef'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    −
-                  </button>
-                  <button
-                    onClick={handleMaximize}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      fontSize: '1rem',
-                      cursor: 'pointer',
-                      padding: '0.25rem 0.5rem',
-                      lineHeight: 1,
-                      color: '#666',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '4px',
-                    }}
-                    title={isMaximized ? "Bərpa et" : "Böyüt"}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#e9ecef'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    {isMaximized ? '⧉' : '□'}
-                  </button>
-                  <button
-                    onClick={handleCloseModal}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      fontSize: '1.5rem',
-                      cursor: 'pointer',
-                      padding: '0.25rem 0.5rem',
-                      lineHeight: 1,
-                      color: '#666',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '4px',
-                    }}
-                    title="Bağla"
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#dc3545'
-                      e.currentTarget.style.color = 'white'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = '#666'
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-
-              {/* Modal məzmunu */}
-              <div
-                style={{
-                  flex: 1,
-                  overflow: 'auto',
-                  padding: '1.5rem',
-                }}
-              >
-
-                {/* Müştəri seçimi */}
-                <div style={{ marginBottom: '1rem', position: 'relative' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                    Müştəri
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <div style={{ flex: 1, position: 'relative' }}>
-                      <input
-                        type="text"
-                        placeholder="Müştəri adını yazın... (F4 - siyahı)"
-                        value={selectedCustomer ? selectedCustomer.name : customerSearchTerm}
-                        data-customer-input="true"
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setCustomerSearchTerm(value)
-                          setShowCustomerDropdown(value.length > 0)
-                          if (!value) {
-                            setSelectedCustomerId(null)
-                            setSelectedCustomer(null)
-                            setShowCustomerDropdown(false)
-                          }
-                        }}
-                        onFocus={() => {
-                          if (customerSearchTerm && !selectedCustomer) {
-                            setShowCustomerDropdown(true)
-                          }
-                        }}
-                        onBlur={() => {
-                          // Dropdown-u gizlət, amma kiçik gecikmə ilə ki, click işləsin
-                          setTimeout(() => setShowCustomerDropdown(false), 200)
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          fontSize: '1rem'
-                        }}
-                      />
-                      {showCustomerDropdown && filteredCustomers.length > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          background: 'white',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          marginTop: '0.25rem',
-                          maxHeight: '200px',
-                          overflow: 'auto',
-                          zIndex: 1000,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                        }}>
-                          {filteredCustomers.map(customer => (
-                            <div
-                              key={customer.id}
-                              onClick={() => {
-                                setSelectedCustomerId(customer.id)
-                                setSelectedCustomer(customer)
-                                setCustomerSearchTerm('')
-                                setShowCustomerDropdown(false)
-                              }}
-                              style={{
-                                padding: '0.75rem',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #f0f0f0'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#f8f9fa'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'white'
-                              }}
-                            >
-                              <div style={{ fontWeight: 'bold' }}>{customer.name}</div>
-                              {customer.phone && <div style={{ fontSize: '0.875rem', color: '#666' }}>Tel: {customer.phone}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomerModal(true)}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        background: '#6c757d',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '1rem'
-                      }}
-                      title="Müştərilər siyahısı"
-                    >
-                      📁
-                    </button>
-                    {selectedCustomer && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCustomerId(null)
-                          setSelectedCustomer(null)
-                          setCustomerSearchTerm('')
-                          setShowCustomerDropdown(false)
-                        }}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          background: '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Təmizlə"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  {selectedCustomer && (
-                    <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#e7f3ff', borderRadius: '4px', fontSize: '0.875rem' }}>
-                      <strong>{selectedCustomer.name}</strong>
-                      {selectedCustomer.phone && <span> - {selectedCustomer.phone}</span>}
-                    </div>
-                  )}
-                </div>
-
-                {/* Qaimə tarixi və nömrəsi */}
-                <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
-                  {/* Qaimə tarixi */}
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                      Qaimə tarixi
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={invoiceDate}
-                      onChange={(e) => setInvoiceDate(e.target.value)}
-                      step="1"
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '1rem'
-                      }}
-                    />
-                  </div>
-                  {/* Qaimə nömrəsi */}
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                      Qaimə nömrəsi
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Qaimə nömrəsini daxil edin..."
-                      value={invoiceNumber}
-                      onChange={(e) => setInvoiceNumber(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '1rem'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Ödəniş tarixi */}
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                    Son ödəniş tarixi
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="15, 15.11 və ya 15.11.2025 formatında daxil edin..."
-                    value={paymentDate}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setPaymentDate(value)
-                    }}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        const value = e.currentTarget.value.trim()
-                        if (value) {
-                          const formatted = formatDateInput(value)
-                          if (formatted) {
-                            setPaymentDate(formatted)
-                          }
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const value = e.target.value.trim()
-                      if (value) {
-                        const formatted = formatDateInput(value)
-                        if (formatted) {
-                          setPaymentDate(formatted)
-                        }
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-
-
-                {/* Məhsul siyahısı - həmişə görünən */}
-                <div style={{ marginBottom: '1.5rem', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ background: '#f8f9fa', padding: '0.75rem', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 'bold' }}>Məhsullar və xidmətlər ({invoiceItems.length})</div>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={handleAddEmptyRow}
-                        style={{
-                          padding: '0.5rem',
-                          background: '#28a745',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem'
-                        }}
-                        title="Əlavə et"
-                      >
-                        ➕ Əlavə et
-                      </button>
-                      <button
-                        onClick={handleCopySelectedItems}
-                        disabled={selectedItemIndices.length === 0}
-                        style={{
-                          padding: '0.5rem',
-                          background: selectedItemIndices.length === 0 ? '#ccc' : '#007bff',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: selectedItemIndices.length === 0 ? 'not-allowed' : 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Kopyala"
-                      >
-                        📋
-                      </button>
-                      <button
-                        onClick={handleRemoveSelectedItems}
-                        disabled={selectedItemIndices.length === 0}
-                        style={{
-                          padding: '0.5rem',
-                          background: selectedItemIndices.length === 0 ? '#ccc' : '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: selectedItemIndices.length === 0 ? 'not-allowed' : 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Sil"
-                      >
-                        🗑️
-                      </button>
-                      <button
-                        onClick={handleMoveItemUp}
-                        disabled={selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0}
-                        style={{
-                          padding: '0.5rem',
-                          background: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0) ? '#ccc' : '#6c757d',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === 0) ? 'not-allowed' : 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Yuxarı"
-                      >
-                        ⬆️
-                      </button>
-                      <button
-                        onClick={handleMoveItemDown}
-                        disabled={selectedItemIndices.length !== 1 || selectedItemIndices[0] === invoiceItems.length - 1}
-                        style={{
-                          padding: '0.5rem',
-                          background: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === invoiceItems.length - 1) ? '#ccc' : '#6c757d',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: (selectedItemIndices.length !== 1 || selectedItemIndices[0] === invoiceItems.length - 1) ? 'not-allowed' : 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Aşağı"
-                      >
-                        ⬇️
-                      </button>
-                      <button
-                        onClick={() => setShowItemSettingsModal(true)}
-                        style={{
-                          padding: '0.5rem',
-                          background: '#6c757d',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Ayarlar"
-                      >
-                        ⚙️
-                      </button>
-                      <button
-                        onClick={() => setShowProductModal(true)}
-                        style={{
-                          padding: '0.5rem',
-                          background: '#6c757d',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '1rem'
-                        }}
-                        title="Məhsullar siyahısı"
-                      >
-                        📁
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: '#f8f9fa', position: 'sticky', top: 0, zIndex: 10 }}>
-                          <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center', fontSize: '0.875rem', width: '40px' }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedItemIndices.length === invoiceItems.length && invoiceItems.length > 0}
-                              onChange={handleSelectAllItems}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </th>
-                          {itemTableColumns.showNumber && (
-                            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left', fontSize: '0.875rem' }}>№</th>
-                          )}
-                          {itemTableColumns.showProduct && (
-                            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left', fontSize: '0.875rem' }}>Məhsul</th>
-                          )}
-                          {itemTableColumns.showQuantity && (
-                            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontSize: '0.875rem' }}>Miqdar</th>
-                          )}
-                          {itemTableColumns.showUnitPrice && (
-                            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontSize: '0.875rem' }}>Vahid qiymət</th>
-                          )}
-                          {itemTableColumns.showTotal && (
-                            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontSize: '0.875rem' }}>Cəm</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {invoiceItems.length === 0 ? (
-                          <tr>
-                            <td colSpan={1 + Object.values(itemTableColumns).filter(v => v).length} style={{ padding: '2rem', textAlign: 'center', color: '#999', fontStyle: 'italic' }}>
-                              Məhsul əlavə edilməyib
-                            </td>
-                          </tr>
-                        ) : (
-                          invoiceItems.map((item, index) => {
-                            const rowProducts = getFilteredProductsForRow(item.searchTerm || '')
-                            const isSelected = selectedItemIndices.includes(index)
-                            return (
-                              <tr
-                                key={index}
-                                onClick={(e) => {
-                                  // Checkbox-a klikləyəndə işləməsin
-                                  if ((e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
-                                    handleToggleItemSelection(index)
-                                  }
-                                }}
-                                style={{
-                                  background: isSelected ? '#e7f3ff' : (index % 2 === 0 ? 'white' : '#f9f9f9'),
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => handleToggleItemSelection(index)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                </td>
-                                {itemTableColumns.showNumber && (
-                                  <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>{index + 1}</td>
-                                )}
-                                {itemTableColumns.showProduct && (
-                                  <td style={{ padding: '0.75rem', border: '1px solid #ddd', position: 'relative' }}>
-                                    {item.product_id ? (
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span>{item.product_name}</span>
-                                        <button
-                                          onClick={() => {
-                                            const updatedItems = [...invoiceItems]
-                                            updatedItems[index] = {
-                                              ...updatedItems[index],
-                                              product_id: null,
-                                              product_name: '',
-                                              searchTerm: ''
-                                            }
-                                            setInvoiceItems(updatedItems)
-                                          }}
-                                          style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            color: '#dc3545',
-                                            cursor: 'pointer',
-                                            fontSize: '1rem',
-                                            padding: '0.25rem',
-                                            marginLeft: '0.5rem'
-                                          }}
-                                          title="Məhsulu sil"
-                                        >
-                                          ✕
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <div style={{ position: 'relative' }}>
-                                        <input
-                                          type="text"
-                                          placeholder="Məhsul adını yazın... (F4 - siyahı)"
-                                          value={item.searchTerm || ''}
-                                          data-product-row-input="true"
-                                          data-row-index={index.toString()}
-                                          onChange={(e) => handleProductSearchInRow(index, e.target.value)}
-                                          onFocus={() => {
-                                            if (!item.searchTerm) {
-                                              handleProductSearchInRow(index, '')
-                                            }
-                                          }}
-                                          onBlur={(e) => {
-                                            // Dropdown-a klikləyəndə bağlanmasın
-                                            setTimeout(() => {
-                                              const relatedTarget = e.relatedTarget as HTMLElement
-                                              if (!relatedTarget || !relatedTarget.closest('.product-dropdown')) {
-                                                const updatedItems = [...invoiceItems]
-                                                updatedItems[index] = {
-                                                  ...updatedItems[index],
-                                                  searchTerm: ''
-                                                }
-                                                setInvoiceItems(updatedItems)
-                                              }
-                                            }, 200)
-                                          }}
-                                          onClick={(e) => e.stopPropagation()}
-                                          style={{
-                                            width: '100%',
-                                            padding: '0.25rem',
-                                            border: '1px solid #ddd',
-                                            borderRadius: '4px',
-                                            fontSize: '0.9rem'
-                                          }}
-                                        />
-                                        {rowProducts.length > 0 && (
-                                          <div
-                                            className="product-dropdown"
-                                            style={{
-                                              position: 'absolute',
-                                              top: '100%',
-                                              left: 0,
-                                              right: 0,
-                                              background: 'white',
-                                              border: '1px solid #ddd',
-                                              borderRadius: '4px',
-                                              marginTop: '0.25rem',
-                                              maxHeight: '200px',
-                                              overflow: 'auto',
-                                              zIndex: 1000,
-                                              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                                            }}
-                                            onMouseDown={(e) => e.preventDefault()}
-                                          >
-                                            {rowProducts.map(product => (
-                                              <div
-                                                key={product.id}
-                                                onClick={(e) => {
-                                                  e.preventDefault()
-                                                  e.stopPropagation()
-                                                  handleProductSelectInRow(index, product.id)
-                                                }}
-                                                style={{
-                                                  padding: '0.75rem',
-                                                  cursor: 'pointer',
-                                                  borderBottom: '1px solid #f0f0f0'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  e.currentTarget.style.background = '#f8f9fa'
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  e.currentTarget.style.background = 'white'
-                                                }}
-                                              >
-                                                <div style={{ fontWeight: 'bold' }}>{product.name}</div>
-                                                <div style={{ fontSize: '0.875rem', color: '#666' }}>
-                                                  {product.code && <span>Kod: {product.code} </span>}
-                                                  {product.barcode && <span>Barkod: {product.barcode}</span>}
-                                                </div>
-                                                {product.sale_price && (
-                                                  <div style={{ fontSize: '0.875rem', color: '#28a745', fontWeight: 'bold', marginTop: '0.25rem' }}>
-                                                    Qiymət: {Number(product.sale_price).toFixed(2)} ₼
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </td>
-                                )}
-                                {itemTableColumns.showQuantity && (
-                                  <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>
-                                    <input
-                                      type="number"
-                                      min="0.01"
-                                      step="0.01"
-                                      value={item.quantity}
-                                      onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                                      style={{
-                                        width: '100px',
-                                        padding: '0.25rem',
-                                        border: '1px solid #ddd',
-                                        borderRadius: '4px',
-                                        textAlign: 'right',
-                                        fontSize: '0.9rem'
-                                      }}
-                                    />
-                                  </td>
-                                )}
-                                {itemTableColumns.showUnitPrice && (
-                                  <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={item.unit_price}
-                                      onChange={(e) => handleUpdateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                                      style={{
-                                        width: '120px',
-                                        padding: '0.25rem',
-                                        border: '1px solid #ddd',
-                                        borderRadius: '4px',
-                                        textAlign: 'right',
-                                        fontSize: '0.9rem'
-                                      }}
-                                    />
-                                  </td>
-                                )}
-                                {itemTableColumns.showTotal && (
-                                  <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{item.total_price.toFixed(2)} ₼</td>
-                                )}
-                              </tr>
-                            )
-                          })
-                        )}
-                      </tbody>
-                      {invoiceItems.length > 0 && (
-                        <tfoot>
-                          <tr style={{ background: '#e7f3ff', fontWeight: 'bold' }}>
-                            <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}></td>
-                            {itemTableColumns.showNumber && <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}></td>}
-                            {itemTableColumns.showProduct && <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}></td>}
-                            {itemTableColumns.showQuantity && <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}></td>}
-                            {(() => {
-                              const visibleColumns = [
-                                itemTableColumns.showNumber,
-                                itemTableColumns.showProduct,
-                                itemTableColumns.showQuantity,
-                                itemTableColumns.showUnitPrice,
-                                itemTableColumns.showTotal
-                              ].filter(v => v).length
-                              const colspanBeforeTotal = visibleColumns - (itemTableColumns.showTotal ? 1 : 0)
-                              return (
-                                <>
-                                  {itemTableColumns.showUnitPrice && (
-                                    <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>Ümumi məbləğ:</td>
-                                  )}
-                                  {itemTableColumns.showTotal && (
-                                    <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>{totalAmount.toFixed(2)} ₼</td>
-                                  )}
-                                  {!itemTableColumns.showUnitPrice && !itemTableColumns.showTotal && (
-                                    <td colSpan={colspanBeforeTotal} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>Ümumi məbləğ: {totalAmount.toFixed(2)} ₼</td>
-                                  )}
-                                  {!itemTableColumns.showUnitPrice && itemTableColumns.showTotal && (
-                                    <>
-                                      <td colSpan={colspanBeforeTotal} style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>Ümumi məbləğ:</td>
-                                      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>{totalAmount.toFixed(2)} ₼</td>
-                                    </>
-                                  )}
-                                </>
-                              )
-                            })()}
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </div>
-                </div>
-
-                {/* Qeydlər */}
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                    Qeydlər
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '1rem',
-                      fontFamily: 'inherit'
-                    }}
-                  />
-                </div>
-
-                {/* Düymələr */}
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={handleCloseModal}
-                    style={{
-                      padding: '0.5rem 1.5rem',
-                      background: '#6c757d',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '1rem'
-                    }}
-                  >
-                    Ləğv et
-                  </button>
-                  <button
-                    onClick={handleSaveWithoutConfirm}
-                    style={{
-                      padding: '0.5rem 1.5rem',
-                      background: '#17a2b8',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '1rem'
-                    }}
-                  >
-                    Yadda saxla
-                  </button>
-                  <button
-                    onClick={handleOk}
-                    style={{
-                      padding: '0.5rem 1.5rem',
-                      background: '#28a745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    OK
-                  </button>
-                </div>
-              </div>
-
-              {/* Resize handle - sağ alt künc (yalnız maximize olmadıqda görünür) */}
-              {!isMaximized && (
-                <div
-                  onMouseDown={handleModalResizeMouseDown}
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    right: 0,
-                    width: '20px',
-                    height: '20px',
-                    cursor: 'nwse-resize',
-                    background: 'linear-gradient(135deg, transparent 0%, transparent 40%, #999 40%, #999 60%, transparent 60%)',
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Müştəri Modal */}
-      {showCustomerModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-          onClick={() => {
-            setShowCustomerModal(false)
-            setCustomerModalSearchTerm('')
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '8px',
-              padding: '2rem',
-              maxWidth: '900px',
-              width: '90%',
-              maxHeight: '90vh',
-              overflow: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Müştəri seçin</h2>
-            <input
-              type="text"
-              placeholder="Müştəri adını, telefonunu və ya email-ini yazın..."
-              value={customerModalSearchTerm}
-              onChange={(e) => setCustomerModalSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem',
-                marginBottom: '1rem'
-              }}
-              autoFocus
-            />
-            <div style={{ maxHeight: '500px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
-              {filteredCustomersForModal.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#666', padding: '2rem' }}>Müştəri tapılmadı</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f8f9fa', position: 'sticky', top: 0 }}>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Ad</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Telefon</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Email</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Ünvan</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', width: '120px' }}>Əməliyyat</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCustomersForModal.map(customer => (
-                      <tr
-                        key={customer.id}
-                        style={{
-                          background: selectedCustomerId === customer.id ? '#e7f3ff' : 'white',
-                          cursor: 'pointer'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedCustomerId !== customer.id) {
-                            e.currentTarget.style.background = '#f8f9fa'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedCustomerId !== customer.id) {
-                            e.currentTarget.style.background = 'white'
-                          }
-                        }}
-                      >
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd', fontWeight: 'bold' }}>{customer.name}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}>{customer.phone || '-'}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}>{customer.email || '-'}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}>{customer.address || '-'}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
-                          <button
-                            onClick={() => {
-                              setSelectedCustomerId(customer.id)
-                              setSelectedCustomer(customer)
-                              setShowCustomerModal(false)
-                              setCustomerModalSearchTerm('')
-                              setCustomerSearchTerm('')
-                            }}
-                            style={{
-                              padding: '0.5rem 1rem',
-                              background: '#28a745',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontSize: '0.875rem',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            Əlavə et
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                setShowCustomerModal(false)
-                setCustomerModalSearchTerm('')
-              }}
-              style={{
-                marginTop: '1rem',
-                padding: '0.5rem 1.5rem',
-                background: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                width: '100%'
-              }}
-            >
-              Bağla
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Məhsul Modal */}
-      {showProductModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-          onClick={() => {
-            setShowProductModal(false)
-            setProductModalSearchTerm('')
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '8px',
-              padding: '2rem',
-              maxWidth: '1000px',
-              width: '90%',
-              maxHeight: '90vh',
-              overflow: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Məhsul seçin</h2>
-            <input
-              type="text"
-              placeholder="Məhsul adını, kodunu və ya barkodunu yazın..."
-              value={productModalSearchTerm}
-              onChange={(e) => setProductModalSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem',
-                marginBottom: '1rem'
-              }}
-              autoFocus
-            />
-            <div style={{ maxHeight: '500px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
-              {filteredProductsForModal.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#666', padding: '2rem' }}>Məhsul tapılmadı</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f8f9fa', position: 'sticky', top: 0 }}>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Ad</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Kod</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Barkod</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right' }}>Satış qiyməti</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Yararlılıq</th>
-                      <th style={{ padding: '0.75rem', border: '1px solid #ddd', width: '120px' }}>Əməliyyat</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProductsForModal.map(product => (
-                      <tr
-                        key={product.id}
-                        style={{
-                          background: selectedProductId === product.id ? '#e7f3ff' : 'white',
-                          cursor: 'pointer'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedProductId !== product.id) {
-                            e.currentTarget.style.background = '#f8f9fa'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedProductId !== product.id) {
-                            e.currentTarget.style.background = 'white'
-                          }
-                        }}
-                      >
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd', fontWeight: 'bold' }}>{product.name}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}>{product.code || '-'}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd' }}>{product.barcode || '-'}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold', color: '#28a745' }}>
-                          {product.sale_price ? `${Number(product.sale_price).toFixed(2)} ₼` : '-'}
-                        </td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd', fontSize: '0.875rem' }}>
-                          {product.production_date && product.expiry_date ? (
-                            <div>
-                              <div style={{ color: '#007bff' }}>
-                                {formatDateDifference(
-                                  new Date(product.production_date),
-                                  new Date(product.expiry_date)
-                                )}
-                              </div>
-                              {(() => {
-                                const today = new Date()
-                                today.setHours(0, 0, 0, 0)
-                                const expiryDate = new Date(product.expiry_date)
-                                expiryDate.setHours(0, 0, 0, 0)
-                                const diff = calculateDaysDifference(today, expiryDate)
-                                if (diff < 0) {
-                                  return <div style={{ color: '#dc3545', fontSize: '0.75rem' }}>⚠️ {Math.abs(diff)} gün keçib</div>
-                                } else if (diff === 0) {
-                                  return <div style={{ color: '#dc3545', fontSize: '0.75rem' }}>⚠️ Bu gün bitir</div>
-                                } else {
-                                  return <div style={{ color: '#28a745', fontSize: '0.75rem' }}>{diff} gün qalıb</div>
-                                }
-                              })()}
-                            </div>
-                          ) : '-'}
-                        </td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
-                          <button
-                            onClick={() => {
-                              const rowIndexStr = sessionStorage.getItem('selectedProductRowIndex')
-                              if (rowIndexStr !== null) {
-                                // Cədvəldəki sətirə məhsul əlavə et
-                                const rowIndex = parseInt(rowIndexStr)
-                                handleProductSelectInRow(rowIndex, product.id)
-                                sessionStorage.removeItem('selectedProductRowIndex')
-                              } else {
-                                // Köhnə funksionallıq (modal içindəki məhsul seçimi)
-                                handleProductChange(product.id)
-                              }
-                              setShowProductModal(false)
-                              setProductModalSearchTerm('')
-                              setProductSearchTerm('')
-                            }}
-                            style={{
-                              padding: '0.5rem 1rem',
-                              background: '#28a745',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontSize: '0.875rem',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            Əlavə et
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                setShowProductModal(false)
-                setProductModalSearchTerm('')
-              }}
-              style={{
-                marginTop: '1rem',
-                padding: '0.5rem 1.5rem',
-                background: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                width: '100%'
-              }}
-            >
-              Bağla
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Məhsul cədvəli ayarları modalı */}
-      {showItemSettingsModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-          onClick={() => setShowItemSettingsModal(false)}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '8px',
-              padding: '2rem',
-              maxWidth: '500px',
-              width: '90%',
-              maxHeight: '90vh',
-              overflow: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Cədvəl ayarları</h2>
-
-            <div style={{ marginBottom: '1rem' }}>
-              <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem' }}>Sütunları göstər/gizlət</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={itemTableColumns.showNumber}
-                    onChange={(e) => setItemTableColumns({ ...itemTableColumns, showNumber: e.target.checked })}
-                  />
-                  <span>№</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={itemTableColumns.showProduct}
-                    onChange={(e) => setItemTableColumns({ ...itemTableColumns, showProduct: e.target.checked })}
-                  />
-                  <span>Məhsul</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={itemTableColumns.showQuantity}
-                    onChange={(e) => setItemTableColumns({ ...itemTableColumns, showQuantity: e.target.checked })}
-                  />
-                  <span>Miqdar</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={itemTableColumns.showUnitPrice}
-                    onChange={(e) => setItemTableColumns({ ...itemTableColumns, showUnitPrice: e.target.checked })}
-                  />
-                  <span>Vahid qiymət</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={itemTableColumns.showTotal}
-                    onChange={(e) => setItemTableColumns({ ...itemTableColumns, showTotal: e.target.checked })}
-                  />
-                  <span>Cəm</span>
-                </label>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '2rem' }}>
-              <button
-                onClick={() => setShowItemSettingsModal(false)}
-                style={{
-                  padding: '0.5rem 1.5rem',
-                  background: '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '1rem'
-                }}
-              >
-                Bağla
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bildirişlər - taskbarın üstündə */}
-      {notifications.length > 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '60px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10001,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            alignItems: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          {notifications.map((notification) => {
-            const bgColor = {
-              success: '#28a745',
-              error: '#dc3545',
-              warning: '#ffc107',
-              info: '#17a2b8'
-            }[notification.type]
-
-            const textColor = notification.type === 'warning' ? '#000' : '#fff'
-
-            return (
-              <div
-                key={notification.id}
-                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
-                style={{
-                  background: bgColor,
-                  color: textColor,
-                  padding: '12px 20px',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  fontSize: '0.9rem',
-                  fontWeight: '500',
-                  minWidth: '250px',
-                  maxWidth: '500px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  pointerEvents: 'auto',
-                  animation: 'slideUp 0.3s ease-out',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                }}
-              >
-                <span>
-                  {notification.type === 'success' && '✓'}
-                  {notification.type === 'error' && '✕'}
-                  {notification.type === 'warning' && '⚠'}
-                  {notification.type === 'info' && 'ℹ'}
-                </span>
-                <span>{notification.message}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Filtr modalı */}
-      <FilterModal
-        isOpen={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
-        title="Filtr"
-        columns={[
-          { id: 'customer_id', label: 'Müştəri', type: 'select' },
-          { id: 'invoice_number', label: 'Faktura №', type: 'text' },
-          { id: 'total_amount', label: 'Ümumi məbləğ', type: 'number' },
-          { id: 'id', label: 'ID', type: 'number' },
-          { id: 'product_id', label: 'Məhsul', type: 'multiselect', options: products.map(p => ({ id: p.id, label: p.name })) },
-        ]}
-        customers={customers}
-        onApply={(filters) => {
-          setActiveFilters(filters)
-          setShowFilterModal(false)
-        }}
-        onClear={() => {
-          setActiveFilters([])
-          setShowFilterModal(false)
-        }}
-      />
-
       {/* Təsdiq Dialoqu */}
-      <ConfirmDialog
-        isOpen={!!confirmDialog}
-        modalZIndex={confirmDialog ? (useWindowStore.getState().windows.get(`invoice-modal-${confirmDialog.modalId}`)?.zIndex || 1000) : 1000}
-        onConfirm={async () => {
-          if (!confirmDialog) return
-          try {
-            await handleModalSave(confirmDialog.modalId, confirmDialog.currentModal.data)
-            initialDataMap.current.set(confirmDialog.modalId, JSON.parse(JSON.stringify(confirmDialog.currentModal.data)))
-            setConfirmDialog(null)
-            const wId = `invoice-modal-${confirmDialog.modalId}`
-            useWindowStore.getState().closeWindow(wId)
-          } catch (e) {
-            console.error(e)
-          }
-        }}
-        onDiscard={async () => {
-          if (!confirmDialog) return
-          setConfirmDialog(null)
-          handleDiscard(confirmDialog.modalId)
-        }}
-        onCancel={() => setConfirmDialog(null)}
-      />
 
 
+      {/* Çoxlu Purchase Invoice Modalları - REMOVED (Handled by UniversalWindow) */}
     </UniversalContainer>
+  )
+}
+
+// Page component (The route handler)
+export default function SatisQaimeleriPage() {
+  const { openPageWindow } = useWindowStore()
+
+  useEffect(() => {
+    const { isPageOpen, focusPage } = useWindowStore.getState()
+    if (isPageOpen('qaimeler-satis')) {
+      focusPage('qaimeler-satis')
+      return
+    }
+
+    openPageWindow(
+      'qaimeler-satis',
+      'Satış Qaimələri',
+      '📋',
+      <SatisQaimeleriContent />
+    )
+  }, []) // Mount-da bir dəfə aç
+
+  // Arxa fonda Layout (Navbar və Taskbar)
+  return (
+    <Layout>
+      <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
+        {/* Boş sahə - pəncərə üstə açılacaq */}
+      </div>
+    </Layout>
   )
 }

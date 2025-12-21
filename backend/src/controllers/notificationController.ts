@@ -1,135 +1,109 @@
+
 import { Request, Response } from 'express'
 import prisma from '../config/database'
-import { Prisma } from '@prisma/client'
 
-// POST /api/notifications - Create a new notification
-export const createNotification = async (req: Request, res: Response) => {
+// Get notifications for current user
+export const getNotifications = async (req: Request, res: Response) => {
     try {
-        const { user_id, type, title, message } = req.body
-
-        if (!user_id || !type || !title || !message) {
-            return res.status(400).json({ message: 'user_id, type, title və message tələb olunur' })
-        }
-
-        // Validate type
-        const validTypes = ['success', 'error', 'warning', 'info']
-        if (!validTypes.includes(type)) {
-            return res.status(400).json({ message: 'Yanlış notification type' })
-        }
-
-        // Insert notification
-        const result = await prisma.$executeRaw`
-            INSERT INTO notifications (user_id, type, title, message, timestamp)
-            VALUES (${user_id}, ${type}, ${title}, ${message}, NOW())
-            RETURNING id
-        `
-
-        console.log(`✅ [NOTIFICATIONS] İstifadəçi ${user_id} üçün bildiriş yaradıldı`)
-
-        res.status(201).json({
-            success: true,
-            message: 'Bildiriş yaradıldı'
-        })
-    } catch (error: any) {
-        console.error('❌ [NOTIFICATIONS] Bildiriş yaratma xətası:', error)
-        res.status(500).json({
-            message: 'Bildiriş yaratma xətası',
-            error: error.message
-        })
-    }
-}
-
-// GET /api/notifications - Get user's notifications
-export const getUserNotifications = async (req: Request, res: Response) => {
-    try {
-        const userId = (req as any).user?.id
-
+        const userId = (req as any).userId
         if (!userId) {
-            return res.status(401).json({ message: 'İstifadəçi təsdiqlənməyib' })
+            return res.status(401).json({ error: 'Unauthorized' })
         }
 
-        // Get all notifications for user, ordered by timestamp DESC
-        const notifications = await prisma.$queryRaw`
-            SELECT * FROM notifications
-            WHERE user_id = ${userId}
-            ORDER BY timestamp DESC
-            LIMIT 100
-        ` as any[]
+        const notifications = await prisma.notifications.findMany({
+            where: { user_id: parseInt(userId) },
+            orderBy: { timestamp: 'desc' },
+            take: 50
+        })
 
-        res.json({
-            notifications,
-            total: notifications.length
-        })
-    } catch (error: any) {
-        console.error('❌ [NOTIFICATIONS] Bildirişləri gətirmə xətası:', error)
-        res.status(500).json({
-            message: 'Bildirişləri gətirmə xətası',
-            error: error.message
-        })
+        res.json(notifications)
+    } catch (error) {
+        console.error('Error fetching notifications:', error)
+        res.status(500).json({ error: 'Failed to fetch notifications' })
     }
 }
 
-// PUT /api/notifications/:id/read - Mark notification as read
+// Mark notification as read
 export const markAsRead = async (req: Request, res: Response) => {
     try {
+        const userId = (req as any).userId
         const { id } = req.params
-        const userId = (req as any).user?.id
 
         if (!userId) {
-            return res.status(401).json({ message: 'İstifadəçi təsdiqlənməyib' })
+            return res.status(401).json({ error: 'Unauthorized' })
         }
 
-        // Update notification
-        const result = await prisma.$executeRaw`
-            UPDATE notifications
-            SET read = TRUE
-            WHERE id = ${parseInt(id)} AND user_id = ${userId}
-        `
-
-        if (result === 0) {
-            return res.status(404).json({ message: 'Bildiriş tapılmadı' })
-        }
-
-        console.log(`✅ [NOTIFICATIONS] Bildiriş ${id} oxundu kimi işarələndi`)
-
-        res.json({
-            success: true,
-            message: 'Bildiriş oxundu kimi işarələndi'
+        await prisma.notifications.updateMany({
+            where: {
+                id: parseInt(id),
+                user_id: parseInt(userId)
+            },
+            data: {
+                read: true
+            }
         })
-    } catch (error: any) {
-        console.error('❌ [NOTIFICATIONS] Bildirişi yeniləmə xətası:', error)
-        res.status(500).json({
-            message: 'Bildirişi yeniləmə xətası',
-            error: error.message
-        })
+
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Error marking notification as read:', error)
+        res.status(500).json({ error: 'Failed to mark notification as read' })
     }
 }
 
-// DELETE /api/notifications - Clear all user notifications
-export const clearAllNotifications = async (req: Request, res: Response) => {
+// Clear all notifications for user
+export const clearAll = async (req: Request, res: Response) => {
     try {
-        const userId = (req as any).user?.id
-
+        const userId = (req as any).userId
         if (!userId) {
-            return res.status(401).json({ message: 'İstifadəçi təsdiqlənməyib' })
+            return res.status(401).json({ error: 'Unauthorized' })
         }
 
-        const result = await prisma.$executeRaw`
-            DELETE FROM notifications WHERE user_id = ${userId}
-        `
-
-        console.log(`✅ [NOTIFICATIONS] İstifadəçi ${userId} üçün ${result} bildiriş silindi`)
-
-        res.json({
-            success: true,
-            deletedCount: result,
-            message: `${result} bildiriş silindi`
+        await prisma.notifications.deleteMany({
+            where: { user_id: parseInt(userId) }
         })
-    } catch (error: any) {
-        console.error('❌ [NOTIFICATIONS] Bildirişləri silmə xətası:', error)
-        res.status(500).json({
-            message: 'Bildirişləri silmə xətası',
-            error: error.message
+
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Error clearing notifications:', error)
+        res.status(500).json({ error: 'Failed to clear notifications' })
+    }
+}
+
+// Internal helper to create notification
+export const createNotification = async (userId: number, title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+    try {
+        await prisma.notifications.create({
+            data: {
+                user_id: userId,
+                title,
+                message,
+                type,
+                read: false
+            }
         })
+    } catch (error) {
+        console.error('Error creating notification:', error)
+    }
+}
+
+// API endpoint to create notification (for frontend)
+export const createNotificationHandler = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId
+        const { title, message, type } = req.body
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' })
+        }
+
+        if (!title || !message) {
+            return res.status(400).json({ error: 'Title and message are required' })
+        }
+
+        await createNotification(parseInt(userId), title, message, type || 'info')
+        res.status(201).json({ success: true })
+    } catch (error) {
+        console.error('Error creating notification via API:', error)
+        res.status(500).json({ error: 'Failed to create notification' })
     }
 }

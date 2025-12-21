@@ -104,6 +104,7 @@ interface WindowStore {
   // Page window əməliyyatları
   openPageWindow: (pageId: string, title: string, icon: string, content: React.ReactNode, size?: { width: number; height: number }) => void
   isPageOpen: (pageId: string) => boolean
+  closePageWindow: (pageId: string) => void // Close all windows with this pageId
   focusPage: (pageId: string) => void
   focusMainContent: () => number // Yeni metod: Main content-i önə gətirir
 
@@ -121,6 +122,8 @@ interface WindowStore {
   stopResize: () => void
   handleScreenResize: () => void
 }
+
+let dragRafId: number | null = null
 
 export const useWindowStore = create<WindowStore>((set, get) => ({
   windows: new Map(),
@@ -193,6 +196,11 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       windows: newWindows,
       activeWindowId: state.activeWindowId === id ? null : state.activeWindowId
     })
+
+    // onClose callback-i çağır (modal cleanup üçün)
+    if (window?.onClose) {
+      window.onClose()
+    }
   },
 
   // Pəncərəni minimize et
@@ -403,18 +411,40 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       finalLeft = workspace.clientWidth - window.size.width
     }
 
-    const newWindows = new Map(state.windows)
-    newWindows.set(state.dragData.id, {
-      ...window,
-      position: { x: finalLeft, y: finalTop },
-      snapDirection: undefined // Clear snap on drag
-    })
+    // RAF throttle
+    // RAF throttle
+    if (dragRafId) {
+      cancelAnimationFrame(dragRafId)
+    }
 
-    set({ windows: newWindows })
+    dragRafId = requestAnimationFrame(() => {
+      set((prev) => {
+        // Double check dragData exists inside RAF async
+        if (!prev.dragData) return {}
+
+        const newWindows = new Map(prev.windows)
+        // Check window exists again
+        const currentWindow = newWindows.get(state.dragData!.id)
+
+        if (currentWindow) {
+          newWindows.set(state.dragData!.id, {
+            ...currentWindow,
+            position: { x: finalLeft, y: finalTop },
+            snapDirection: undefined // Clear snap on drag
+          })
+        }
+        dragRafId = null
+        return { windows: newWindows }
+      })
+    })
   },
 
   // Drag dayandır
   stopDrag: () => {
+    if (dragRafId) {
+      cancelAnimationFrame(dragRafId)
+      dragRafId = null
+    }
     document.removeEventListener('mousemove', get().drag)
     document.removeEventListener('mouseup', get().stopDrag)
     set({ dragData: null })
@@ -510,19 +540,20 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       reason: 'manual_resize'
     })
 
-    logActivity(
-      'window',
-      'Pəncərə ölçüsü dəyişdirildi',
-      `Pəncərə manual resize edildi (${direction})`,
-      'info',
-      {
-        windowId: state.resizeData.id,
-        direction,
-        oldSize,
-        newSize: { width: newWidth, height: newHeight },
-        delta: { dx, dy }
-      }
-    )
+    // Performance optimization: Don't log on every resize event
+    // logActivity(
+    //   'window',
+    //   'Pəncərə ölçüsü dəyişdirildi',
+    //   `Pəncərə manual resize edildi (${direction})`,
+    //   'info',
+    //   {
+    //     windowId: state.resizeData.id,
+    //     direction,
+    //     oldSize,
+    //     newSize: { width: newWidth, height: newHeight },
+    //     delta: { dx, dy }
+    //   }
+    // )
 
     newWindows.set(state.resizeData.id, {
       ...window,
@@ -802,13 +833,53 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const id = `page-${pageId}-${newCounter}`
     const newZIndex = state.zIndexCounter + 1
 
-    // Mərkəzi pozisiya hesabla + offset
+    // Constraint constants
+    const NAVBAR_HEIGHT = 40
+    const TASKBAR_HEIGHT = 25
+    const FOOTER_HEIGHT = 25  // Global Footer height
+    const BOTTOM_MARGIN = 40  // Increased safety margin to 40px to ensure it stays well above footer
+
+    // Total space reserved at the bottom (Taskbar + Footer + Margin)
+    const RESERVED_BOTTOM = TASKBAR_HEIGHT + FOOTER_HEIGHT + BOTTOM_MARGIN
+
+    // 1. Height Constraint - Calculate max available height in workspace
+    const maxAvailableHeight = window.innerHeight - NAVBAR_HEIGHT - RESERVED_BOTTOM
+
+    if (initialSize.height > maxAvailableHeight) {
+      console.log(`[windowStore] Reducing window height from ${initialSize.height} to ${maxAvailableHeight} to fit screen`)
+      initialSize.height = maxAvailableHeight
+    }
+
+    // 2. Initial Position Calculation with Constraints
     const centered = calculateCenteredPosition(initialSize.width, initialSize.height)
     const offset = (newCounter % 10) * 30 // Cascade effect
-    let position = { x: centered.x + offset, y: centered.y + offset }
+
+    let y = centered.y + offset
+    const x = centered.x + offset
+
+    // 3. Vertical Position Constraint (Bottom Check)
+    // Ensure the window bottom (y + height) does NOT exceed the reserved bottom limit
+    const hardBottomLimit = window.innerHeight - RESERVED_BOTTOM
+
+    if (y + initialSize.height > hardBottomLimit) {
+      y = hardBottomLimit - initialSize.height
+
+      // Safety check: if pushing it up hits the navbar, we must shrink the window
+      if (y < NAVBAR_HEIGHT) {
+        y = NAVBAR_HEIGHT
+        initialSize.height = hardBottomLimit - NAVBAR_HEIGHT
+      }
+    }
+
+    // 4. Vertical Position Constraint (Top Check - Navbar)
+    if (y < NAVBAR_HEIGHT) {
+      y = NAVBAR_HEIGHT
+    }
+
+    let position = { x, y }
 
     if (import.meta.env.MODE === 'development') {
-      console.log('[windowStore] Opening page window:', { pageId, id, newCounter, windowCounter: state.windowCounter })
+      console.log('[windowStore] Opening page window:', { pageId, id, newCounter, position, size: initialSize })
     }
 
     const newWindow: WindowData = {
@@ -840,6 +911,23 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   isPageOpen: (pageId: string) => {
     const state = get()
     return Array.from(state.windows.values()).some(w => w.pageId === pageId)
+  },
+
+  // Close page window by pageId (closes all instances with this pageId)
+  closePageWindow: (pageId: string) => {
+    const state = get()
+    const windowsToClose = Array.from(state.windows.values()).filter(w => w.pageId === pageId)
+
+    if (windowsToClose.length === 0) {
+      console.log(`[DEBUG] closePageWindow: No windows found for pageId: ${pageId}`)
+      return
+    }
+
+    console.log(`[DEBUG] closePageWindow: Closing ${windowsToClose.length} window(s) for pageId: ${pageId}`)
+
+    windowsToClose.forEach(window => {
+      get().closeWindow(window.id)
+    })
   },
 
   focusPage: (pageId: string) => {

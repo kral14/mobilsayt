@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useWindow } from '../context/WindowContext'
-import { DiscountDocumentItem, Supplier, Product } from '@shared/types'
-import { discountDocumentsAPI, productsAPI, suppliersAPI } from '../services/api'
+import { DiscountDocumentItem, Supplier, Customer, Product } from '@shared/types'
+import { discountDocumentsAPI, productsAPI, suppliersAPI, customersAPI } from '../services/api'
 import SmartDateInput from './SmartDateInput'
+import PartnerSelect from './PartnerSelect'
 
 interface DiscountDocumentModalProps {
-    type: 'SUPPLIER' | 'PRODUCT'
+    type: 'SUPPLIER' | 'PRODUCT' | 'CUSTOMER'
     documentId?: number | string
     onSuccess?: () => void
 }
@@ -33,6 +34,7 @@ export default function DiscountDocumentModal({
 
     // Selection Data
     const [suppliers, setSuppliers] = useState<Supplier[]>([])
+    const [customers, setCustomers] = useState<Customer[]>([])
     const [products, setProducts] = useState<Product[]>([])
 
     // Load initial data
@@ -45,6 +47,10 @@ export default function DiscountDocumentModal({
                 if (type === 'SUPPLIER') {
                     const s = await suppliersAPI.getAll()
                     setSuppliers(s)
+                }
+                if (type === 'CUSTOMER') {
+                    const c = await customersAPI.getAll()
+                    setCustomers(c)
                 }
                 const p = await productsAPI.getAll()
                 setProducts(p)
@@ -111,8 +117,8 @@ export default function DiscountDocumentModal({
     }
 
     const handleSave = async () => {
-        if (type === 'SUPPLIER' && !entityId) {
-            alert('Zəhmət olmasa təchizatçı seçin')
+        if ((type === 'SUPPLIER' || type === 'CUSTOMER') && !entityId) {
+            alert(type === 'SUPPLIER' ? 'Zəhmət olmasa təchizatçı seçin' : 'Zəhmət olmasa müştəri seçin')
             return
         }
 
@@ -201,16 +207,30 @@ export default function DiscountDocumentModal({
                 {type === 'SUPPLIER' && (
                     <div>
                         <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Təchizatçı</label>
-                        <select
-                            value={entityId || ''}
-                            onChange={e => setEntityId(Number(e.target.value))}
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                        >
-                            <option value="">Seçin...</option>
-                            {suppliers.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
+                        <PartnerSelect
+                            partners={suppliers}
+                            value={suppliers.find(p => p.id === entityId) || null}
+                            onChange={(p) => setEntityId(p ? p.id : null)}
+                            placeholder="Seçin..."
+                            filterType="SUPPLIER"
+                            label={null}
+                            style={{ width: '100%' }}
+                        />
+                    </div>
+                )}
+
+                {type === 'CUSTOMER' && (
+                    <div>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Müştəri</label>
+                        <PartnerSelect
+                            partners={customers}
+                            value={customers.find(p => p.id === entityId) || null}
+                            onChange={(p) => setEntityId(p ? p.id : null)}
+                            placeholder="Seçin..."
+                            filterType="BUYER"
+                            label={null}
+                            style={{ width: '100%' }}
+                        />
                     </div>
                 )}
 

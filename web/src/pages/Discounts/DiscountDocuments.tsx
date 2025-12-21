@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Layout from '../../components/Layout'
 import DataTable, { ColumnConfig } from '../../components/DataTable'
-import { discountDocumentsAPI, suppliersAPI } from '../../services/api'
-import { DiscountDocument, Supplier } from '@shared/types'
+import { discountDocumentsAPI, suppliersAPI, customersAPI } from '../../services/api'
+import { DiscountDocument, Supplier, Customer } from '@shared/types'
 import DiscountDocumentModal from '../../components/DiscountDocumentModal'
 import ActiveDiscountsModal from '../../components/ActiveDiscountsModal'
 import { useWindowStore } from '../../store/windowStore'
-import UniversalNavbar from '../../components/UniversalNavbar'
+import UniversalToolBar from '../../components/UniversalToolBar'
 
 interface DiscountDocumentsProps {
-    type: 'SUPPLIER' | 'PRODUCT'
+    type: 'SUPPLIER' | 'PRODUCT' | 'CUSTOMER'
 }
 
 // Internal component with just the content
@@ -18,6 +18,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
     const [loading, setLoading] = useState(true)
     const { openPageWindow } = useWindowStore()
     const [suppliers, setSuppliers] = useState<Record<number, string>>({})
+    const [customers, setCustomers] = useState<Record<number, string>>({})
 
     // Selection & Filter State
     const [selectedIds, setSelectedIds] = useState<(number | string)[]>([])
@@ -42,6 +43,19 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
                     console.error('Failed to load suppliers for mapping', e)
                 }
             }
+            // If Customer mode, fetch customers to map names
+            if (type === 'CUSTOMER') {
+                try {
+                    const custList = await customersAPI.getAll()
+                    const map: Record<number, string> = {}
+                    custList.forEach((c: Customer) => {
+                        map[c.id] = c.name
+                    })
+                    setCustomers(map)
+                } catch (e) {
+                    console.error('Failed to load customers for mapping', e)
+                }
+            }
         } catch (error) {
             console.error('Failed to load documents:', error)
         } finally {
@@ -60,7 +74,8 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
             docs = docs.filter(d =>
                 d.document_number.toLowerCase().includes(lower) ||
                 (d.notes && d.notes.toLowerCase().includes(lower)) ||
-                (type === 'SUPPLIER' && d.entity_id && suppliers[d.entity_id]?.toLowerCase().includes(lower))
+                (type === 'SUPPLIER' && d.entity_id && suppliers[d.entity_id]?.toLowerCase().includes(lower)) ||
+                (type === 'CUSTOMER' && d.entity_id && customers[d.entity_id]?.toLowerCase().includes(lower))
             )
         }
         return docs
@@ -78,6 +93,15 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
                 width: 200,
                 order: 1.5,
                 render: (val: number) => suppliers[val] || '---'
+            }] : []),
+            // Add Customer Column if type is CUSTOMER
+            ...(type === 'CUSTOMER' ? [{
+                id: 'entity_id',
+                label: 'Müştəri',
+                visible: true,
+                width: 200,
+                order: 1.5,
+                render: (val: number) => customers[val] || '---'
             }] : []),
             {
                 id: 'start_date',
@@ -117,12 +141,12 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
             { id: 'notes', label: 'Qeyd', visible: true, width: 200, order: 4 }
         ]
         return cols
-    }, [type, suppliers])
+    }, [type, suppliers, customers])
 
     const handleOpenActiveSummary = () => {
         openPageWindow(
             'active-discounts-summary',
-            type === 'SUPPLIER' ? 'Aktiv Təchizatçı Endirimləri' : 'Aktiv Məhsul Endirimləri',
+            type === 'SUPPLIER' ? 'Aktiv Təchizatçı Endirimləri' : type === 'CUSTOMER' ? 'Aktiv Müştəri Endirimləri' : 'Aktiv Məhsul Endirimləri',
             '📋',
             <ActiveDiscountsModal type={type} />,
             { width: 900, height: 600 }
@@ -133,7 +157,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
         const uniqueId = `discount-doc-${Date.now()}`
         openPageWindow(
             uniqueId,
-            type === 'SUPPLIER' ? 'Təchizatçı Faiz Əməliyyatı' : 'Məhsul Faiz Əməliyyatı',
+            type === 'SUPPLIER' ? 'Təchizatçı Faiz Əməliyyatı' : type === 'CUSTOMER' ? 'Müştəri Faiz Əməliyyatı' : 'Məhsul Faiz Əməliyyatı',
             '📄',
             <DiscountDocumentModal type={type} onSuccess={loadDocuments} />,
             { width: 900, height: 600 }
@@ -147,7 +171,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
 
         openPageWindow(
             windowId,
-            type === 'SUPPLIER' ? 'Təchizatçı Faiz Sənədi (Redaktə)' : 'Məhsul Faiz Sənədi (Redaktə)',
+            type === 'SUPPLIER' ? 'Təchizatçı Faiz Sənədi (Redaktə)' : type === 'CUSTOMER' ? 'Müştəri Faiz Sənədi (Redaktə)' : 'Məhsul Faiz Sənədi (Redaktə)',
             '📄',
             <DiscountDocumentModal
                 type={type}
@@ -214,7 +238,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
              */}
 
 
-            <UniversalNavbar
+            <UniversalToolBar
                 onAdd={handleOpenNew}
                 onDelete={handleDelete}
                 onEdit={handleEdit}
@@ -236,7 +260,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
                     columns={columns}
                     loading={loading}
                     pageId={`discount-docs-${type}`}
-                    title={type === 'SUPPLIER' ? 'Təchizatçı Sənədləri' : 'Məhsul Sənədləri'}
+                    title={type === 'SUPPLIER' ? 'Təchizatçı Sənədləri' : type === 'CUSTOMER' ? 'Müştəri Sənədləri' : 'Məhsul Sənədləri'}
                     getRowId={(row: DiscountDocument) => row.id}
                     defaultColumns={columns}
                     // Disable internal toolbar actions that we moved to UniversalNavbar
@@ -250,7 +274,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
                         const windowId = `discount-doc-edit-${row.id}`
                         openPageWindow(
                             windowId,
-                            type === 'SUPPLIER' ? 'Təchizatçı Faiz Sənədi (Redaktə)' : 'Məhsul Faiz Sənədi (Redaktə)',
+                            type === 'SUPPLIER' ? 'Təchizatçı Faiz Sənədi (Redaktə)' : type === 'CUSTOMER' ? 'Müştəri Faiz Sənədi (Redaktə)' : 'Məhsul Faiz Sənədi (Redaktə)',
                             '📄',
                             <DiscountDocumentModal
                                 type={type}
@@ -284,4 +308,8 @@ export function SupplierDiscountDocuments() {
 
 export function ProductDiscountDocuments() {
     return <DiscountDocumentsContent type="PRODUCT" />
+}
+
+export function CustomerDiscountDocuments() {
+    return <DiscountDocumentsContent type="CUSTOMER" />
 }

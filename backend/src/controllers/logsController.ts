@@ -16,11 +16,25 @@ export const createLogs = async (req: Request, res: Response) => {
         for (const log of logs) {
             let { log_id, user_id, timestamp, level, category, action, details, metadata } = log
 
+            // Handle id vs log_id mismatch
+            const logId = log.log_id || log.id
+
             // Generate UUID if log_id is missing
-            if (!log_id) {
-                log_id = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-                console.log(`[LOGS] Generated log_id: ${log_id}`)
+            if (!logId) {
+                // Skip logs without ID? Or generate one?
+                // Better generate one to avoid crash
+                log.log_id = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                console.log(`[LOGS] Generated log_id: ${log.log_id}`)
+            } else {
+                log.log_id = logId
             }
+
+            log_id = log.log_id
+
+            // User handling: Frontend sends 'user' string, DB expects 'user_id' Int.
+            // For now, we leave user_id as null because we can't map string to int easily without lookup.
+            // Later we can implement lookup by email/name if needed.
+            const dbUserId = typeof user_id === 'number' ? user_id : null
 
             try {
                 // Check if log already exists (avoid duplicates)
@@ -34,7 +48,7 @@ export const createLogs = async (req: Request, res: Response) => {
                     await prisma.$executeRaw`
             INSERT INTO activity_logs 
             (log_id, user_id, timestamp, level, category, action, details, metadata) 
-            VALUES (${log_id}, ${user_id || null}, ${timestampDate}, ${level}, ${category}, ${action}, ${details || null}, ${metadata ? JSON.stringify(metadata) : null}::jsonb)
+            VALUES (${log_id}, ${dbUserId}, ${timestampDate}, ${level}, ${category}, ${action}, ${details || null}, ${metadata ? JSON.stringify(metadata) : null}::jsonb)
           `
                     syncedIds.push(log_id)
                 } else {
@@ -42,7 +56,7 @@ export const createLogs = async (req: Request, res: Response) => {
                     syncedIds.push(log_id)
                 }
             } catch (error: any) {
-                console.error(`❌ [LOGS] Log ${log_id} saxlama xətası:`, error.message)
+                console.error(`❌ [LOGS] Log ${log_id} saxlama xətası:`, error)
                 // Continue with other logs
             }
         }

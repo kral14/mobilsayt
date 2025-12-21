@@ -1,18 +1,16 @@
-import { Router } from 'express'
-import { createNotification, getUserNotifications, markAsRead, clearAllNotifications } from '../controllers/notificationController'
 
-const router = Router()
+import express from 'express'
+import { getNotifications, markAsRead, clearAll, createNotificationHandler } from '../controllers/notificationController'
+import { authMiddleware } from '../middleware/auth'
 
-// POST /api/notifications - Create notification
-router.post('/', createNotification)
+const router = express.Router()
 
-// GET /api/notifications - Get user's notifications
-router.get('/', getUserNotifications)
+// All routes require authentication
+router.use(authMiddleware as any)
 
-// PUT /api/notifications/:id/read - Mark notification as read
+router.post('/', createNotificationHandler)
+router.get('/', getNotifications)
 router.put('/:id/read', markAsRead)
-
-// DELETE /api/notifications - Clear all notifications
-router.delete('/', clearAllNotifications)
+router.delete('/', clearAll)
 
 export default router

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useWindow } from '../context/WindowContext'
-import { discountDocumentsAPI, suppliersAPI } from '../services/api' // Added suppliersAPI
-import { DiscountDocument, Supplier } from '@shared/types'
+import { discountDocumentsAPI, suppliersAPI, customersAPI } from '../services/api'
+import { DiscountDocument, Supplier, Customer } from '@shared/types'
 import { useWindowStore } from '../store/windowStore'
 import DiscountDocumentModal from './DiscountDocumentModal'
 
 interface ActiveDiscountsModalProps {
-    type?: 'PRODUCT' | 'SUPPLIER'
+    type?: 'PRODUCT' | 'SUPPLIER' | 'CUSTOMER'
 }
 
 export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscountsModalProps) {
@@ -34,14 +34,23 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
             console.log('[ActiveDiscountsModal] Document count:', docs.length)
             console.log('[ActiveDiscountsModal] Type:', type)
 
-            // 2. Fetch Suppliers if needed
+            // 2. Fetch Suppliers/Customers if needed
             let supplierMap = new Map<number, Supplier>()
+            let customerMap = new Map<number, Customer>()
             if (type === 'SUPPLIER') {
                 try {
                     const suppliers = await suppliersAPI.getAll()
                     suppliers.forEach(s => supplierMap.set(s.id, s))
                 } catch (e) {
                     console.error('Failed to load suppliers', e)
+                }
+            }
+            if (type === 'CUSTOMER') {
+                try {
+                    const customers = await customersAPI.getAll()
+                    customers.forEach(c => customerMap.set(c.id, c))
+                } catch (e) {
+                    console.error('Failed to load customers', e)
                 }
             }
 
@@ -122,6 +131,61 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
                     }
                 }
                 list.push(...Array.from(productMap.values()))
+            } else if (type === 'CUSTOMER') {
+                // CUSTOMER TYPE - same logic as SUPPLIER
+                const now = new Date()
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                const customerDocMap = new Map<number, DiscountDocument[]>()
+
+                for (const doc of sortedDocs) {
+                    if (!doc.entity_id) continue
+                    const existing = customerDocMap.get(doc.entity_id) || []
+                    existing.push(doc)
+                    customerDocMap.set(doc.entity_id, existing)
+                }
+
+                for (const [customerId, cDocs] of customerDocMap.entries()) {
+                    const customer = customerMap.get(customerId)
+                    const customerName = customer ? customer.name : `Müştəri #${customerId}`
+
+                    const productFound = new Set<number | string>()
+
+                    for (const doc of cDocs) {
+                        if (!doc.items) continue
+
+                        let docValid = true
+                        if (doc.start_date) {
+                            const startDate = new Date(doc.start_date)
+                            const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+                            if (today < startDay) docValid = false
+                        }
+                        if (doc.end_date) {
+                            const endDate = new Date(doc.end_date)
+                            const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+                            if (today > endDay) docValid = false
+                        }
+                        if (!docValid) continue
+
+                        for (const item of doc.items) {
+                            const key = item.product_id ? item.product_id : 'general'
+                            if (productFound.has(key)) continue
+
+                            productFound.add(key)
+
+                            list.push({
+                                id: `${doc.id}-${item.id}`,
+                                customerName,
+                                productName: item.product ? item.product.name : 'Bütün Məhsullar (Ümumi)',
+                                code: item.product ? item.product.code : '-',
+                                percent: Number(item.discount_percent),
+                                docNumber: doc.document_number,
+                                docId: doc.id,
+                                startDate: doc.start_date,
+                                endDate: doc.end_date
+                            })
+                        }
+                    }
+                }
             } else {
                 // SUPPLIER TYPE
                 // We list all active connections. 
@@ -204,7 +268,8 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
         return (
             (d.productName && d.productName.toLowerCase().includes(text)) ||
             (d.code && d.code.toLowerCase().includes(text)) ||
-            (d.supplierName && d.supplierName.toLowerCase().includes(text))
+            (d.supplierName && d.supplierName.toLowerCase().includes(text)) ||
+            (d.customerName && d.customerName.toLowerCase().includes(text))
         )
     })
 
@@ -213,7 +278,9 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
 
         const title = type === 'SUPPLIER'
             ? `Təchizatçı Faiz Sənədi (${docNumber})`
-            : `Məhsul Faiz Sənədi (${docNumber})`
+            : type === 'CUSTOMER'
+                ? `Müştəri Faiz Sənədi (${docNumber})`
+                : `Məhsul Faiz Sənədi (${docNumber})`
 
         openPageWindow(
             windowId,
@@ -255,6 +322,9 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
                             {type === 'SUPPLIER' && (
                                 <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Təchizatçı</th>
                             )}
+                            {type === 'CUSTOMER' && (
+                                <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Müştəri</th>
+                            )}
                             <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Məhsul</th>
                             <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Kod</th>
                             <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Faiz %</th>
@@ -264,14 +334,17 @@ export default function ActiveDiscountsModal({ type = 'PRODUCT' }: ActiveDiscoun
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={type === 'SUPPLIER' ? 6 : 5} style={{ padding: '2rem', textAlign: 'center' }}>Yüklənir...</td></tr>
+                            <tr><td colSpan={type === 'SUPPLIER' || type === 'CUSTOMER' ? 6 : 5} style={{ padding: '2rem', textAlign: 'center' }}>Yüklənir...</td></tr>
                         ) : filteredList.length === 0 ? (
-                            <tr><td colSpan={type === 'SUPPLIER' ? 6 : 5} style={{ padding: '2rem', textAlign: 'center' }}>Hec bir aktiv endirim tapılmadı</td></tr>
+                            <tr><td colSpan={type === 'SUPPLIER' || type === 'CUSTOMER' ? 6 : 5} style={{ padding: '2rem', textAlign: 'center' }}>Hec bir aktiv endirim tapılmadı</td></tr>
                         ) : (
                             filteredList.map(item => (
                                 <tr key={item.id} style={{ borderBottom: '1px solid #eee' }}>
                                     {type === 'SUPPLIER' && (
                                         <td style={{ padding: '0.75rem', fontWeight: '500' }}>{item.supplierName}</td>
+                                    )}
+                                    {type === 'CUSTOMER' && (
+                                        <td style={{ padding: '0.75rem', fontWeight: '500' }}>{item.customerName}</td>
                                     )}
                                     <td style={{ padding: '0.75rem' }}>{item.productName}</td>
                                     <td style={{ padding: '0.75rem' }}>{item.code}</td>

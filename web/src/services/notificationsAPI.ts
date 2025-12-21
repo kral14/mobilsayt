@@ -1,7 +1,4 @@
-import axios from 'axios'
-import { useAuthStore } from '../store/authStore'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+import api from './api'
 
 export interface Notification {
     id: number
@@ -22,7 +19,7 @@ export const notificationsAPI = {
         message: string
     }): Promise<boolean> {
         try {
-            await axios.post(`${API_BASE_URL}/api/notifications`, notification)
+            await api.post('/notifications', notification)
             return true
         } catch (error) {
             console.error('[notificationsAPI] Failed to create notification:', error)
@@ -33,12 +30,7 @@ export const notificationsAPI = {
     // Get user's notifications
     async getUserNotifications(): Promise<Notification[]> {
         try {
-            const token = useAuthStore.getState().token
-            const response = await axios.get(`${API_BASE_URL}/api/notifications`, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            })
+            const response = await api.get('/notifications')
             return response.data.notifications || []
         } catch (error) {
             console.error('[notificationsAPI] Failed to get notifications:', error)
@@ -49,12 +41,7 @@ export const notificationsAPI = {
     // Mark notification as read
     async markAsRead(id: number): Promise<boolean> {
         try {
-            const token = useAuthStore.getState().token
-            await axios.put(`${API_BASE_URL}/api/notifications/${id}/read`, {}, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            })
+            await api.put(`/notifications/${id}/read`)
             return true
         } catch (error) {
             console.error('[notificationsAPI] Failed to mark as read:', error)
@@ -65,12 +52,7 @@ export const notificationsAPI = {
     // Clear all notifications
     async clearAll(): Promise<boolean> {
         try {
-            const token = useAuthStore.getState().token
-            await axios.delete(`${API_BASE_URL}/api/notifications`, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            })
+            await api.delete('/notifications')
             return true
         } catch (error) {
             console.error('[notificationsAPI] Failed to clear notifications:', error)

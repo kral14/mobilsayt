@@ -11,13 +11,13 @@ import { NotificationToast } from './NotificationToast'
 
 // Səhifə komponentləri
 import Hesablar from '../pages/Hesablar'
-import Anbar from '../pages/Anbar'
+import Mehsullar from '../pages/Mehsullar'
 import { AlisQaimeleriContent } from '../pages/Qaimeler/Alis'
-import SatisQaimeleri from '../pages/Qaimeler/Satis'
+import { SatisQaimeleriContent } from '../pages/Qaimeler/Satis'
 import KassaMedaxil from '../pages/Kassa/Medaxil'
 import KassaMexaric from '../pages/Kassa/Mexaric'
 import Admin from '../pages/Admin'
-import { SupplierDiscountDocuments, ProductDiscountDocuments } from '../pages/Discounts/DiscountDocuments'
+import { SupplierDiscountDocuments, ProductDiscountDocuments, CustomerDiscountDocuments } from '../pages/Discounts/DiscountDocuments'
 import ActiveDiscountsModal from './ActiveDiscountsModal'
 
 import GlobalFooter from './GlobalFooter'
@@ -418,7 +418,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     </button>
                   </li>
                   <li>
-                    <button className="dropdown-item" onClick={() => handleOpenPage('qaimeler-satis', 'Satış Qaimələri', '📄', SatisQaimeleri)}>
+                    <button className="dropdown-item" onClick={() => handleOpenPage('qaimeler-satis', 'Satış Qaimələri', '📄', SatisQaimeleriContent)}>
                       <span><i className="fas fa-file-invoice-dollar"></i> Satış Qaimələri</span> <i className="fas fa-arrow-right"></i>
                     </button>
                   </li>
@@ -434,7 +434,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
               {/* MƏHSULLAR (was ANBAR) */}
               <li className="nav-item">
-                <button className="nav-link" onClick={() => handleOpenPage('anbar', 'Məhsullar', '📦', Anbar)}>
+                <button className="nav-link" onClick={() => handleOpenPage('mehsullar', 'Məhsullar', '📦', Mehsullar)}>
                   Məhsullar
                 </button>
               </li>
@@ -479,7 +479,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         'partners',
                         'Tərəfdaşlar',
                         '👥',
-                        <PartnerManager pageTitle="Tərəfdaşlar" filterType="ALL" />,
+                        <PartnerManager filterType="ALL" />,
                         { width: 1200, height: 800 }
                       )
                     }}>
@@ -531,6 +531,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                   setActiveSubDropdown(null);
                                   setActiveSubSubDropdown(null);
                                   handleOpenPage('active-discounts-summary-supplier', 'Aktiv Təchizatçı Endirimləri', '📋', () => <ActiveDiscountsModal type="SUPPLIER" />)
+                                }}>
+                                  <span><i className="fas fa-list"></i> Aktiv Siyahı</span>
+                                </button>
+                              </li>
+                            </ul>
+                          )}
+                        </li>
+
+                        {/* Müştəri Faizləri with its own submenu */}
+                        <li
+                          className="has-submenu"
+                          onMouseEnter={() => setActiveSubSubDropdown('customer-discounts')}
+                          onMouseLeave={() => setActiveSubSubDropdown(null)}
+                        >
+                          <button className="dropdown-item" onClick={() => handleOpenPage('discount-customer', 'Müştəri Faizləri', '👥', CustomerDiscountDocuments)}>
+                            <span><i className="fas fa-user-tag"></i> Müştərilər üzrə</span> <i className="fas fa-chevron-right" style={{ fontSize: '10px' }}></i>
+                          </button>
+
+                          {/* Müştəri Aktiv Siyahı Submenu */}
+                          {activeSubSubDropdown === 'customer-discounts' && (
+                            <ul className="submenu" style={{ left: '100%', top: 0 }}>
+                              <li>
+                                <button className="dropdown-item" onClick={() => {
+                                  setActiveDropdown(null);
+                                  setActiveSubDropdown(null);
+                                  setActiveSubSubDropdown(null);
+                                  handleOpenPage('active-discounts-summary-customer', 'Aktiv Müştəri Endirimləri', '📋', () => <ActiveDiscountsModal type="CUSTOMER" />)
                                 }}>
                                   <span><i className="fas fa-list"></i> Aktiv Siyahı</span>
                                 </button>
@@ -720,6 +747,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           onClose={() => removeToast(toast.id)}
         />
       ))}
+
+
     </div>
   )
 }

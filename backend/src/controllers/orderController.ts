@@ -79,7 +79,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       const lastInvoice = await prisma.sale_invoices.findFirst({
         where: {
           invoice_number: {
-            startsWith: 'SI-'
+            startsWith: 'SQ'
           }
         },
         orderBy: {
@@ -89,13 +89,13 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
 
       let nextNumber = 1
       if (lastInvoice) {
-        // Son qaimə nömrəsindən rəqəmi çıxar (SI-0000000001 və ya SI-1763327417457 -> rəqəm)
-        const match = lastInvoice.invoice_number.match(/SI-(\d+)/)
+        // Son qaimə nömrəsindən rəqəmi çıxar (SQ00000001)
+        const match = lastInvoice.invoice_number.match(/SQ(\d+)/)
         if (match) {
           const lastNumber = parseInt(match[1], 10)
           // Əgər köhnə formatdırsa (timestamp kimi böyük rəqəm), yeni formatdan başla
-          // Yeni format: 10 rəqəmli (maksimum 9999999999)
-          if (lastNumber > 9999999999) {
+          // Yeni format: 8 rəqəmli (maksimum 99999999)
+          if (lastNumber > 99999999) {
             nextNumber = 1
           } else {
             nextNumber = lastNumber + 1
@@ -103,8 +103,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         }
       }
 
-      // 10 rəqəmli format: SI-0000000001
-      invoiceNumber = `SI-${String(nextNumber).padStart(10, '0')}`
+      // 8 rəqəmli format: SQ00000001
+      invoiceNumber = `SQ${String(nextNumber).padStart(8, '0')}`
     }
 
     // Ümumi məbləği hesabla
@@ -142,21 +142,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       )
     )
 
-    // Anbar qalığını azalt
-    for (const item of items) {
-      const warehouse = await prisma.warehouse.findFirst({
-        where: { product_id: item.product_id },
-      })
-
-      if (warehouse) {
-        await prisma.warehouse.update({
-          where: { id: warehouse.id },
-          data: {
-            quantity: Number(warehouse.quantity || 0) - parseFloat(item.quantity),
-          },
-        })
-      }
-    }
+    // Anbar yenilənməsi yalnız qaimə təsdiqlənəndə (is_active=true) olacaq
+    // updateOrderStatus funksiyasında həyata keçirilir
 
     const result = await prisma.sale_invoices.findUnique({
       where: { id: invoice.id },
@@ -254,6 +241,9 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
 
     const invoice = await prisma.sale_invoices.findUnique({
       where: { id: parseInt(id) },
+      include: {
+        sale_invoice_items: true,
+      },
     })
 
     if (!invoice) {
@@ -275,9 +265,112 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
       },
     })
 
+    // Anbar yenilənməsi: yalnız status dəyişəndə
+    if (invoice.is_active !== is_active) {
+      for (const item of invoice.sale_invoice_items) {
+        if (item.product_id) {
+          const warehouse = await prisma.warehouse.findFirst({
+            where: { product_id: item.product_id },
+          })
+
+          if (is_active) {
+            // Təsdiqlənir - anbardan çıxart
+            if (warehouse) {
+              const newQuantity = Number(warehouse.quantity || 0) - Number(item.quantity || 0)
+
+              // Mənfi anbar xəbərdarlığı (icazə verilir, amma log edilir)
+              if (newQuantity < 0) {
+                console.warn(`[ANBAR XƏBƏRDARLIQ] Məhsul ID ${item.product_id}: Anbar mənfi olacaq (${newQuantity}). Satış icazə verilir, amma admin yoxlamalıdır.`)
+              }
+
+              await prisma.warehouse.update({
+                where: { id: warehouse.id },
+                data: {
+                  quantity: newQuantity,
+                },
+              })
+            } else {
+              // Warehouse yoxdursa, mənfi qalıqla yarat
+              console.warn(`[ANBAR XƏBƏRDARLIQ] Məhsul ID ${item.product_id}: Warehouse yoxdur, mənfi qalıqla yaradılır (-${item.quantity})`)
+              await prisma.warehouse.create({
+                data: {
+                  product_id: item.product_id,
+                  quantity: -Number(item.quantity || 0),
+                },
+              })
+            }
+          } else {
+            // Təsdiq ləğv edilir - anbara geri qaytar
+            if (warehouse) {
+              await prisma.warehouse.update({
+                where: { id: warehouse.id },
+                data: {
+                  quantity: Number(warehouse.quantity || 0) + Number(item.quantity || 0),
+                },
+              })
+            }
+          }
+        }
+      }
+    }
+
     res.json(updatedInvoice)
   } catch (error) {
     console.error('Update order status error:', error)
     res.status(500).json({ message: 'Qaimə statusu yenilənərkən xəta baş verdi' })
+  }
+}
+
+export const deleteOrder = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params
+
+    // Qaiməni tap
+    const invoice = await prisma.sale_invoices.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        sale_invoice_items: true,
+      },
+    })
+
+    if (!invoice) {
+      return res.status(404).json({ message: 'Qaimə tapılmadı' })
+    }
+
+    // Yalnız təsdiqli qaimələr üçün anbarı yenilə (satış ləğv olunur, mal geri qayıdır)
+    if (invoice.is_active) {
+      for (const item of invoice.sale_invoice_items) {
+        if (item.product_id) {
+          const warehouse = await prisma.warehouse.findFirst({
+            where: { product_id: item.product_id },
+          })
+
+          if (warehouse) {
+            const newQuantity = Number(warehouse.quantity || 0) + Number(item.quantity || 0)
+            await prisma.warehouse.update({
+              where: { id: warehouse.id },
+              data: {
+                quantity: newQuantity,
+              },
+            })
+          }
+        }
+      }
+    }
+
+    // Faktura maddələrini sil
+    await prisma.sale_invoice_items.deleteMany({
+      where: { invoice_id: parseInt(id) },
+    })
+
+    // Fakturanı sil
+    await prisma.sale_invoices.delete({
+      where: { id: parseInt(id) },
+    })
+
+    res.json({ message: 'Qaimə silindi' })
+  } catch (error) {
+    console.error('Delete order error:', error)
+    res.status(500).json({ message: 'Qaimə silinərkən xəta baş verdi' })
   }
 }

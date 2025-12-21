@@ -3,27 +3,28 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { customersAPI } from '../services/api'
 import type { Customer } from '../../../shared/types'
 import UniversalContainer from './UniversalContainer'
-import UniversalNavbar from './UniversalNavbar'
+import UniversalToolBar from './UniversalToolBar'
 import UniversalTable, { ColumnConfig } from './UniversalTable'
 import UniversalFooter from './UniversalFooter'
 import TableSettingsModal from './TableSettingsModal'
 import { useNotificationStore } from '../store/notificationStore'
+import PartnerForm from './PartnerForm'
 
 interface PartnerManagerProps {
-    pageTitle: string
-    filterType?: 'ALL' | 'BUYER' | 'SUPPLIER' // Optional filter
+    filterType?: 'ALL' | 'BUYER' | 'SUPPLIER'
     onSelect?: (partner: Customer) => void
+    initialEditId?: number
 }
 
 
-export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect }: PartnerManagerProps) {
+export default function PartnerManager({ filterType = 'ALL', onSelect, initialEditId }: PartnerManagerProps) {
     const [customers, setCustomers] = useState<Customer[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
     const [showSettingsModal, setShowSettingsModal] = useState(false)
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
     const [formData, setFormData] = useState<Partial<Customer>>({})
-    const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUYER' | 'SUPPLIER'>(filterType)
+    const [typeFilter] = useState<'ALL' | 'BUYER' | 'SUPPLIER'>(filterType)
     const [tableColumns, setTableColumns] = useState<ColumnConfig[]>([])
 
     const addNotification = useNotificationStore(state => state.addNotification)
@@ -45,6 +46,18 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect
     useEffect(() => {
         loadCustomers()
     }, [loadCustomers])
+
+    // Handle initial edit
+    useEffect(() => {
+        if (initialEditId && customers.length > 0 && !showModal) {
+            const initialTarget = customers.find(c => c.id === initialEditId)
+            if (initialTarget) {
+                setEditingCustomer(initialTarget)
+                setFormData({ ...initialTarget })
+                setShowModal(true)
+            }
+        }
+    }, [initialEditId, customers, showModal])
 
     // Filter customers by type
     const filteredCustomers = useMemo(() => {
@@ -146,23 +159,7 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect
         }
     }, [loadCustomers, addNotification])
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault()
-        try {
-            if (editingCustomer) {
-                await customersAPI.update(editingCustomer.id.toString(), formData)
-                addNotification('success', 'Uğurlu əməliyyat', 'Tərəfdaş yeniləndi')
-            } else {
-                await customersAPI.create(formData)
-                addNotification('success', 'Uğurlu əməliyyat', 'Yeni tərəfdaş əlavə edildi')
-            }
-            setShowModal(false)
-            loadCustomers()
-        } catch (error) {
-            console.error('Error saving:', error)
-            addNotification('error', 'Xəta', 'Yadda saxlanılarkən xəta baş verdi')
-        }
-    }
+
 
     const openNewModal = () => {
         setEditingCustomer(null)
@@ -192,17 +189,33 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect
         setShowModal(true)
     }
 
-    const contextMenuActions = useMemo(() => ({
-        customItems: [
-            { label: 'Redaktə et', onClick: () => console.log('Edit from context menu needed') }
-        ]
-    }), [])
+
 
     const [selectedIds, setSelectedIds] = useState<(number | string)[]>([])
 
+    const handleSelection = useCallback(() => {
+        if (selectedIds.length === 1 && onSelect) {
+            const customer = filteredCustomers.find(c => c.id === selectedIds[0])
+            if (customer) {
+                onSelect(customer)
+            }
+        }
+    }, [selectedIds, filteredCustomers, onSelect])
+
+    // Enter key support for selection
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && selectedIds.length === 1 && onSelect && !showModal && !showSettingsModal) {
+                handleSelection()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [handleSelection, selectedIds.length, onSelect, showModal, showSettingsModal])
+
     return (
         <UniversalContainer padding="5px 15px">
-            <UniversalNavbar
+            <UniversalToolBar
                 onAdd={() => {
                     openNewModal()
                 }}
@@ -237,6 +250,7 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect
                     // Filter functionality
                     console.log('Filter')
                 }}
+                onSelect={onSelect && selectedIds.length === 1 ? handleSelection : undefined}
             />
 
             <UniversalTable
@@ -268,128 +282,22 @@ export default function PartnerManager({ pageTitle, filterType = 'ALL', onSelect
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000
                 }}>
-                    <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '8px', width: '500px', maxWidth: '90%' }}>
+                    <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '8px', width: '600px', maxWidth: '90%' }}>
                         <h2>{editingCustomer ? 'Redaktə Et' : 'Yeni Tərəfdaş'}</h2>
-                        <form onSubmit={handleSave}>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Ad *</label>
-                                <input
-                                    type="text"
-                                    required
-                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                    value={formData.name || ''}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                />
-                            </div>
-
-                            {/* Type Selector */}
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Növ</label>
-                                <select
-                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                    value={formData.type || 'BUYER'}
-                                    onChange={e => {
-                                        const newType = e.target.value as 'BUYER' | 'SUPPLIER' | 'BOTH'
-                                        const prefix = newType === 'SUPPLIER' ? 'SAT' : 'AL'
-                                        const maxCode = customers
-                                            .filter(c => c.code?.startsWith(prefix))
-                                            .map(c => {
-                                                const num = parseInt(c.code?.substring(prefix.length) || '0')
-                                                return isNaN(num) ? 0 : num
-                                            })
-                                            .reduce((max, num) => Math.max(max, num), 0)
-
-                                        const newCode = `${prefix}${String(maxCode + 1).padStart(8, '0')}`
-                                        setFormData({ ...formData, type: newType, code: newCode })
-                                    }}
-                                >
-                                    <option value="BUYER">🛒 Alıcı</option>
-                                    <option value="SUPPLIER">📦 Satıcı</option>
-                                    <option value="BOTH">🔄 Hər ikisi</option>
-                                </select>
-                            </div>
-
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Kod (Avtomatik)</label>
-                                <input
-                                    type="text"
-                                    placeholder="Boş buraxın avtomatik yaradılacaq"
-                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}
-                                    value={formData.code || ''}
-                                    onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                />
-                            </div>
-                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem' }}>Telefon</label>
-                                    <input
-                                        type="text"
-                                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                        value={formData.phone || ''}
-                                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                    />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem' }}>Email</label>
-                                    <input
-                                        type="email"
-                                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                        value={formData.email || ''}
-                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Ünvan</label>
-                                <input
-                                    type="text"
-                                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                    value={formData.address || ''}
-                                    onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                />
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', backgroundColor: '#e3f2fd', padding: '1rem', borderRadius: '4px' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#1565c0' }}>Daimi Endirim %</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        step="0.01"
-                                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #90caf9', borderRadius: '4px' }}
-                                        value={formData.permanent_discount || 0}
-                                        onChange={e => setFormData({ ...formData, permanent_discount: parseFloat(e.target.value) })}
-                                    />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem' }}>Balans</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                                        value={formData.balance || 0}
-                                        onChange={e => setFormData({ ...formData, balance: parseFloat(e.target.value) })}
-                                    />
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowModal(false)}
-                                    style={{ padding: '0.5rem 1rem', border: '1px solid #ddd', background: 'white', borderRadius: '4px', cursor: 'pointer' }}
-                                >
-                                    Ləğv et
-                                </button>
-                                <button
-                                    type="submit"
-                                    style={{ padding: '0.5rem 1rem', background: '#1976d2', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                >
-                                    Yadda saxla
-                                </button>
-                            </div>
-                        </form>
+                        {/* Dynamic import probably better but we can use direct import here if we import it at top */}
+                        {/* Since I cannot add import easily with replace_file, I will assume I can edit imports later or use require? 
+                            React lazy import is an option. 
+                            But for this step I will try to use the component directly and rely on previous steps ensuring it's available or adding import.
+                            Actually, I need to add import. 
+                        */}
+                        <PartnerForm
+                            initialData={editingCustomer || (formData.name ? formData : null) as Customer}
+                            onSave={() => {
+                                setShowModal(false)
+                                loadCustomers()
+                            }}
+                            onCancel={() => setShowModal(false)}
+                        />
                     </div>
                 </div>
             )}
