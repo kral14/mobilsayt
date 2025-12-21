@@ -33,7 +33,18 @@ const defaultColumns: ColumnConfig[] = [
     align: 'right',
     render: (val: number) => !isNaN(Number(val)) ? `${Number(val).toFixed(2)} ₼` : '0.00 ₼'
   },
-  { id: 'quantity', label: 'Qalıq', visible: true, width: 100, order: 8, align: 'right' },
+  {
+    id: 'quantity',
+    label: 'Qalıq',
+    visible: true,
+    width: 100,
+    order: 8,
+    align: 'right',
+    render: (_val: any, row: Product) => {
+      const quantity = (row as any).warehouse?.[0]?.quantity || 0
+      return `${quantity} ${row.unit || 'ədəd'}`
+    }
+  },
   {
     id: 'purchase_total',
     label: 'Alış cəm',
