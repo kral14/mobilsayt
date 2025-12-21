@@ -9,6 +9,12 @@ async function main() {
     const allDocs = await prisma.discount_documents.findMany()
 
     for (const doc of allDocs) {
+        // Skip if dates are null
+        if (!doc.start_date || !doc.end_date) {
+            console.log(`Skipping Document ${doc.document_number} (ID: ${doc.id}) - missing dates`)
+            continue
+        }
+
         const start = new Date(doc.start_date)
         const end = new Date(doc.end_date)
 
