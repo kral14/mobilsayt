@@ -3,7 +3,7 @@ import Layout from '../../components/Layout'
 
 import UniversalContainer from '../../components/UniversalContainer'
 import UniversalToolBar from '../../components/UniversalToolBar'
-import UniversalTable, { ColumnConfig } from '../../components/UniversalTable'
+import UniversalTable, { ColumnConfig, UniversalTableRef } from '../../components/UniversalTable'
 import UniversalFooter from '../../components/UniversalFooter'
 import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
 import { ordersAPI, productsAPI, customersAPI, warehousesAPI } from '../../services/api'
@@ -108,6 +108,7 @@ export function SatisQaimeleriContent() {
   const initialDataMap = useRef<Map<string, any>>(new Map()) // İlkin datanı saxlamaq üçün
   const [activeModalId, setActiveModalId] = useState<string | null>(null)
   const [baseZIndex, setBaseZIndex] = useState(1000)
+  const tableRef = useRef<UniversalTableRef>(null) // Table settings üçün
 
   // Təsdiq dialoqu üçün state
   const [confirmDialog, setConfirmDialog] = useState<{ modalId: string; currentModal: ModalData } | null>(null)
@@ -1455,6 +1456,7 @@ export function SatisQaimeleriContent() {
         onPrint={handlePrint}
         onRefresh={loadInvoices}
         onSearch={handleSearch}
+        onSettings={() => tableRef.current?.openSettings()}
         onFilter={() => {
           // Filter logic
         }}
@@ -1470,6 +1472,7 @@ export function SatisQaimeleriContent() {
       ) */}
 
       <UniversalTable
+        ref={tableRef}
         data={tableData}
         columns={defaultColumns}
         loading={loading}
