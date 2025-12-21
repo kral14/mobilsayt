@@ -36,16 +36,24 @@ export default function PartnerForm({ initialData, onSave, onCancel }: PartnerFo
         e.preventDefault()
         try {
             if (initialData?.id) {
+                // Always update in customers table
                 await customersAPI.update(initialData.id.toString(), formData)
                 addNotification('success', 'Uğurlu əməliyyat', 'Tərəfdaş yeniləndi')
             } else {
+                // Create new partner in customers table
                 await customersAPI.create(formData)
                 addNotification('success', 'Uğurlu əməliyyat', 'Yeni tərəfdaş əlavə edildi')
             }
             onSave()
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving:', error)
-            addNotification('error', 'Xəta', 'Yadda saxlanılarkən xəta baş verdi')
+
+            // Show specific error message from backend
+            if (error.response?.data?.message) {
+                addNotification('error', 'Xəta', error.response.data.message)
+            } else {
+                addNotification('error', 'Xəta', 'Yadda saxlanılarkən xəta baş verdi')
+            }
         }
     }
 

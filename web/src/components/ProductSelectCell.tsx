@@ -15,6 +15,7 @@ interface ProductSelectCellProps {
     onClear: () => void
     onOpenSelect: () => void
     onOpenDetails: (productId: number, productName: string) => void
+    tags?: React.ReactNode // New prop for embedded tags
     [key: string]: any
 }
 
@@ -32,6 +33,7 @@ export default function ProductSelectCell({
     onClear,
     onOpenSelect,
     onOpenDetails,
+    tags, // Destructure tags
     ...props
 }: ProductSelectCellProps) {
     const inputRef = useRef<HTMLInputElement>(null)
@@ -63,7 +65,17 @@ export default function ProductSelectCell({
         e.target.select()
     }
 
-    if (productId) {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'F4') {
+            e.preventDefault()
+            onOpenSelect()
+        }
+        if (props.onKeyDown) {
+            props.onKeyDown(e)
+        }
+    }
+
+    if (productId && !tags) {
         return (
             <div
                 style={{
@@ -75,28 +87,19 @@ export default function ProductSelectCell({
                     overflow: 'hidden',
                     border: '1px solid #ddd',
                     borderRadius: '4px',
-                    background: '#fff', // Selected state background
+                    background: '#fff',
                     borderColor: isFocused ? '#80bdff' : '#ddd',
                     boxShadow: isFocused ? '0 0 0 0.2rem rgba(0,123,255,.25)' : 'none',
-                }}
-                onFocus={onFocus}
-                onBlur={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        onBlur()
-                    }
                 }}
             >
                 <input
                     ref={inputRef}
                     type="text"
-                    value={productName}
-                    onChange={(e) => {
-                        onSearchChange(e.target.value)
-                    }}
+                    value={productName || ''}
+                    readOnly
                     onFocus={handleFocus}
-                    onClick={(e) => (e.target as HTMLInputElement).select()}
-                    draggable={false}
-                    onDragStart={(e) => e.preventDefault()}
+                    onBlur={handleBlur}
+                    onKeyDown={handleKeyDown}
                     style={{
                         flex: 1,
                         minWidth: 0,
@@ -109,78 +112,54 @@ export default function ProductSelectCell({
                         textAlign: 'left',
                         height: '30px',
                         boxSizing: 'border-box',
-                        background: 'transparent'
+                        background: 'transparent',
+                        color: '#495057',
+                        cursor: 'default'
                     }}
-                    className="product-input-selected"
-                    {...props}
                 />
 
-                {isFocused && (
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            paddingRight: '2px', // Slight padding for buttons
-                            backgroundColor: '#fff',
-                            height: '100%',
-                            flexShrink: 100, // High shrink priority
-                            minWidth: 0,
-                            overflow: 'hidden'
-                        }}
-                    >
-                        <button
-                            onMouseDown={(e) => {
-                                console.log(`[${new Date().toISOString()}] [ProductSelectCell] Details button MouseDown ${productId}`)
-                                e.preventDefault() // Prevent focus loss if needed, though stopPropagation is usually enough for the blur check
-                                e.stopPropagation()
-                                onOpenDetails(productId, productName)
-                            }}
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                fontSize: '1rem',
-                                padding: '0 4px',
-                                color: '#495057',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                height: '24px',
-                                width: '24px',
-                                flexShrink: 0 // Prevent button itself from squishing weirdly
-                            }}
-                            tabIndex={-1}
-                            title="Məhsul detalları"
-                        >
-                            🔍
-                        </button>
-                        <button
-                            onMouseDown={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                onOpenSelect()
-                            }}
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                fontSize: '1.2rem',
-                                padding: '0 4px',
-                                color: '#495057',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                height: '24px',
-                                width: '24px',
-                                lineHeight: 0.8
-                            }}
-                            tabIndex={-1}
-                            title="Məhsul seç"
-                        >
-                            ⋯
-                        </button>
-                    </div>
-                )}
+                {/* Clear Button */}
+                <button
+                    className="product-action-btn"
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onClear()
+                    }}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#dc3545',
+                        fontSize: '1.2rem',
+                        padding: '0 4px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                    title="Sil"
+                >
+                    ×
+                </button>
+
+                {/* Details Button */}
+                <button
+                    className="product-action-btn"
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        if (productId) onOpenDetails(productId, productName)
+                    }}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#007bff',
+                        fontSize: '1rem',
+                        padding: '0 4px',
+                        marginRight: '2px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                    title="Məhsul kartı"
+                >
+                    🔍
+                </button>
             </div>
         )
     }
@@ -191,18 +170,27 @@ export default function ProductSelectCell({
                 position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
+                flexWrap: 'nowrap', // Prevent wrapping
                 width: '100%',
                 maxWidth: '100%',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
                 borderColor: isFocused ? '#80bdff' : '#ddd',
                 boxShadow: isFocused ? '0 0 0 0.2rem rgba(0,123,255,.25)' : 'none',
-                background: '#fff'
+                background: '#fff',
+                padding: '2px',
+                height: '38px', // Fixed height
+                overflow: 'hidden', // Hide overflow
+                minWidth: 0 // Allow shrinking in flex container
             }}
         >
+            {tags && <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '4px', marginRight: '4px', overflow: 'hidden', maxWidth: '80%' }}>{tags}</div>}
+
             <input
+
                 ref={inputRef}
                 type="text"
+                onKeyDown={handleKeyDown}
                 placeholder="Məhsul adını yazın..."
                 value={searchTerm || ''}
                 onChange={(e) => onSearchChange(e.target.value)}
@@ -229,7 +217,7 @@ export default function ProductSelectCell({
             />
 
             {/* Action Buttons - Flex Item now */}
-            <div style={{ display: 'flex', alignItems: 'center', paddingRight: '4px', flexShrink: 100, minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', paddingRight: '4px', flexShrink: 0, minWidth: 0, overflow: 'hidden' }}>
                 <button
                     className="product-action-btn"
                     onClick={(e) => {

@@ -14,7 +14,6 @@ interface PartnerManagerProps {
     filterType?: 'ALL' | 'BUYER' | 'SUPPLIER'
     onSelect?: (partner: Customer) => void
     initialEditId?: number
-    pageTitle?: string  // Added for compatibility
 }
 
 
@@ -30,14 +29,14 @@ export default function PartnerManager({ filterType = 'ALL', onSelect, initialEd
 
     const addNotification = useNotificationStore(state => state.addNotification)
 
-    // Fetch customers
+    // Fetch customers (includes both buyers and suppliers via type field)
     const loadCustomers = useCallback(async () => {
         try {
             setLoading(true)
             const data = await customersAPI.getAll()
             setCustomers(data)
         } catch (error) {
-            console.error('Failed to load customers:', error)
+            console.error('Failed to load partners:', error)
             addNotification('error', 'Xəta', 'Tərəfdaşlar yüklənərkən xəta baş verdi')
         } finally {
             setLoading(false)

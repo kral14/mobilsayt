@@ -155,15 +155,15 @@ export interface Supplier {
 export interface PurchaseInvoice {
   id: number
   invoice_number: string
-  supplier_id: number | null
-  total_amount: number | null
-  invoice_date: Date | null
-  payment_date: Date | null
+  customer_id: number | null
+  total_amount: number
+  invoice_date: string
+  payment_date: string | null
   notes: string | null
-  is_active: boolean | null
-  created_at: Date | null
-  suppliers?: Supplier | null
-  purchase_invoice_items?: PurchaseInvoiceItem[]
+  is_active: boolean
+  created_at: string
+  purchase_invoice_items: PurchaseInvoiceItem[]
+  customers?: Customer
 }
 
 export interface PurchaseInvoiceItem {

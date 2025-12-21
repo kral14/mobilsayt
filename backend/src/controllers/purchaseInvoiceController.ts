@@ -7,7 +7,7 @@ export const getAllPurchaseInvoices = async (req: AuthRequest, res: Response) =>
   try {
     const invoices = await prisma.purchase_invoices.findMany({
       include: {
-        suppliers: true,
+        customer: true,
         purchase_invoice_items: {
           include: {
             products: true,
@@ -33,7 +33,7 @@ export const getPurchaseInvoiceById = async (req: AuthRequest, res: Response) =>
     const invoice = await prisma.purchase_invoices.findUnique({
       where: { id: parseInt(id) },
       include: {
-        suppliers: true,
+        customer: true,
         purchase_invoice_items: {
           include: {
             products: true,
@@ -55,13 +55,13 @@ export const getPurchaseInvoiceById = async (req: AuthRequest, res: Response) =>
 
 export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => {
   try {
-    const { supplier_id, items, notes, is_active, invoice_date, payment_date } = req.body
+    const { customer_id, items, notes, is_active, invoice_date, payment_date } = req.body
 
     // Yadda saxla düyməsi üçün boş qaimə yarada bilər
     // Validasiya yalnız OK düyməsi üçün frontend-dədir
 
-    // Faktura nömrəsi yarat (ardıcıl format: AL00000001)
-    // Əvvəlcə "AL" ilə başlayan bütün faktura nömrələrini al
+    // Faktura nömrəsi yarat (ardıcıl format: AQ00000001)
+    // Əvvəlcə "AQ" ilə başlayan bütün faktura nömrələrini al
     const allInvoices = await prisma.purchase_invoices.findMany({
       where: {
         invoice_number: {
@@ -117,15 +117,15 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
       totalAmount += parseFloat(item.total_price || 0)
     })
 
-    // Təchizatçı yoxlaması
-    if (supplier_id) {
-      const supplierExists = await prisma.suppliers.findUnique({
-        where: { id: supplier_id }
+    // Təchizatçı (Customer) yoxlaması
+    if (customer_id) {
+      const customerExists = await prisma.customers.findUnique({
+        where: { id: customer_id }
       })
 
-      if (!supplierExists) {
+      if (!customerExists) {
         return res.status(400).json({
-          message: `Təchizatçı ID ${supplier_id} tapılmadı. Zəhmət olmasa mövcud təchizatçı seçin.`
+          message: `Müştəri/Təchizatçı ID ${customer_id} tapılmadı. Zəhmət olmasa mövcud təchizatçı seçin.`
         })
       }
     }
@@ -134,8 +134,7 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
     const invoice = await prisma.purchase_invoices.create({
       data: {
         invoice_number: invoiceNumber,
-        supplier_id: supplier_id || null,
-        customer_id: null,
+        customer_id: customer_id || null,
         total_amount: totalAmount,
         notes: notes || null,
         is_active: is_active !== undefined ? is_active : true,
@@ -193,7 +192,7 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
     const result = await prisma.purchase_invoices.findUnique({
       where: { id: invoice.id },
       include: {
-        suppliers: true,
+        customer: true,
         purchase_invoice_items: {
           include: {
             products: true,
@@ -212,7 +211,7 @@ export const createPurchaseInvoice = async (req: AuthRequest, res: Response) => 
 export const updatePurchaseInvoice = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params
-    const { supplier_id, items, notes, is_active, invoice_date, payment_date } = req.body
+    const { customer_id, items, notes, is_active, invoice_date, payment_date } = req.body
 
     const invoice = await prisma.purchase_invoices.findUnique({
       where: { id: parseInt(id) },
@@ -276,7 +275,7 @@ export const updatePurchaseInvoice = async (req: AuthRequest, res: Response) => 
 
     // Qaiməni yenilə
     const updateData: any = {}
-    if (supplier_id !== undefined) updateData.supplier_id = supplier_id || null
+    if (customer_id !== undefined) updateData.customer_id = customer_id || null
 
     if (totalAmount !== undefined) updateData.total_amount = totalAmount
     if (notes !== undefined) updateData.notes = notes || null
@@ -288,7 +287,7 @@ export const updatePurchaseInvoice = async (req: AuthRequest, res: Response) => 
       where: { id: parseInt(id) },
       data: updateData,
       include: {
-        suppliers: true,
+        customer: true,
         purchase_invoice_items: {
           include: {
             products: true,
@@ -358,7 +357,7 @@ export const updatePurchaseInvoiceStatus = async (req: AuthRequest, res: Respons
         is_active: is_active,
       },
       include: {
-        suppliers: true,
+        customer: true,
         purchase_invoice_items: {
           include: {
             products: true,

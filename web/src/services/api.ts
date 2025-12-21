@@ -222,7 +222,7 @@ export const purchaseInvoicesAPI = {
   },
 
   create: async (data: {
-    supplier_id?: number
+    customer_id?: number
     items: {
       product_id: number
       quantity: number
@@ -250,7 +250,7 @@ export const purchaseInvoicesAPI = {
     }
   },
 
-  update: async (id: string, data: { supplier_id?: number; items?: any[]; notes?: string; is_active?: boolean; invoice_date?: string; payment_date?: string }): Promise<PurchaseInvoice> => {
+  update: async (id: string, data: { customer_id?: number; items?: any[]; notes?: string; is_active?: boolean; invoice_date?: string; payment_date?: string }): Promise<PurchaseInvoice> => {
     console.log('[API] purchaseInvoicesAPI.update çağırıldı')
     console.log('[API] Request URL:', `/purchase-invoices/${id}`)
     console.log('[API] Request method: PATCH')
@@ -293,8 +293,8 @@ export const purchaseInvoicesAPI = {
 
 // Customers API
 export const customersAPI = {
-  getAll: async (): Promise<Customer[]> => {
-    const response = await api.get<Customer[]>('/customers')
+  getAll: async (params?: { type?: string }): Promise<Customer[]> => {
+    const response = await api.get<Customer[]>('/customers', { params })
     return response.data
   },
 
@@ -335,12 +335,28 @@ export const customerFoldersAPI = {
   },
 }
 
-// Suppliers API
+// Suppliers API (Backward compatibility wrapper around customersAPI)
 export const suppliersAPI = {
   getAll: async (): Promise<Supplier[]> => {
-    const response = await api.get<Supplier[]>('/suppliers')
+    const response = await api.get<Supplier[]>('/customers', { params: { type: 'SUPPLIER' } })
     return response.data
   },
+
+  create: async (data: Partial<Supplier>): Promise<Supplier> => {
+    const response = await api.post<Supplier>('/customers', { ...data, type: 'SUPPLIER' })
+    return response.data
+  },
+
+  update: async (id: string, data: Partial<Supplier>): Promise<Supplier> => {
+    // Note: If type is not passed, it might remain what it was or default. 
+    // Ideally we preserve type or ensure it's SUPPLIER if we intend to keep it as such.
+    const response = await api.put<Supplier>(`/customers/${id}`, { ...data, type: 'SUPPLIER' })
+    return response.data
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/customers/${id}`)
+  }
 }
 
 // User API

@@ -7,7 +7,7 @@ import UniversalToolBar from '../../components/UniversalToolBar'
 import UniversalTable, { ColumnConfig, UniversalTableRef } from '../../components/UniversalTable'
 import UniversalFooter from '../../components/UniversalFooter'
 import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
-import { purchaseInvoicesAPI, productsAPI, suppliersAPI, warehousesAPI } from '../../services/api'
+import { purchaseInvoicesAPI, productsAPI, customersAPI, warehousesAPI } from '../../services/api'
 import type { PurchaseInvoice, Product, Supplier, WarehouseLocation } from '@shared/types'
 import { useWindowStore } from '../../store/windowStore'
 import { logActivity } from '../../store/logStore'
@@ -74,7 +74,7 @@ const defaultColumns: ColumnConfig[] = [
     }
   },
   { id: 'invoice_number', label: '№', visible: true, width: 140, order: 2 },
-  { id: 'supplier_name', label: 'Təchizatçı', visible: true, width: 220, order: 3 },
+  { id: 'customer_name', label: 'Təchizatçı', visible: true, width: 220, order: 3 },
   { id: 'invoice_date', label: 'Tarix', visible: true, width: 180, order: 4 },
   { id: 'payment_date', label: 'Son ödəniş tarixi', visible: true, width: 180, order: 5 },
   { id: 'total_amount', label: 'Ümumi məbləğ', visible: true, width: 150, order: 6, align: 'right' },
@@ -306,9 +306,9 @@ export function AlisQaimeleriContent() {
                     <p><strong>Tarix:</strong> ${invoiceDate}</p>
                   </div>
                   <div>
-                    <p><strong>Təchizatçı:</strong> ${fullInvoice.suppliers?.name || '-'}</p>
-                    ${fullInvoice.suppliers?.phone ? `<p><strong>Telefon:</strong> ${fullInvoice.suppliers.phone}</p>` : ''}
-                    ${fullInvoice.suppliers?.address ? `<p><strong>Ünvan:</strong> ${fullInvoice.suppliers.address}</p>` : ''}
+                    <p><strong>Təchizatçı:</strong> {fullInvoice.customers?.name || '-'}</p>
+                    {fullInvoice.customers?.phone ? <p><strong>Telefon:</strong> {fullInvoice.customers.phone}</p> : ''}
+                    {fullInvoice.customers?.address ? <p><strong>Ünvan:</strong> {fullInvoice.customers.address}</p> : ''}
                   </div>
                 </div>
                 <table>
@@ -645,8 +645,8 @@ export function AlisQaimeleriContent() {
 
   const loadSuppliers = async () => {
     try {
-      const data = await suppliersAPI.getAll()
-      setSuppliers(data)
+      const data = await customersAPI.getAll({ type: 'SUPPLIER' })
+      setSuppliers(data as any) // Type casting needed as Customer != Supplier but fields are compatible
     } catch (err: any) {
       console.error('Təchizatçılar yüklənərkən xəta:', err)
     }
@@ -680,7 +680,7 @@ export function AlisQaimeleriContent() {
     const filtered = invoices.filter(invoice => {
       return (
         invoice.invoice_number?.toLowerCase().includes(term) ||
-        invoice.suppliers?.name?.toLowerCase().includes(term) ||
+        invoice.customers?.name?.toLowerCase().includes(term) ||
         invoice.notes?.toLowerCase().includes(term) ||
         invoice.total_amount?.toString().includes(term)
       )
@@ -803,8 +803,8 @@ export function AlisQaimeleriContent() {
         invoiceType: 'purchase',
         isActive: fullInvoice ? fullInvoice.is_active || false : undefined,
         data: {
-          selectedSupplierId: fullInvoice?.supplier_id || null,
-          selectedSupplier: fullInvoice?.suppliers || null,
+          selectedSupplierId: fullInvoice?.customer_id || null,
+          selectedSupplier: fullInvoice?.customers || null,
           invoiceItems: items,
           notes: fullInvoice?.notes || '',
           invoiceNumber: fullInvoice?.invoice_number || '',
@@ -840,7 +840,7 @@ export function AlisQaimeleriContent() {
           ? `Qaimə ${fullInvoice?.invoice_number || ('#' + invoiceId)} redaktə üçün açıldı (${items.length} məhsul)`
           : `Yeni alış qaiməsi yaradıldı`,
         'info',
-        { invoiceId, itemCount: items.length, supplierId: fullInvoice?.supplier_id, invoiceNumber: fullInvoice?.invoice_number }
+        { invoiceId, itemCount: items.length, supplierId: fullInvoice?.customer_id, invoiceNumber: fullInvoice?.invoice_number }
       )
 
       // Window useEffect-də avtomatik yaradılacaq
@@ -954,7 +954,7 @@ export function AlisQaimeleriContent() {
         })
 
         const updateResult = await purchaseInvoicesAPI.update(modal.invoiceId.toString(), {
-          supplier_id: finalData.selectedSupplierId || undefined,
+          customer_id: finalData.selectedSupplierId || undefined,
           items,
           notes: finalData.notes || undefined,
           invoice_date: finalData.invoiceDate || undefined,
@@ -1017,7 +1017,7 @@ export function AlisQaimeleriContent() {
         })
 
         const newInvoice = await purchaseInvoicesAPI.create({
-          supplier_id: finalData.selectedSupplierId || undefined,
+          customer_id: finalData.selectedSupplierId || undefined,
           items,
           notes: finalData.notes || undefined,
           invoice_date: finalData.invoiceDate || undefined,
@@ -1153,7 +1153,7 @@ export function AlisQaimeleriContent() {
         })
 
         const updateResult = await purchaseInvoicesAPI.update(modal.invoiceId.toString(), {
-          supplier_id: modalData.selectedSupplierId || undefined,
+          customer_id: modalData.selectedSupplierId || undefined,
           items,
           notes: modalData.notes || undefined,
           invoice_date: modalData.invoiceDate || undefined,
@@ -1199,7 +1199,7 @@ export function AlisQaimeleriContent() {
         })
 
         const newInvoice = await purchaseInvoicesAPI.create({
-          supplier_id: modalData.selectedSupplierId || undefined,
+          customer_id: modalData.selectedSupplierId || undefined,
           items,
           notes: modalData.notes || undefined,
           invoice_date: modalData.invoiceDate || undefined,
@@ -1339,10 +1339,9 @@ export function AlisQaimeleriContent() {
                 <p><strong>Faktura №:</strong> ${invoice.invoice_number || ''}</p>
                 <p><strong>Tarix:</strong> ${invoiceDate}</p>
               </div>
-              <div>
-                <p><strong>Təchizatçı:</strong> ${invoice.suppliers?.name || '-'}</p>
-                ${invoice.suppliers?.phone ? `<p><strong>Telefon:</strong> ${invoice.suppliers.phone}</p>` : ''}
-                ${invoice.suppliers?.address ? `<p><strong>Ünvan:</strong> ${invoice.suppliers.address}</p>` : ''}
+                <p><strong>Təchizatçı:</strong> ${invoice.customers?.name || '-'}</p>
+                ${invoice.customers?.phone ? `<p><strong>Telefon:</strong> ${invoice.customers.phone}</p>` : ''}
+                ${invoice.customers?.address ? `<p><strong>Ünvan:</strong> ${invoice.customers.address}</p>` : ''}
               </div>
             </div>
             <table>
@@ -1393,7 +1392,7 @@ export function AlisQaimeleriContent() {
   const tableData = filteredInvoices.map(invoice => ({
     ...invoice,
     is_active_status: invoice.is_active ? '✓' : '',
-    supplier_name: invoice.suppliers?.name || '-',
+    supplier_name: invoice.customers?.name || '-',
     invoice_date: invoice.invoice_date ? (() => {
       const date = new Date(invoice.invoice_date)
       const day = String(date.getDate()).padStart(2, '0')

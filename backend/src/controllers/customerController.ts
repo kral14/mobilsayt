@@ -4,7 +4,15 @@ import { AuthRequest } from '../middleware/auth'
 
 export const getAllCustomers = async (req: AuthRequest, res: Response) => {
   try {
+    const { type } = req.query
+
+    const where: any = {}
+    if (type) {
+      where.type = type
+    }
+
     const customers = await prisma.customers.findMany({
+      where,
       orderBy: {
         name: 'asc',
       },
@@ -56,11 +64,14 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
     // Kod generasiyası - əgər kod verilməyibsə
     let customerCode = code
     if (!customerCode || customerCode.trim() === '') {
+      // Type-a əsasən prefix seç
+      const prefix = req.body.type === 'SUPPLIER' ? 'SL' : 'AL'
+
       // Son müştərinin kodunu tap
       const lastCustomer = await prisma.customers.findFirst({
         where: {
           code: {
-            startsWith: 'AL',
+            startsWith: prefix,
           },
         },
         orderBy: {
@@ -70,12 +81,12 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
 
       if (lastCustomer && lastCustomer.code) {
         // Son koddan nömrəni çıxar və artır
-        const lastNumber = parseInt(lastCustomer.code.replace('AL', '')) || 0
+        const lastNumber = parseInt(lastCustomer.code.replace(prefix, '')) || 0
         const newNumber = lastNumber + 1
-        customerCode = `AL${String(newNumber).padStart(8, '0')}`
+        customerCode = `${prefix}${String(newNumber).padStart(8, '0')}`
       } else {
-        // İlk müştəri
-        customerCode = 'AL00000001'
+        // İlk qeyd
+        customerCode = `${prefix}00000001`
       }
     }
 
@@ -90,6 +101,7 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
         balance: balance !== undefined && balance !== null ? parseFloat(balance) : 0,
         permanent_discount: req.body.permanent_discount !== undefined && req.body.permanent_discount !== null ? parseFloat(req.body.permanent_discount) : 0,
         folder_id: folder_id !== undefined && folder_id !== null ? parseInt(folder_id) : null,
+        type: req.body.type || 'BUYER',
         is_active: is_active !== undefined ? Boolean(is_active) : true,
       },
     })
@@ -130,14 +142,21 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // Kod generasiyası - əgər kod yoxdursa və ya boşdursa
+    // Kod generasiyası - əgər kod yoxdursa və ya boşdursa VEYA type dəyişibsə
     let customerCode = code
-    if ((!customerCode || customerCode.trim() === '') && (!existingCustomer.code || existingCustomer.code.trim() === '')) {
+    const typeChanged = req.body.type && existingCustomer.type !== req.body.type
+    const needsNewCode = (!customerCode || customerCode.trim() === '') && (!existingCustomer.code || existingCustomer.code.trim() === '')
+
+    if (needsNewCode || typeChanged) {
+      // Type-a əsasən prefix seç
+      const newType = req.body.type || existingCustomer.type
+      const prefix = newType === 'SUPPLIER' ? 'SL' : 'AL'
+
       // Son müştərinin kodunu tap
       const lastCustomer = await prisma.customers.findFirst({
         where: {
           code: {
-            startsWith: 'AL',
+            startsWith: prefix,
           },
         },
         orderBy: {
@@ -147,12 +166,12 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
 
       if (lastCustomer && lastCustomer.code) {
         // Son koddan nömrəni çıxar və artır
-        const lastNumber = parseInt(lastCustomer.code.replace('AL', '')) || 0
+        const lastNumber = parseInt(lastCustomer.code.replace(prefix, '')) || 0
         const newNumber = lastNumber + 1
-        customerCode = `AL${String(newNumber).padStart(8, '0')}`
+        customerCode = `${prefix}${String(newNumber).padStart(8, '0')}`
       } else {
-        // İlk müştəri
-        customerCode = 'AL00000001'
+        // İlk qeyd
+        customerCode = `${prefix}00000001`
       }
     } else if (customerCode && customerCode.trim() !== '') {
       customerCode = customerCode.trim()
@@ -173,6 +192,7 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
         ...(balance !== undefined && { balance }),
         ...(permanent_discount !== undefined && { permanent_discount: parseFloat(permanent_discount) }),
         ...(folder_id !== undefined && { folder_id: folder_id ? parseInt(folder_id) : null }),
+        ...(req.body.type !== undefined && { type: req.body.type }),
         ...(is_active !== undefined && { is_active: Boolean(is_active) }),
         updated_at: new Date(),
       },

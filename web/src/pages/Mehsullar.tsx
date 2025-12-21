@@ -8,6 +8,12 @@ import { useWindowStore } from '../store/windowStore'
 import ProductForm from '../components/ProductFormModal'
 import AdvancedFilterModal from '../components/AdvancedFilterModal'
 
+interface FilterRule {
+  component: string
+  condition: 'equals' | 'in' | 'not_equals' | 'not_in'
+  value: any
+}
+
 const defaultColumns: ColumnConfig[] = [
 
   { id: 'id', label: 'ID', visible: true, width: 60, order: 1 },
@@ -648,17 +654,63 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
     }, 250)
   }
 
-  // Filtr və axtarış
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.barcode?.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesSearch
-  })
+  const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>([])
 
+  // Helper to get warehouse quantity
   const getWarehouseQuantity = (product: Product) => {
     return (product as any).warehouse?.[0]?.quantity || 0
   }
+
+  const filterFieldMap: Record<string, string> = {
+    'product': 'id',
+    'code': 'code',
+    'barcode': 'barcode',
+    'article': 'article',
+    'brand': 'brand',
+    'model': 'model',
+    'category': 'category_id'
+  }
+
+  // Filtr və axtarış
+  const filteredProducts = products.filter(product => {
+    // Basic search
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.barcode?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    if (!matchesSearch) return false
+
+    // Advanced filters
+    if (appliedFilters.length > 0) {
+      return appliedFilters.every(rule => {
+        const field = filterFieldMap[rule.component] || rule.component
+        const val = (product as any)[field]
+        const target = rule.value
+
+        if (rule.condition === 'equals') {
+          if (rule.component === 'product') return val === (target?.id)
+          return String(val || '').toLowerCase() === String(target || '').toLowerCase()
+        }
+        if (rule.condition === 'not_equals') {
+          if (rule.component === 'product') return val !== (target?.id)
+          return String(val || '').toLowerCase() !== String(target || '').toLowerCase()
+        }
+        if (rule.condition === 'in') {
+          if (!Array.isArray(target) || target.length === 0) return true
+          if (rule.component === 'product') return target.some(p => p.id === val)
+          return target.some(t => String(val || '').toLowerCase().includes(String(t || '').toLowerCase()))
+        }
+        if (rule.condition === 'not_in') {
+          if (!Array.isArray(target) || target.length === 0) return true
+          if (rule.component === 'product') return !target.some(p => p.id === val)
+          return !target.some(t => String(val || '').toLowerCase().includes(String(t || '').toLowerCase()))
+        }
+        return true
+      })
+    }
+
+    return true
+  })
 
 
 
@@ -845,7 +897,7 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
               isOpen={true}
               onClose={() => useWindowStore.getState().closeWindow('advanced-filter')}
               onApply={(rules) => {
-                console.log('Applied rules:', rules)
+                setAppliedFilters(rules)
                 useWindowStore.getState().closeWindow('advanced-filter')
               }}
             />,
