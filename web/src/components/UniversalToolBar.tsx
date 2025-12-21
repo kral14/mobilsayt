@@ -3,7 +3,7 @@ import {
     AddButton, DeleteButton, EditButton, CopyButton, PrintButton,
     SelectButton, ActivateButton, DeactivateButton, RefreshButton,
     SettingsButton, FoldersButton, FilterButton, SaveFilterButton,
-    SelectFilterButton, SearchInput, UpButton, DownButton, ToolbarDropdown
+    SelectFilterButton, SearchInput, UpButton, DownButton
 } from './ToolbarButtons'
 import ToolbarConfigModal from './ToolbarConfigModal'
 import { useWindowStore } from '../store/windowStore'
@@ -123,7 +123,7 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
             case 'activate': return <ActivateButton key={key} onClick={onActivate} />
             case 'deactivate': return <DeactivateButton key={key} onClick={onDeactivate} />
             case 'refresh': return <RefreshButton key={key} onClick={onRefresh} />
-            case 'settings': return <SettingsButton key={key} onClick={onSettings} />
+            case 'settings': return <SettingsButton key={key} onClick={onSettings || handleContextMenu} />
             case 'folders': return <FoldersButton key={key} onClick={onFolders} />
             case 'up': return <UpButton key={key} onClick={onUp} />
             case 'down': return <DownButton key={key} onClick={onDown} />

@@ -38,7 +38,7 @@ const notificationStyles = `
 
 
 const defaultColumns: ColumnConfig[] = [
-  { id: 'checkbox', label: '', visible: true, width: 50, order: 0 },
+
   {
     id: 'is_active_status',
     label: '',
@@ -87,7 +87,7 @@ const defaultColumns: ColumnConfig[] = [
 export function AlisQaimeleriContent() {
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredInvoices, setFilteredInvoices] = useState<PurchaseInvoice[]>([])
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
@@ -356,11 +356,10 @@ export function AlisQaimeleriContent() {
   const loadInvoices = useCallback(async () => {
     try {
       setLoading(true)
-      setError('')
       const data = await purchaseInvoicesAPI.getAll()
       setInvoices(data)
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Qaimələr yüklənərkən xəta baş verdi')
+      showNotification(err.response?.data?.message || 'Qaimələr yüklənərkən xəta baş verdi', 'error')
     } finally {
       setLoading(false)
     }
@@ -1430,7 +1429,7 @@ export function AlisQaimeleriContent() {
 
 
   return (
-    <UniversalContainer>
+    <UniversalContainer padding="5px">
       <style>{notificationStyles}</style>
       <UniversalToolBar
         onAdd={() => openModalForInvoice(null)}

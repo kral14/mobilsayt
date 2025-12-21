@@ -37,13 +37,14 @@ const notificationStyles = `
 
 
 const defaultColumns: ColumnConfig[] = [
-  { id: 'checkbox', label: '', visible: true, width: 50, order: 0 },
+
   {
     id: 'is_active_status',
     label: '',
     visible: true,
     width: 50,
     order: 1,
+    sortable: false,
     align: 'center',
     render: (value: any) => {
       if (value === '✓') {
@@ -1432,7 +1433,7 @@ export function SatisQaimeleriContent() {
 
 
   return (
-    <UniversalContainer>
+    <UniversalContainer padding="5px">
       <style>{notificationStyles}</style>
       <UniversalToolBar
         onAdd={() => openModalForInvoice(null)}

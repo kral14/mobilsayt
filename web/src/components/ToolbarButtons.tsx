@@ -43,7 +43,7 @@ const dropdownMenuStyle: React.CSSProperties = {
 }
 
 interface ButtonProps {
-    onClick?: () => void
+    onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
     title?: string
     visible?: boolean
 }

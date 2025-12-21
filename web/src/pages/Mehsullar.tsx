@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import UniversalToolBar from '../components/UniversalToolBar'
 import CategoryTree from '../components/CategoryTree'
-import UniversalTable, { ColumnConfig } from '../components/UniversalTable'
+import UniversalTable, { ColumnConfig, UniversalTableRef } from '../components/UniversalTable'
 import { productsAPI, categoriesAPI } from '../services/api'
 import type { Product, Category } from '../../../shared/types'
 import { useWindowStore } from '../store/windowStore'
@@ -9,7 +9,7 @@ import ProductForm from '../components/ProductFormModal'
 import AdvancedFilterModal from '../components/AdvancedFilterModal'
 
 const defaultColumns: ColumnConfig[] = [
-  { id: 'checkbox', label: '', visible: true, width: 50, order: 0 },
+
   { id: 'id', label: 'ID', visible: true, width: 60, order: 1 },
   { id: 'name', label: 'Məhsul adı', visible: true, width: 250, order: 2 },
   { id: 'code', label: 'Kod', visible: true, width: 100, order: 3 },
@@ -54,98 +54,16 @@ const defaultColumns: ColumnConfig[] = [
   },
 ]
 
-// localStorage-dan columns yüklə
-const loadColumnsFromStorage = (): ColumnConfig[] => {
-  try {
-    const saved = localStorage.getItem('anbar-columns-config')
-    if (saved) {
-      const loaded = JSON.parse(saved)
-      // Əgər cəm sütunları yoxdursa, əlavə et
-      const hasPurchaseTotal = loaded.some((col: ColumnConfig) => col.id === 'purchase_total')
-      const hasSaleTotal = loaded.some((col: ColumnConfig) => col.id === 'sale_total')
-      const hasOldTotal = loaded.some((col: ColumnConfig) => col.id === 'total')
 
-      // Köhnə "total" sütununu sil və yeni sütunları əlavə et
-      if (hasOldTotal) {
-        const oldTotalIndex = loaded.findIndex((col: ColumnConfig) => col.id === 'total')
-        if (oldTotalIndex >= 0) {
-          loaded.splice(oldTotalIndex, 1)
-        }
-      }
-
-      if (!hasPurchaseTotal || !hasSaleTotal) {
-        const quantityIndex = loaded.findIndex((col: ColumnConfig) => col.id === 'quantity')
-        if (quantityIndex >= 0) {
-          const quantityOrder = loaded[quantityIndex].order || 0
-
-          // Alış cəm sütununu əlavə et
-          if (!hasPurchaseTotal) {
-            loaded.splice(quantityIndex + 1, 0, {
-              id: 'purchase_total',
-              label: 'Alış cəm',
-              visible: true,
-              width: 130,
-              order: quantityOrder + 1
-            })
-          }
-
-          // Satış cəm sütununu əlavə et
-          if (!hasSaleTotal) {
-            const purchaseTotalIndex = loaded.findIndex((col: ColumnConfig) => col.id === 'purchase_total')
-            const insertIndex = purchaseTotalIndex >= 0 ? purchaseTotalIndex + 1 : quantityIndex + 1
-            loaded.splice(insertIndex, 0, {
-              id: 'sale_total',
-              label: 'Satış cəm',
-              visible: true,
-              width: 130,
-              order: quantityOrder + 2
-            })
-          }
-
-          // Sonrakı sütunların order-ni yenilə
-          loaded.forEach((col: ColumnConfig) => {
-            if (col.id !== 'purchase_total' && col.id !== 'sale_total' && (col.order || 0) > (quantityOrder || 0)) {
-              col.order = (col.order || 0) + (hasPurchaseTotal && hasSaleTotal ? 0 : hasPurchaseTotal || hasSaleTotal ? 1 : 2)
-            }
-          })
-        } else {
-          // Əgər qalıq sütunu yoxdursa, sona əlavə et
-          const maxOrder = Math.max(...loaded.map((col: ColumnConfig) => col.order || 0), -1)
-          if (!hasPurchaseTotal) {
-            loaded.push({
-              id: 'purchase_total',
-              label: 'Alış cəm',
-              visible: true,
-              width: 130,
-              order: maxOrder + 1
-            })
-          }
-          if (!hasSaleTotal) {
-            loaded.push({
-              id: 'sale_total',
-              label: 'Satış cəm',
-              visible: true,
-              width: 130,
-              order: maxOrder + 2
-            })
-          }
-        }
-      }
-      return loaded
-    }
-  } catch (e) {
-    console.error('Columns config yüklənərkən xəta:', e)
-  }
-  return defaultColumns
-}
 
 
 
 interface MehsullarProps {
   initialSelectedProductId?: number | null
+  onSelect?: (product: Product) => void
 }
 
-export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) {
+export default function Mehsullar({ initialSelectedProductId, onSelect }: MehsullarProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -168,7 +86,8 @@ export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) 
 
   const [showCategoryTree, setShowCategoryTree] = useState(loadCategoryTreeVisibility)
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
-  const [columns] = useState<ColumnConfig[]>(loadColumnsFromStorage)
+  const tableRef = useRef<UniversalTableRef>(null)
+
 
 
 
@@ -530,7 +449,8 @@ export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) 
     })
 
     // Görünən sütunlar
-    const visibleCols = sortedColumns.filter(col => col.visible && col.id !== 'checkbox')
+    const visibleCols = defaultColumns.filter(col => col.visible && col.id !== 'checkbox')
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
 
     const printContent = `
       <!DOCTYPE html>
@@ -735,8 +655,7 @@ export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) 
 
 
 
-  // Sütunları sırala
-  const sortedColumns = [...columns].sort((a, b) => (a.order || 0) - (b.order || 0))
+  // Sütunları sırala - REMOVED, handled internally by UniversalTable
 
   // Kateqoriya ağacını qur - moved to component
 
@@ -895,9 +814,38 @@ export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) 
 
   return (
 
-    <div className="p-4" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div className="flex justify-between items-center mb-4">
-        <div style={{ display: 'flex', gap: '1rem', padding: '2rem', maxWidth: '1600px', margin: '0 auto' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', width: '100%', padding: '5px', gap: '1px' }}>
+      <UniversalToolBar
+        toolbarId="mehsullar"
+        onAdd={handleAddNew}
+        onEdit={() => handleEdit()}
+        onDelete={handleDelete}
+        onCopy={handleCopy}
+        onPrint={handlePrint}
+        onRefresh={() => loadProducts(selectedCategoryId)}
+        onSearch={(term) => setSearchTerm(term)}
+        onFolders={() => setShowCategoryTree(!showCategoryTree)}
+        onFilter={() => {
+          useWindowStore.getState().openPageWindow(
+            'advanced-filter',
+            'Filtrlər',
+            '🔍',
+            <AdvancedFilterModal
+              isOpen={true}
+              onClose={() => useWindowStore.getState().closeWindow('advanced-filter')}
+              onApply={(rules) => {
+                console.log('Applied rules:', rules)
+                useWindowStore.getState().closeWindow('advanced-filter')
+              }}
+            />,
+            { width: 800, height: 600 }
+          )
+        }}
+        onSettings={() => tableRef.current?.openSettings()}
+      />
+
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', gap: '5px', height: '100%', width: '100%' }}>
           {/* Papka Ağacı */}
           {showCategoryTree && (
             <div style={{
@@ -906,8 +854,8 @@ export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) 
               borderRadius: '8px',
               padding: '1rem',
               border: '1px solid #ddd',
-              maxHeight: 'calc(100vh - 200px)',
-              overflow: 'hidden', // Let component handle overflow
+              maxHeight: '100%',
+              overflow: 'hidden',
               flexShrink: 0,
               display: 'flex',
               flexDirection: 'column'
@@ -926,59 +874,25 @@ export default function Mehsullar({ initialSelectedProductId }: MehsullarProps) 
           )}
 
           {/* Əsas Məzmun */}
-          <div style={{ flex: 1 }}>
-
-
-            <UniversalToolBar
-              toolbarId="mehsullar"
-              onAdd={handleAddNew}
-              onEdit={() => handleEdit()}
-              onDelete={handleDelete}
-              onCopy={handleCopy}
-              onPrint={handlePrint}
-              onRefresh={() => loadProducts(selectedCategoryId)}
-              onSearch={(term) => setSearchTerm(term)}
-              onFolders={() => setShowCategoryTree(!showCategoryTree)}
-              onFilter={() => {
-                useWindowStore.getState().openPageWindow(
-                  'advanced-filter',
-                  'Filtrlər',
-                  '🔍',
-                  <AdvancedFilterModal
-                    isOpen={true}
-                    onClose={() => useWindowStore.getState().closeWindow('advanced-filter')}
-                    onApply={(rules) => {
-                      console.log('Applied rules:', rules)
-                      useWindowStore.getState().closeWindow('advanced-filter')
-                    }}
-                  />,
-                  { width: 800, height: 600 }
-                )
-              }}
-            >
-            </UniversalToolBar>
-
-
-
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <UniversalTable
+              ref={tableRef}
+              tableId="mehsullar"
               data={filteredProducts}
-              columns={sortedColumns}
+              columns={defaultColumns}
               loading={loading}
               getRowId={(row) => row.id}
               onRowSelect={(ids) => setSelectedRows(ids as number[])}
-              onRowClick={() => handleEdit()}
+              onRowClick={(row) => {
+                if (onSelect) {
+                  onSelect(row)
+                }
+              }}
             />
           </div>
-
-
-
-
-        </div >
-
-      </div >
-    </div >
-
-
+        </div>
+      </div>
+    </div>
   )
 }
 

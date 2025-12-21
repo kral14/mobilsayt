@@ -163,9 +163,48 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([])
-  const [showItemSettingsModal, setShowItemSettingsModal] = useState(false)
 
   const [enableColumnDrag, setEnableColumnDrag] = useState(false)
+
+  // Open table settings via UniversalWindow
+  const openTableSettings = () => {
+    const windowId = `invoice-table-settings-${isPurchase ? 'purchase' : 'sale'}`
+    useWindowStore.getState().openPageWindow(
+      windowId,
+      'Məhsul Cədvəli Ayarları',
+      '⚙️',
+      <TableSettingsModal
+        columns={tableColumns}
+        onColumnsChange={setTableColumns}
+        onClose={() => useWindowStore.getState().closeWindow(windowId)}
+        embedded={true}
+        defaultColumns={BASE_TABLE_COLUMNS}
+        functionSettings={functionSettings}
+        onFunctionSettingsChange={(settings) => {
+          if (settings.enableColumnDrag !== undefined) {
+            updateEnableColumnDrag(settings.enableColumnDrag)
+          }
+        }}
+        showFunctionsTab={true}
+        onSaveAsDefault={() => {
+          try {
+            const settingsKey = `invoice-modal-settings-${isPurchase ? 'purchase' : 'sale'}`
+            const settings = {
+              tableColumns,
+              enableColumnDrag,
+              timestamp: Date.now()
+            }
+            localStorage.setItem(settingsKey, JSON.stringify(settings))
+            alert('Ayarlar varsayılan olaraq saxlanıldı!')
+          } catch (err) {
+            console.error('Ayarlar saxlanarkən xəta:', err)
+            alert('Ayarlar saxlanarkən xəta baş verdi')
+          }
+        }}
+      />,
+      { width: 700, height: 600 }
+    )
+  }
 
 
   const [tableColumns, setTableColumns] = useState<TableColumnConfig[]>(() => {
@@ -344,91 +383,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   //   enableColumnDrag
   // }), [enableColumnDrag])
 
-  const functionTabContent = useMemo(() => (
-    <div>
-      <div
-        style={{
-          padding: '1rem',
-          background: '#f8f9fa',
-          borderRadius: '8px',
-          marginBottom: '1rem',
-          border: '1px solid #e9ecef'
-        }}
-      >
-        <h3 style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem' }}>
-          Sütun Funksiyaları
-        </h3>
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            cursor: 'pointer'
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={enableColumnDrag}
-            onChange={(e) => updateEnableColumnDrag(e.target.checked)}
-            style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-          />
-          <div>
-            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-              Sütun sürüşdürmə
-            </div>
-            <div style={{ fontSize: '0.9rem', color: '#666' }}>
-              Aktiv olduqda cədvəl başlıqlarını mouse ilə sürüşdürərək yerini
-              dəyişə bilərsən.
-            </div>
-          </div>
-        </label>
-      </div>
 
-      {/* Varsayılan kimi saxla düyməsi */}
-      <button
-        onClick={() => {
-          try {
-            const settingsKey = `invoice-modal-settings-${isPurchase ? 'purchase' : 'sale'}`
-            const settings = {
-              tableColumns,
-              enableColumnDrag,
-              timestamp: Date.now()
-            }
-            localStorage.setItem(settingsKey, JSON.stringify(settings))
-            alert('Ayarlar varsayılan olaraq saxlanıldı!')
-          } catch (err) {
-            console.error('Ayarlar saxlanarkən xəta:', err)
-            alert('Ayarlar saxlanarkən xəta baş verdi')
-          }
-        }}
-        style={{
-          width: '100%',
-          padding: '0.75rem',
-          background: '#28a745',
-          color: 'white',
-          border: 'none',
-          borderRadius: '6px',
-          fontSize: '0.95rem',
-          fontWeight: 'bold',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          marginBottom: '1rem'
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.background = '#218838'}
-        onMouseLeave={(e) => e.currentTarget.style.background = '#28a745'}
-      >
-        <span>💾</span>
-        Varsayılan kimi saxla
-      </button>
 
-      <p style={{ fontSize: '0.85rem', color: '#555', margin: 0 }}>
-        * Sütunu daşımaq üçün başlığı basılı saxlayıb yeni mövqeyə sürüşdür.
-      </p>
-    </div>
-  ), [enableColumnDrag, updateEnableColumnDrag, tableColumns, isPurchase])
+  // functionTabContent removed - now using TableSettingsModal's built-in function settings
 
   useEffect(() => {
     try {
@@ -1986,7 +1943,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   {/* Settings icon */}
                   <button
                     onClick={() => {
-                      setShowItemSettingsModal(true)
+                      openTableSettings()
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = '#e9ecef'
@@ -2182,7 +2139,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <h3 style={{ margin: '0 0 1rem 0', color: '#495057' }}>Əlavə Funksiyalar</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
                 <button
-                  onClick={() => setShowItemSettingsModal(true)}
+                  onClick={openTableSettings}
                   style={{
                     padding: '1rem',
                     background: 'white',
@@ -2223,26 +2180,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
             </div>
           </div>
         )
-        }
-        {
-          showItemSettingsModal && (
-            <TableSettingsModal
-              isOpen={showItemSettingsModal}
-              onClose={() => setShowItemSettingsModal(false)}
-              columns={tableColumns}
-              onColumnsChange={setTableColumns}
-              title="Məhsul Cədvəli Ayarları"
-              defaultColumns={BASE_TABLE_COLUMNS}
-              functionSettings={functionSettings}
-              onFunctionSettingsChange={(settings) => {
-                if (settings.enableColumnDrag !== undefined) {
-                  updateEnableColumnDrag(settings.enableColumnDrag)
-                }
-              }}
-              showFunctionsTab={true}
-              customFunctionContent={functionTabContent}
-            />
-          )
         }
         {/* Footer */}
         <div style={{ padding: '5px 10px', marginBottom: '1px', borderTop: '1px solid #dee2e6', /* border: '4px solid orange', */ background: '#f8f9fa', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
@@ -3179,7 +3116,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 {/* Settings icon */}
                 <button
                   onClick={() => {
-                    setShowItemSettingsModal(true)
+                    openTableSettings()
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = '#e9ecef'
@@ -3239,23 +3176,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
         </div>
 
-        {/* Ayarlar modalı */}
-        <TableSettingsModal
-          isOpen={showItemSettingsModal}
-          onClose={() => setShowItemSettingsModal(false)}
-          title="Cədvəl ayarları"
-          columns={tableColumns}
-          onColumnsChange={setTableColumns}
-          defaultColumns={BASE_TABLE_COLUMNS}
-          functionSettings={functionSettings}
-          onFunctionSettingsChange={(settings) => {
-            if (settings.enableColumnDrag !== undefined) {
-              updateEnableColumnDrag(settings.enableColumnDrag)
-            }
-          }}
-          showFunctionsTab={true}
-          customFunctionContent={functionTabContent}
-        />
 
         {/* Düymələr */}
         <div style={{ padding: '1rem', borderTop: '1px solid #ddd', display: 'flex', gap: '1rem', alignItems: 'center', flexShrink: 0, border: '4px solid orange' /* DEBUG BORDER */ }}>
@@ -3423,26 +3343,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 cursor: 'nwse-resize',
                 background: 'linear-gradient(135deg, transparent 0%, transparent 40%, #999 40%, #999 60%, transparent 60%)',
               }}
-            />
-          )
-        }
-        {
-          showItemSettingsModal && (
-            <TableSettingsModal
-              isOpen={showItemSettingsModal}
-              onClose={() => setShowItemSettingsModal(false)}
-              columns={tableColumns}
-              onColumnsChange={setTableColumns}
-              title="Məhsul Cədvəli Ayarları"
-              defaultColumns={BASE_TABLE_COLUMNS}
-              functionSettings={functionSettings}
-              onFunctionSettingsChange={(settings) => {
-                if (settings.enableColumnDrag !== undefined) {
-                  updateEnableColumnDrag(settings.enableColumnDrag)
-                }
-              }}
-              showFunctionsTab={true}
-              customFunctionContent={functionTabContent}
             />
           )
         }
