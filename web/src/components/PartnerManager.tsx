@@ -14,6 +14,7 @@ interface PartnerManagerProps {
     filterType?: 'ALL' | 'BUYER' | 'SUPPLIER'
     onSelect?: (partner: Customer) => void
     initialEditId?: number
+    pageTitle?: string  // Added for compatibility
 }
 
 

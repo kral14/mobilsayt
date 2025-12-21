@@ -201,8 +201,6 @@ export default function PartnerSelect({
     // AND isFocused is true
     const showDetails = (!!value || searchTerm.length > 0) && isFocused
     const showClear = searchTerm.length > 0 && isFocused
-    // Three dots also conditioned? User said "3 noqte lup x itmelidi". Yes, ALL buttons.
-    const showMenu = isFocused
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', ...style }}>

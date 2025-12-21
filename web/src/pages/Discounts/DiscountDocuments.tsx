@@ -4,7 +4,7 @@ import DataTable, { ColumnConfig } from '../../components/DataTable'
 import { discountDocumentsAPI, suppliersAPI, customersAPI } from '../../services/api'
 import { DiscountDocument, Supplier, Customer } from '@shared/types'
 import DiscountDocumentModal from '../../components/DiscountDocumentModal'
-import ActiveDiscountsModal from '../../components/ActiveDiscountsModal'
+// import ActiveDiscountsModal from '../../components/ActiveDiscountsModal' // Unused
 import { useWindowStore } from '../../store/windowStore'
 import UniversalToolBar from '../../components/UniversalToolBar'
 
@@ -143,7 +143,8 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
         return cols
     }, [type, suppliers, customers])
 
-    const handleOpenActiveSummary = () => {
+    // Unused function - commented out
+    /* const handleOpenActiveSummary = () => {
         openPageWindow(
             'active-discounts-summary',
             type === 'SUPPLIER' ? 'Aktiv Təchizatçı Endirimləri' : type === 'CUSTOMER' ? 'Aktiv Müştəri Endirimləri' : 'Aktiv Məhsul Endirimləri',
@@ -151,7 +152,7 @@ function DiscountDocumentsContent({ type }: DiscountDocumentsProps) {
             <ActiveDiscountsModal type={type} />,
             { width: 900, height: 600 }
         )
-    }
+    } */
 
     const handleOpenNew = () => {
         const uniqueId = `discount-doc-${Date.now()}`

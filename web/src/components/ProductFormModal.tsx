@@ -65,7 +65,7 @@ export default function ProductForm({
         is_active: true
     })
 
-    const [showBarcodeScanner, setShowBarcodeScanner] = useState(false)
+    // const [showBarcodeScanner, setShowBarcodeScanner] = useState(false) // Unused
 
     // Initialize form when product changes
     useEffect(() => {
@@ -143,6 +143,8 @@ export default function ProductForm({
         }
     }, [product])
 
+    // Unused function - commented out
+    /*
     const calculateDateDifference = (startDate: Date, endDate: Date) => {
         let years = endDate.getFullYear() - startDate.getFullYear()
         let months = endDate.getMonth() - startDate.getMonth()
@@ -161,6 +163,7 @@ export default function ProductForm({
 
         return { years, months, days }
     }
+    */
 
     const generateBarcode = () => {
         const timestamp = Date.now().toString()
@@ -302,7 +305,7 @@ export default function ProductForm({
                                 />
                                 <button
                                     type="button"
-                                    onClick={() => setShowBarcodeScanner(true)}
+                                    // onClick={() => setShowBarcodeScanner(true)} // Commented - feature not implemented
                                     style={{
                                         padding: '0.75rem',
                                         background: '#17a2b8',

@@ -69,7 +69,7 @@ export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilter
             <UniversalToolBar
                 onAdd={() => { }} // Placeholder for adding new filter
                 onDelete={() => { }} // Placeholder for delete
-                onSearch={(term) => { }} // Placeholder for search
+                onSearch={() => { }} // Placeholder for search
             />
             <div style={{ flex: 1, display: 'flex', borderBottom: '1px solid #ddd' }}>
                 {/* Left Side: Component List */}
