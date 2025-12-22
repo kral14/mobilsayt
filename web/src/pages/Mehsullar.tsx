@@ -896,6 +896,7 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
             <AdvancedFilterModal
               isOpen={true}
               onClose={() => useWindowStore.getState().closeWindow('advanced-filter')}
+              toolbarId="filter-mehsullar"
               onApply={(rules) => {
                 setAppliedFilters(rules)
                 useWindowStore.getState().closeWindow('advanced-filter')

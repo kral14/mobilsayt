@@ -298,6 +298,11 @@ export const customersAPI = {
     return response.data
   },
 
+  getById: async (id: string): Promise<Customer> => {
+    const response = await api.get<Customer>(`/customers/${id}`)
+    return response.data
+  },
+
   create: async (data: Partial<Customer>): Promise<Customer> => {
     const response = await api.post<Customer>('/customers', data)
     return response.data

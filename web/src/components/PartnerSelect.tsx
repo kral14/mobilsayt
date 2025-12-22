@@ -29,6 +29,7 @@ export default function PartnerSelect({
 }: PartnerSelectProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [showDropdown, setShowDropdown] = useState(false)
+
     const [isFocused, setIsFocused] = useState(false)
     const inputRef = useRef<HTMLInputElement>(null)
     const dropdownRef = useRef<HTMLDivElement>(null)
@@ -235,7 +236,7 @@ export default function PartnerSelect({
 
                     {/* Action Buttons */}
                     <div style={{
-                        display: isFocused ? 'flex' : 'none', // Toggle visibility
+                        display: (isFocused || value) ? 'flex' : 'none', // Show if focused OR has value
                         gap: '2px',
                         position: 'absolute',
                         right: '4px',

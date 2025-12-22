@@ -3,9 +3,10 @@ import {
     AddButton, DeleteButton, EditButton, CopyButton, PrintButton,
     SelectButton, ActivateButton, DeactivateButton, RefreshButton,
     SettingsButton, FoldersButton, FilterButton, SaveFilterButton,
-    SelectFilterButton, SearchInput, UpButton, DownButton
+    SelectFilterButton, SearchInput, UpButton, DownButton, PeriodButton
 } from './ToolbarButtons'
 import ToolbarConfigModal from './ToolbarConfigModal'
+import DatePeriodPicker, { DatePeriod } from './DatePeriodPicker'
 import { useWindowStore } from '../store/windowStore'
 import filterIcon from '../assets/icons/toolbar/filter.png'
 import filterSaveIcon from '../assets/icons/toolbar/filtersave.png'
@@ -13,23 +14,23 @@ import filterChangeIcon from '../assets/icons/toolbar/filterchange.png'
 
 interface UniversalToolBarProps {
     toolbarId?: string // Unique ID for saving configuration
-    onAdd?: () => void
-    onDelete?: () => void
-    onEdit?: () => void
-    onCopy?: () => void
-    onPrint?: () => void
-    onRefresh?: () => void
-    onSettings?: () => void
+    onAdd?: (e?: any) => void
+    onDelete?: (e?: any) => void
+    onEdit?: (e?: any) => void
+    onCopy?: (e?: any) => void
+    onPrint?: (e?: any) => void
+    onRefresh?: (e?: any) => void
+    onSettings?: (e?: any) => void
 
-    onSaveFilter?: () => void
-    onSelectFilter?: () => void
-    onSelect?: () => void
-    onFolders?: () => void
-    onUp?: () => void
-    onDown?: () => void
+    onSaveFilter?: (e?: any) => void
+    onSelectFilter?: (e?: any) => void
+    onSelect?: (e?: any) => void
+    onFolders?: (e?: any) => void
+    onUp?: (e?: any) => void
+    onDown?: (e?: any) => void
 
-    onActivate?: () => void
-    onDeactivate?: () => void
+    onActivate?: (e?: any) => void
+    onDeactivate?: (e?: any) => void
 
     children?: React.ReactNode // Custom controls
 
@@ -37,8 +38,9 @@ interface UniversalToolBarProps {
     // Ideally, a generic "onAction(type)" would be better, but this is fine.
 
     // Filter/Search
-    onFilter?: () => void
+    onFilter?: (e?: any) => void
     onSearch?: (term: string) => void
+    onPeriodChange?: (period: DatePeriod) => void
 }
 
 const FilterImg = <img src={filterIcon} alt="Filtr" style={{ width: 22, height: 22, objectFit: 'contain' }} />
@@ -59,6 +61,7 @@ const ALL_TOOLS = [
     { key: 'folders', label: 'Papkalar', icon: '📁' },
     { key: 'up', label: 'Yuxarı', icon: '⬆️' },
     { key: 'down', label: 'Aşağı', icon: '⬇️' },
+    { key: 'period', label: 'Period Seç', icon: '📅' },
     { key: 'filter', label: 'Filtr', icon: FilterImg },
     { key: 'saveFilter', label: 'Filtri Yadda Saxla', icon: SaveFilterImg },
     { key: 'selectFilter', label: 'Filtr Seç', icon: SelectFilterImg },
@@ -70,10 +73,12 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
     onAdd, onDelete, onPrint, onEdit, onCopy, onRefresh,
     onFilter, onSettings, onSearch, onSaveFilter, onSelectFilter,
     onSelect, onFolders, onUp, onDown, onActivate, onDeactivate,
+    onPeriodChange,
     children
 }) => {
     // Default visible tools: all
     const [visibleTools, setVisibleTools] = useState<string[]>(ALL_TOOLS.map(t => t.key))
+    const [showPeriodPicker, setShowPeriodPicker] = useState(false)
 
     useEffect(() => {
         if (toolbarId) {
@@ -127,6 +132,24 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
             case 'folders': return <FoldersButton key={key} onClick={onFolders} />
             case 'up': return <UpButton key={key} onClick={onUp} />
             case 'down': return <DownButton key={key} onClick={onDown} />
+            case 'period': return (
+                <div key={key} style={{ position: 'relative', display: 'inline-block' }}>
+                    <PeriodButton
+                        onClick={() => setShowPeriodPicker(!showPeriodPicker)}
+                    />
+                    {showPeriodPicker && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, marginTop: '5px' }}>
+                            <DatePeriodPicker
+                                onClose={() => setShowPeriodPicker(false)}
+                                onChange={(period) => {
+                                    if (onPeriodChange) onPeriodChange(period)
+                                    setShowPeriodPicker(false)
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            )
             case 'filter': return <FilterButton key={key} onClick={onFilter} icon={FilterImg} />
             case 'saveFilter': return <SaveFilterButton key={key} onClick={onSaveFilter} icon={SaveFilterImg} />
             case 'selectFilter': return <SelectFilterButton key={key} onClick={onSelectFilter} icon={SelectFilterImg} />

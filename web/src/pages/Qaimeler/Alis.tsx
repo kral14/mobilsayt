@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import AdvancedFilterModal, { FilterRule, FilterComponentConfig } from '../../components/AdvancedFilterModal'
 
 import Layout from '../../components/Layout'
 
@@ -37,6 +38,16 @@ const notificationStyles = `
 
 
 
+
+const FILTER_COMPONENTS: FilterComponentConfig[] = [
+  { id: 'invoice_number', label: '№', type: 'text' },
+  { id: 'customer_id', label: 'Təchizatçı', type: 'partner', partnerType: 'SUPPLIER' },
+  { id: 'invoice_date', label: 'Tarix', type: 'date' },
+  { id: 'total_amount', label: 'Məbləğ', type: 'number' },
+  { id: 'notes', label: 'Qeydlər', type: 'text' },
+  { id: 'product', label: 'Məhsul', type: 'product' }
+]
+
 const defaultColumns: ColumnConfig[] = [
 
   {
@@ -74,7 +85,14 @@ const defaultColumns: ColumnConfig[] = [
     }
   },
   { id: 'invoice_number', label: '№', visible: true, width: 140, order: 2 },
-  { id: 'customer_name', label: 'Təchizatçı', visible: true, width: 220, order: 3 },
+  {
+    id: 'customer_name',
+    label: 'Təchizatçı',
+    visible: true,
+    width: 220,
+    order: 3,
+    render: (_value: any, row: any) => row.supplier_name || ''
+  },
   { id: 'invoice_date', label: 'Tarix', visible: true, width: 180, order: 4 },
   { id: 'payment_date', label: 'Son ödəniş tarixi', visible: true, width: 180, order: 5 },
   { id: 'total_amount', label: 'Ümumi məbləğ', visible: true, width: 150, order: 6, align: 'right' },
@@ -91,6 +109,7 @@ export function AlisQaimeleriContent() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredInvoices, setFilteredInvoices] = useState<PurchaseInvoice[]>([])
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
+  const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>([])
   // Global notification store
   const { addNotification } = useNotificationStore()
 
@@ -632,6 +651,18 @@ export function AlisQaimeleriContent() {
     }
   }, [openModals, activeModalId, showSupplierModal, showProductModal, showItemSettingsModal, suppliers, products, warehouses, handleModalClose, handleModalUpdate, handleModalActivate, handleModalPrint, confirmDialog])
 
+  // Load saved filters on mount
+  useEffect(() => {
+    try {
+      const savedRules = localStorage.getItem('filter-applied-filter-alis')
+      if (savedRules) {
+        setAppliedFilters(JSON.parse(savedRules))
+      }
+    } catch (e) {
+      console.error('Failed to load saved filters', e)
+    }
+  }, []) // Run once on mount
+
   useEffect(() => {
     loadInvoices()
     loadSuppliers()
@@ -641,7 +672,7 @@ export function AlisQaimeleriContent() {
 
   useEffect(() => {
     filterInvoices()
-  }, [searchTerm, invoices])
+  }, [searchTerm, invoices, appliedFilters])
 
   const loadSuppliers = async () => {
     try {
@@ -671,20 +702,149 @@ export function AlisQaimeleriContent() {
   }
 
   const filterInvoices = () => {
-    if (!searchTerm.trim()) {
-      setFilteredInvoices(invoices)
-      return
+    let filtered = invoices
+
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(invoice => {
+        return (
+          invoice.invoice_number?.toLowerCase().includes(term) ||
+          invoice.customers?.name?.toLowerCase().includes(term) ||
+          invoice.notes?.toLowerCase().includes(term) ||
+          invoice.total_amount?.toString().includes(term)
+        )
+      })
     }
 
-    const term = searchTerm.toLowerCase()
-    const filtered = invoices.filter(invoice => {
-      return (
-        invoice.invoice_number?.toLowerCase().includes(term) ||
-        invoice.customers?.name?.toLowerCase().includes(term) ||
-        invoice.notes?.toLowerCase().includes(term) ||
-        invoice.total_amount?.toString().includes(term)
-      )
-    })
+    // Apply advanced filters
+    if (appliedFilters.length > 0) {
+      filtered = filtered.filter(item => {
+        return appliedFilters.every(rule => {
+          if (!rule.value) return true // Skip empty rules
+
+          let itemValue: any = (item as any)[rule.component]
+          let ruleValue = rule.value
+
+          // Handle specific field logic
+          if (rule.component === 'customer_id') {
+            const isTextOp = ['contains', 'not_contains', 'starts_with', 'not_starts_with'].includes(rule.condition)
+            const isSubjectString = typeof rule.value === 'string'
+
+            if (isTextOp || isSubjectString) {
+              // Compare Names
+              const supplier = suppliers.find(s => s.id === item.customer_id)
+              itemValue = supplier?.name || ''
+
+              if (typeof rule.value === 'object' && rule.value !== null) {
+                ruleValue = rule.value.name
+              } else {
+                ruleValue = String(rule.value || '')
+              }
+            } else {
+              // Compare IDs
+              itemValue = item.customer_id;
+              if (typeof rule.value === 'object' && rule.value !== null) {
+                ruleValue = rule.value.id
+              } else {
+                ruleValue = rule.value
+              }
+            }
+          }
+          else if (rule.component === 'product') {
+            // Product filtering logic
+            // Get selected product IDs (could be single value or array)
+            const selectedIds = Array.isArray(rule.value)
+              ? rule.value.map((v: any) => v.id || v)
+              : [rule.value?.id || rule.value]
+
+            // Check if invoice items contain any of the selected products
+            const invoiceItems = item.purchase_invoice_items || []
+            const hasProduct = invoiceItems.some(invItem => selectedIds.includes(invItem.product_id))
+
+            if (rule.condition === 'not_in' || rule.condition === 'not_equals') {
+              return !hasProduct
+            }
+            return hasProduct
+          }
+          else if (rule.component === 'invoice_date') {
+            // Date comparison (simple string match for now or strict date?)
+            // item.invoice_date is ISO string "2023-12-22T..."
+            // rule.value is "2023-12-22"
+            if (itemValue && typeof itemValue === 'string') {
+              itemValue = itemValue.split('T')[0]
+            }
+          }
+
+          // Handle Date Period Object
+          if (rule.value && typeof rule.value === 'object' && (rule.value.startDate || rule.value.endDate)) {
+            const { startDate, endDate } = rule.value
+            if (startDate && itemValue < startDate) return false
+            if (endDate && itemValue > endDate) return false
+            return true
+          }
+
+          if (rule.condition === 'equals') {
+            // Loose equality for numbers/strings
+            return itemValue == ruleValue
+          }
+          if (rule.condition === 'not_equals') {
+            return itemValue != ruleValue
+          }
+          if (rule.condition === 'in') {
+            // Multi-select values
+            if (Array.isArray(ruleValue)) {
+              // If ruleValue is array of objects (e.g. partners), map to IDs
+              const ids = ruleValue.map((v: any) => v.id || v)
+              return ids.includes(itemValue)
+            }
+            return false
+          }
+          if (rule.condition === 'not_in') {
+            if (Array.isArray(ruleValue)) {
+              const ids = ruleValue.map((v: any) => v.id || v)
+              return !ids.includes(itemValue)
+            }
+            return true
+          }
+
+          // Operatorlar expanded
+          if (rule.condition === 'contains') {
+            return String(itemValue || '').toLowerCase().includes(String(ruleValue || '').toLowerCase())
+          }
+          if (rule.condition === 'not_contains') {
+            return !String(itemValue || '').toLowerCase().includes(String(ruleValue || '').toLowerCase())
+          }
+          if (rule.condition === 'starts_with') {
+            return String(itemValue || '').toLowerCase().startsWith(String(ruleValue || '').toLowerCase())
+          }
+          if (rule.condition === 'not_starts_with') {
+            return !String(itemValue || '').toLowerCase().startsWith(String(ruleValue || '').toLowerCase())
+          }
+          if (rule.condition === 'greater') {
+            return Number(itemValue) > Number(ruleValue)
+          }
+          if (rule.condition === 'greater_or_equal') {
+            return Number(itemValue) >= Number(ruleValue)
+          }
+          if (rule.condition === 'less') {
+            return Number(itemValue) < Number(ruleValue)
+          }
+          if (rule.condition === 'less_or_equal') {
+            return Number(itemValue) <= Number(ruleValue)
+          }
+          if (rule.condition === 'is_set') {
+            return itemValue !== null && itemValue !== undefined && itemValue !== ''
+          }
+          if (rule.condition === 'is_not_set') {
+            return itemValue === null || itemValue === undefined || itemValue === ''
+          }
+
+
+          return true
+        })
+      })
+    }
+
     setFilteredInvoices(filtered)
   }
 
@@ -784,6 +944,27 @@ export function AlisQaimeleriContent() {
         vat_rate: Number(item.vat_rate || 0),
       }))
 
+      // Resolve supplier object if missing in relation (API might not return it in getById)
+      let supplierObj = fullInvoice?.customers || null
+      if (fullInvoice?.customer_id && !supplierObj) {
+        // Try to find in loaded suppliers
+        supplierObj = (suppliers.find(s => s.id === fullInvoice!.customer_id) as any) || null
+
+        // If still not found, fetch it
+        if (!supplierObj) {
+          try {
+            console.log('[Alis.tsx] Supplier object missing in invoice, fetching...', fullInvoice.customer_id)
+            const fetched = await customersAPI.getById(fullInvoice.customer_id.toString())
+            if (fetched) {
+              supplierObj = fetched
+              // Also update local suppliers list if needed? Maybe not to avoid side effects
+            }
+          } catch (e) {
+            console.warn('[Alis.tsx] Failed to fetch supplier details', e)
+          }
+        }
+      }
+
       const newZIndex = baseZIndex + 1
 
       // Create modal with loaded data
@@ -804,7 +985,7 @@ export function AlisQaimeleriContent() {
         isActive: fullInvoice ? fullInvoice.is_active || false : undefined,
         data: {
           selectedSupplierId: fullInvoice?.customer_id || null,
-          selectedSupplier: fullInvoice?.customers || null,
+          selectedSupplier: supplierObj as any,
           invoiceItems: items,
           notes: fullInvoice?.notes || '',
           invoiceNumber: fullInvoice?.invoice_number || '',
@@ -1392,7 +1573,7 @@ export function AlisQaimeleriContent() {
   const tableData = filteredInvoices.map(invoice => ({
     ...invoice,
     is_active_status: invoice.is_active ? '✓' : '',
-    supplier_name: invoice.customers?.name || '-',
+    supplier_name: invoice.customers?.name || suppliers.find(s => s.id === invoice.customer_id)?.name || '-',
     invoice_date: invoice.invoice_date ? (() => {
       const date = new Date(invoice.invoice_date)
       const day = String(date.getDate()).padStart(2, '0')
@@ -1452,6 +1633,36 @@ export function AlisQaimeleriContent() {
         onRefresh={loadInvoices}
         onSettings={() => tableRef.current?.openSettings()}
         onSearch={handleSearch}
+        onPeriodChange={(period: any) => {
+          const newRules = appliedFilters.filter(r => r.component !== 'invoice_date')
+          if (period.startDate || period.endDate) {
+            newRules.push({
+              component: 'invoice_date',
+              condition: 'between', // This condition is just a placeholder or needs to be handled if I strictly check conditions
+              value: period
+            } as any)
+          }
+          setAppliedFilters(newRules)
+          localStorage.setItem('filter-applied-filter-alis', JSON.stringify(newRules))
+        }}
+        onFilter={() => {
+          useWindowStore.getState().openPageWindow(
+            'advanced-filter-alis',
+            'Filtrlər',
+            '🔍',
+            <AdvancedFilterModal
+              onClose={() => useWindowStore.getState().closePageWindow('advanced-filter-alis')}
+              toolbarId="filter-alis"
+              onApply={(rules) => {
+                setAppliedFilters(rules)
+                localStorage.setItem('filter-applied-filter-alis', JSON.stringify(rules))
+                useWindowStore.getState().closePageWindow('advanced-filter-alis')
+              }}
+              filterComponents={FILTER_COMPONENTS}
+            />,
+            { width: 800, height: 600 }
+          )
+        }}
       />
 
       {/* Aktiv filtrlər */}

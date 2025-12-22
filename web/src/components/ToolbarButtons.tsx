@@ -86,6 +86,7 @@ export const SaveFilterButton: React.FC<ButtonProps & { icon?: React.ReactNode }
 export const SelectFilterButton: React.FC<ButtonProps & { icon?: React.ReactNode }> = (props) => <ToolbarButton {...props} bgColor="#6c757d" icon={props.icon || "📂"} defaultTitle="Filtr Seç" />
 export const UpButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#007bff" icon="⬆️" defaultTitle="Yuxarı" />
 export const DownButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#007bff" icon="⬇️" defaultTitle="Aşağı" />
+export const PeriodButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#fd7e14" icon="📅" defaultTitle="Period Seç" />
 
 // Search is a bit different
 export const SearchInput: React.FC<{ onSearch?: (term: string) => void, visible?: boolean }> = ({ onSearch, visible = true }) => {

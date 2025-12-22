@@ -9,6 +9,25 @@ import UniversalFooter from './UniversalFooter'
 import TableSettingsModal from './TableSettingsModal'
 import { useNotificationStore } from '../store/notificationStore'
 import PartnerForm from './PartnerForm'
+import { useWindowStore } from '../store/windowStore'
+import AdvancedFilterModal, { FilterRule, FilterComponentConfig } from './AdvancedFilterModal'
+
+const FILTER_COMPONENTS: FilterComponentConfig[] = [
+    { id: 'name', label: 'Ad', type: 'text' },
+    { id: 'code', label: 'Kod', type: 'text' },
+    { id: 'phone', label: 'Telefon', type: 'text' },
+    { id: 'email', label: 'Email', type: 'text' },
+    {
+        id: 'type',
+        label: 'Növ',
+        type: 'select',
+        options: [
+            { value: 'BUYER', label: 'Alıcı' },
+            { value: 'SUPPLIER', label: 'Satıcı' },
+            { value: 'BOTH', label: 'Hər ikisi' }
+        ]
+    }
+]
 
 interface PartnerManagerProps {
     filterType?: 'ALL' | 'BUYER' | 'SUPPLIER'
@@ -26,6 +45,7 @@ export default function PartnerManager({ filterType = 'ALL', onSelect, initialEd
     const [formData, setFormData] = useState<Partial<Customer>>({})
     const [typeFilter] = useState<'ALL' | 'BUYER' | 'SUPPLIER'>(filterType)
     const [tableColumns, setTableColumns] = useState<ColumnConfig[]>([])
+    const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>([])
 
     const addNotification = useNotificationStore(state => state.addNotification)
 
@@ -59,13 +79,50 @@ export default function PartnerManager({ filterType = 'ALL', onSelect, initialEd
         }
     }, [initialEditId, customers, showModal])
 
-    // Filter customers by type
+    // Filter customers by type and advanced filters
     const filteredCustomers = useMemo(() => {
-        if (typeFilter === 'ALL') return customers
-        return customers.filter(c =>
-            c.type === typeFilter || c.type === 'BOTH'
-        )
-    }, [customers, typeFilter])
+        let result = customers
+
+        // Type filter from props (if not ALL)
+        if (typeFilter !== 'ALL') {
+            result = result.filter(c => c.type === typeFilter || c.type === 'BOTH')
+        }
+
+        // Apply advanced filters
+        if (appliedFilters.length > 0) {
+            result = result.filter(item => {
+                return appliedFilters.every(rule => {
+                    if (!rule.value) return true
+
+                    const itemValue: any = (item as any)[rule.component]
+                    const ruleValue = rule.value
+
+                    if (rule.condition === 'equals') {
+                        // Loose equality
+                        return itemValue == ruleValue
+                    }
+                    if (rule.condition === 'not_equals') {
+                        return itemValue != ruleValue
+                    }
+                    if (rule.condition === 'in') {
+                        if (Array.isArray(ruleValue)) {
+                            return ruleValue.includes(itemValue)
+                        }
+                        return false
+                    }
+                    if (rule.condition === 'not_in') {
+                        if (Array.isArray(ruleValue)) {
+                            return !ruleValue.includes(itemValue)
+                        }
+                        return true
+                    }
+                    return true
+                })
+            })
+        }
+
+        return result
+    }, [customers, typeFilter, appliedFilters])
 
     // Columns configuration
     const columns = useMemo<ColumnConfig[]>(() => [
@@ -247,8 +304,21 @@ export default function PartnerManager({ filterType = 'ALL', onSelect, initialEd
                     console.log('Search:', term)
                 }}
                 onFilter={() => {
-                    // Filter functionality
-                    console.log('Filter')
+                    useWindowStore.getState().openPageWindow(
+                        'filter-partners',
+                        'Filtrlər',
+                        '🔍',
+                        <AdvancedFilterModal
+                            onClose={() => useWindowStore.getState().closePageWindow('filter-partners')}
+                            toolbarId="filter-partner-manager"
+                            onApply={(rules) => {
+                                setAppliedFilters(rules)
+                                useWindowStore.getState().closePageWindow('filter-partners')
+                            }}
+                            filterComponents={FILTER_COMPONENTS}
+                        />,
+                        { width: 600, height: 500 }
+                    )
                 }}
                 onSelect={onSelect && selectedIds.length === 1 ? handleSelection : undefined}
             />

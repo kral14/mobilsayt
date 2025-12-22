@@ -1,25 +1,122 @@
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import ProductSelectInput from './ProductSelectInput'
+import PartnerSelect from './PartnerSelect'
 import UniversalToolBar from './UniversalToolBar'
-import MultiValueEditor from './MultiValueEditorModal'
-import type { Product } from '../../../shared/types'
+import FilterSaveModal from './FilterSaveModal'
+import FilterLoadModal from './FilterLoadModal'
+import { useWindowStore } from '../store/windowStore'
+import { useNotificationStore } from '../store/notificationStore'
 
-interface FilterRule {
-    component: string // 'product' | others
-    condition: 'equals' | 'in' | 'not_equals' | 'not_in'
+import MultiValueEditor from './MultiValueEditorModal'
+import type { Product, Customer, Supplier } from '../../../shared/types'
+import { customersAPI } from '../services/api'
+import DatePeriodPicker, { DatePeriod } from './DatePeriodPicker'
+
+const DateRuleInput = ({ value, onChange }: { value: any, onChange: (val: any) => void }) => {
+    const [isOpen, setIsOpen] = useState(false)
+    const ref = React.useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ref.current && !ref.current.contains(event.target as Node)) {
+                setIsOpen(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
+
+    const displayValue = () => {
+        if (!value) return 'Tarix seçin...'
+        if (value.startDate && value.endDate) return `${value.startDate} - ${value.endDate}`
+        if (value.startDate) return `${value.startDate} - ...`
+        if (value.endDate) return `... - ${value.endDate}`
+        return 'Tarix seçin...'
+    }
+
+    return (
+        <div ref={ref} style={{ position: 'relative', width: '100%' }}>
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    height: '38px',
+                    background: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    justifyContent: 'space-between'
+                }}
+            >
+                <span>{displayValue()}</span>
+                <span>📅</span>
+            </div>
+            {isOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, marginTop: '5px' }}>
+                    <DatePeriodPicker
+                        value={value}
+                        onChange={(val) => {
+                            onChange(val)
+                            setIsOpen(false)
+                        }}
+                        onClose={() => setIsOpen(false)}
+                    />
+                </div>
+            )}
+        </div>
+    )
+}
+
+export interface FilterComponentConfig {
+    id: string
+    label: string
+    type?: 'text' | 'number' | 'date' | 'select' | 'product' | 'partner'
+    options?: { value: any, label: string }[]
+    partnerType?: 'BUYER' | 'SUPPLIER' | 'ALL'
+}
+
+export interface FilterRule {
+    component: string
+    condition: 'equals' | 'not_equals' | 'in' | 'not_in' | 'contains' | 'not_contains' | 'starts_with' | 'not_starts_with' | 'greater' | 'greater_or_equal' | 'less' | 'less_or_equal' | 'is_set' | 'is_not_set' | 'in_group' | 'not_in_group'
     value: any
 }
 
 interface AdvancedFilterModalProps {
-    isOpen: boolean // Not strictly needed if managed by window store, but good for local dev
+    isOpen?: boolean
     onClose: () => void
     onApply: (rules: FilterRule[]) => void
+    filterComponents?: FilterComponentConfig[]
+    toolbarId?: string // Unique ID for this modal's toolbar context
 }
 
-export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilterModalProps) {
+
+
+const DEFAULT_PRODUCT_COMPONENTS: FilterComponentConfig[] = [
+    { id: 'product', label: 'Məhsul', type: 'product' },
+    { id: 'code', label: 'Məhsul kodu', type: 'text' },
+    { id: 'barcode', label: 'Barkod', type: 'text' },
+    { id: 'article', label: 'Artikul', type: 'text' },
+    { id: 'brand', label: 'Brend', type: 'text' },
+    { id: 'model', label: 'Model', type: 'text' },
+    { id: 'category', label: 'Kateqoriya', type: 'text' }
+]
+
+export default function AdvancedFilterModal({ onClose, onApply, filterComponents = DEFAULT_PRODUCT_COMPONENTS, toolbarId = 'advanced-filter-general' }: AdvancedFilterModalProps) {
     const [rules, setRules] = useState<FilterRule[]>([])
     const [selectedRules, setSelectedRules] = useState<number[]>([])
+    const [partners, setPartners] = useState<(Customer | Supplier)[]>([])
+
+    // Fetch partners if any component is of type 'partner'
+    useEffect(() => {
+        const hasPartner = filterComponents.some(c => c.type === 'partner')
+        if (hasPartner) {
+            customersAPI.getAll().then(setPartners).catch(console.error)
+        }
+    }, [filterComponents])
 
     // Keyboard support for Delete
     useEffect(() => {
@@ -37,31 +134,167 @@ export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilter
         setSelectedRules([])
     }
 
-    const handleAddComponent = (component: string) => {
-        // Toggle logic: if exists, remove it. If not, add it.
-        const existingIndex = rules.findIndex(r => r.component === component)
-        if (existingIndex >= 0) {
-            // If already exists, just select it
-            setSelectedRules([existingIndex])
-        } else {
-            setRules([...rules, { component, condition: 'equals', value: null }])
+    const handleAddEmptyRow = () => {
+        setRules([...rules, { component: '', condition: 'equals', value: null }])
+    }
+
+    // --- Auto-save Rules Management ---
+    const getAutoSaveKey = () => `filter-autosave-${toolbarId}`
+    const getSelectionSaveKey = () => `filter-autosave-selection-${toolbarId}`
+
+    const [isLoaded, setIsLoaded] = useState(false)
+
+    // Load auto-saved rules on mount
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(getAutoSaveKey())
+            if (saved) {
+                setRules(JSON.parse(saved))
+            }
+
+            const savedSelection = localStorage.getItem(getSelectionSaveKey())
+            if (savedSelection) {
+                setSelectedRules(JSON.parse(savedSelection))
+            }
+        } catch (e) {
+            console.error('Error loading auto-saved filters:', e)
+        }
+        setIsLoaded(true)
+    }, [])
+
+    // Save rules whenever they change
+    useEffect(() => {
+        try {
+            // Only save if rules are different from empty/default to avoid overwriting with empty on initial mount before load
+            // But actually we want to save empty if user deleted everything.
+            // To differentiate initial mount (empty) vs user cleared (empty), we could check if we have loaded yet.
+            // For simplicity, just saving whatever is in 'rules' after initial load is fine, but we need to be careful not to overwrite persisted data with [] on first render.
+            // However, since we load in a useEffect, the initial render has [], avoiding overwriting immediately requires a check.
+
+            // Let's use a ref or just simple approach: 
+            // The loading effect runs once. 
+            // This saving effect runs on 'rules' change.
+            // If we load data, 'setRules' triggers this effect? Yes.
+            // So if we load data, it saves it back. harmless.
+            // If no data, it saves []. persistent. 
+            // The only issue is if 'rules' is [] initially and we overwrite a saved list before loading it?
+            // No, the load effect runs after mount. The save effect also runs after mount. 
+            // They might race? standard React useEffect order is: render -> effects.
+            // Better to trigger save only after initial load is done.
+            if (isLoaded) {
+                localStorage.setItem(getAutoSaveKey(), JSON.stringify(rules))
+                localStorage.setItem(getSelectionSaveKey(), JSON.stringify(selectedRules))
+            }
+        } catch (e) {
+            console.error(e)
+        }
+    }, [rules, selectedRules, isLoaded])
+    // ---------------------------------
+
+    // --- Preset Management ---
+    const getStorageKey = () => `filter-presets-${toolbarId}`
+
+    const loadPresets = (): Record<string, FilterRule[]> => {
+        try {
+            const saved = localStorage.getItem(getStorageKey())
+            return saved ? JSON.parse(saved) : {}
+        } catch (e) {
+            console.error(e)
+            return {}
         }
     }
+
+    const savePresets = (presets: Record<string, FilterRule[]>) => {
+        localStorage.setItem(getStorageKey(), JSON.stringify(presets))
+    }
+
+    const handleSaveMenu = () => {
+        const presets = loadPresets()
+        const modalId = 'filter-save-modal'
+
+        useWindowStore.getState().openPageWindow(
+            modalId,
+            'Filtri yadda saxla',
+            '💾',
+            <FilterSaveModal
+                existingPresets={Object.keys(presets)}
+                onSave={(name) => {
+                    const currentPresets = loadPresets()
+                    currentPresets[name] = rules
+                    savePresets(currentPresets)
+                    useNotificationStore.getState().addNotification('success', 'Uğurlu', `Filtr "${name}" yadda saxlanıldı`)
+                    useWindowStore.getState().closePageWindow(modalId)
+                }}
+                onCancel={() => useWindowStore.getState().closePageWindow(modalId)}
+            />,
+            { width: 400, height: 400 }
+        )
+    }
+
+    const handleLoadMenu = () => {
+        const presets = loadPresets()
+        const modalId = 'filter-load-modal'
+
+        useWindowStore.getState().openPageWindow(
+            modalId,
+            'Filtri seç',
+            '📂',
+            <FilterLoadModal
+                presets={Object.keys(presets)}
+                onSelect={(name) => {
+                    const currentPresets = loadPresets()
+                    if (currentPresets[name]) {
+                        setRules(currentPresets[name])
+                        useNotificationStore.getState().addNotification('success', 'Uğurlu', `Filtr "${name}" tətbiq edildi`)
+                    }
+                    useWindowStore.getState().closePageWindow(modalId)
+                }}
+                onDelete={(name) => {
+                    const currentPresets = loadPresets()
+                    delete currentPresets[name]
+                    savePresets(currentPresets)
+                    useWindowStore.getState().closePageWindow(modalId)
+                    // Re-open to refresh list (a bit hacky but works for now)
+                    setTimeout(handleLoadMenu, 0)
+                }}
+                onCancel={() => useWindowStore.getState().closePageWindow(modalId)}
+            />,
+            { width: 400, height: 400 }
+        )
+    }
+    // -------------------------
 
     const updateRule = (index: number, field: keyof FilterRule, val: any) => {
         setRules(prevRules => {
             const newRules = [...prevRules]
             newRules[index] = { ...newRules[index], [field]: val }
-            // specific logic: if switching between single/multi, value format might change
             if (field === 'condition') {
-                if (val === 'in' || val === 'not_in') {
-                    if (!Array.isArray(newRules[index].value)) {
-                        newRules[index].value = newRules[index].value ? [newRules[index].value] : []
+                if (field === 'condition') {
+                    const textOps = ['contains', 'not_contains', 'starts_with', 'not_starts_with']
+                    const isNewTextOp = textOps.includes(val)
+                    const isOldTextOp = textOps.includes(prevRules[index].condition)
+
+                    // If switching between text-mode and object-mode, clear value because types are incompatible (string vs object)
+                    if (isNewTextOp !== isOldTextOp) {
+                        newRules[index].value = null
                     }
-                } else {
-                    // Single
-                    if (Array.isArray(newRules[index].value)) {
-                        newRules[index].value = newRules[index].value[0] || null
+                    // Handle Multi-select vs Single-select transition
+                    else if (val === 'in' || val === 'not_in') {
+                        if (!Array.isArray(newRules[index].value)) {
+                            // If we have a single value, wrap it?
+                            // But if we just cleared it above due to text switch, it will be null.
+                            // If we didn't clear it (e.g. Equals -> In), we wrap.
+                            if (newRules[index].value) {
+                                newRules[index].value = [newRules[index].value]
+                            } else {
+                                newRules[index].value = []
+                            }
+                        }
+                    } else {
+                        // Single select
+                        if (Array.isArray(newRules[index].value)) {
+                            newRules[index].value = newRules[index].value[0] || null
+                        }
                     }
                 }
             }
@@ -69,34 +302,213 @@ export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilter
         })
     }
 
-    const [activeComponentDropdown, setActiveComponentDropdown] = useState<number | null>(null)
+    // Dropdown for component selection within the row
+    const [activeRowDropdown, setActiveRowDropdown] = useState<number | null>(null)
 
-    const components = [
-        { id: 'product', label: 'Məhsul' },
-        { id: 'code', label: 'Məhsul kodu' },
-        { id: 'barcode', label: 'Barkod' },
-        { id: 'article', label: 'Artikul' },
-        { id: 'brand', label: 'Brend' },
-        { id: 'model', label: 'Model' },
-        { id: 'category', label: 'Kateqoriya' }
-    ]
+    const renderInput = (rule: FilterRule, index: number) => {
+        const compConfig = filterComponents.find(c => c.id === rule.component)
+
+        // If no component selected yet
+        if (!compConfig) {
+            return <div style={{ color: '#999', fontStyle: 'italic', userSelect: 'none', padding: '0.5rem' }}>Komponent seçilməyib</div>
+        }
+
+        const type = compConfig.type || 'text'
+
+        const isMulti = rule.condition === 'in' || rule.condition === 'not_in' || rule.condition === 'in_group' || rule.condition === 'not_in_group'
+
+        // If condition is "Filled" or "Not Filled", no input needed
+        if (rule.condition === 'is_set' || rule.condition === 'is_not_set') {
+            return <div style={{ color: '#aaa', fontStyle: 'italic', padding: '0.5rem' }}>Dəyər tələb olunmur</div>
+        }
+
+        if (type === 'product') {
+            if (isMulti) {
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <ProductSelectInput
+                            value={null}
+                            onChange={(val) => {
+                                if (val) {
+                                    const current = Array.isArray(rule.value) ? rule.value : []
+                                    if (!current.find((p: Product) => p.id === val.id)) {
+                                        updateRule(index, 'value', [...current, val])
+                                    }
+                                }
+                            }}
+                            placeholder={Array.isArray(rule.value) && rule.value.length > 0 ? "Jurnala bax..." : "Məhsul əlavə et..."}
+                            tags={
+                                Array.isArray(rule.value) && rule.value.length > 0 && (
+                                    <>
+                                        {rule.value.slice(0, 2).map((p: Product) => (
+                                            <span key={p.id} style={{ background: '#e7f3ff', padding: '2px 8px', borderRadius: '12px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #cce5ff', whiteSpace: 'nowrap' }}>
+                                                {p.name}
+                                            </span>
+                                        ))}
+                                        {rule.value.length > 2 && (
+                                            <span style={{ fontSize: '0.9rem', color: '#666', fontWeight: 'bold', padding: '0 4px', whiteSpace: 'nowrap' }}>
+                                                ... (+{rule.value.length - 2})
+                                            </span>
+                                        )}
+                                    </>
+                                )
+                            }
+                            onOpenSelect={() => {
+                                const windowId = 'multi-value-editor-' + index
+                                import('../store/windowStore').then(({ useWindowStore }) => {
+                                    useWindowStore.getState().openPageWindow(
+                                        windowId,
+                                        'Çoxlu Seçim',
+                                        '📝',
+                                        <div style={{ width: '100%', height: '100%' }}>
+                                            <MultiValueEditor
+                                                initialValues={Array.isArray(rule.value) ? rule.value : []}
+                                                onSave={(values) => {
+                                                    updateRule(index, 'value', values)
+                                                    useWindowStore.getState().closePageWindow(windowId)
+                                                }}
+                                                onCancel={() => useWindowStore.getState().closePageWindow(windowId)}
+                                            />
+                                        </div>,
+                                        { width: 600, height: 500 }
+                                    )
+                                })
+                            }}
+                        />
+                    </div>
+                )
+            } else {
+                return (
+                    <ProductSelectInput
+                        value={rule.value}
+                        onChange={(val) => updateRule(index, 'value', val)}
+                    />
+                )
+            }
+        }
+
+        if (type === 'partner') {
+            const isTextOp = ['contains', 'not_contains', 'starts_with', 'not_starts_with'].includes(rule.condition)
+
+            if (isTextOp) {
+                return (
+                    <input
+                        type="text"
+                        value={typeof rule.value === 'string' ? rule.value : (rule.value?.name || '')}
+                        onChange={(e) => updateRule(index, 'value', e.target.value)}
+                        placeholder="Ad üzrə axtar..."
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', height: '38px', boxSizing: 'border-box' }}
+                    />
+                )
+            }
+
+            if (!isMulti) {
+                return (
+                    <PartnerSelect
+                        partners={partners}
+                        value={rule.value}
+                        onChange={(val) => updateRule(index, 'value', val)}
+                        filterType={compConfig?.partnerType || 'ALL'}
+                        label={null}
+                        style={{ width: '100%' }}
+                    />
+                )
+            } else {
+                return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', border: '1px solid #ddd', borderRadius: '4px', padding: '4px', minHeight: '38px', alignItems: 'center' }}>
+                        {Array.isArray(rule.value) && rule.value.map((p: any) => (
+                            <span key={p.id} style={{ background: '#e7f3ff', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #cce5ff' }}>
+                                {p.name}
+                                <button onClick={(e) => {
+                                    e.stopPropagation()
+                                    updateRule(index, 'value', rule.value.filter((x: any) => x.id !== p.id))
+                                }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', fontSize: '1rem', lineHeight: 0.5 }}>×</button>
+                            </span>
+                        ))}
+                        <div style={{ flex: 1, minWidth: '150px' }}>
+                            <PartnerSelect
+                                partners={partners}
+                                value={null}
+                                onChange={(val) => {
+                                    if (val) {
+                                        const current = Array.isArray(rule.value) ? rule.value : []
+                                        if (!current.find((p: any) => p.id === val.id)) {
+                                            updateRule(index, 'value', [...current, val])
+                                        }
+                                    }
+                                }}
+                                filterType={compConfig?.partnerType || 'ALL'}
+                                placeholder="Əlavə et..."
+                                label={null}
+                                style={{ width: '100%', border: 'none' }}
+                            />
+                        </div>
+                    </div>
+                )
+            }
+        }
+
+        if (type === 'select') {
+            if (isMulti) {
+                return <div style={{ color: 'orange' }}>Çoxlu seçim bu tip üçün hələ hazır deyil</div>
+            }
+            return (
+                <select
+                    value={rule.value || ''}
+                    onChange={(e) => updateRule(index, 'value', e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', height: '38px' }}
+                >
+                    <option value="">Seçin...</option>
+                    {compConfig?.options?.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                </select>
+            )
+        }
+
+        if (type === 'date') {
+            return (
+                <DateRuleInput
+                    value={rule.value}
+                    onChange={(val) => updateRule(index, 'value', val)}
+                />
+            )
+        }
+
+        return (
+            <input
+                type={type === 'number' ? 'number' : 'text'}
+                value={rule.value || ''}
+                onChange={(e) => updateRule(index, 'value', e.target.value)}
+                placeholder={compConfig?.label + ' yazın...'}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', height: '38px', boxSizing: 'border-box' }}
+            />
+        )
+    }
 
     return (
-        <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', height: '100%', flexDirection: 'column', position: 'relative' }}>
             <UniversalToolBar
-                onAdd={() => { }} // Placeholder for adding new filter
+                toolbarId={toolbarId}
+                onAdd={handleAddEmptyRow}
                 onDelete={handleDeleteSelected}
-                onSearch={() => { }} // Placeholder for search
+                onSaveFilter={handleSaveMenu}
+                onSelectFilter={handleLoadMenu}
+                onSearch={() => { }}
             />
+
             <div style={{ flex: 1, display: 'flex', borderBottom: '1px solid #ddd' }}>
-                {/* Left Side: Component List */}
+
                 <div style={{ width: '250px', borderRight: '1px solid #ddd', padding: '1rem', background: '#f8f9fa' }}>
                     <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Komponentlər</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {components.map(comp => (
+                        {filterComponents.map(comp => (
                             <div
                                 key={comp.id}
-                                onClick={() => handleAddComponent(comp.id)}
+                                onClick={() => {
+                                    // Add specific component directly from sidebar
+                                    setRules([...rules, { component: comp.id, condition: 'equals', value: null }])
+                                }}
                                 style={{
                                     padding: '0.5rem',
                                     background: 'white',
@@ -114,206 +526,184 @@ export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilter
                     </div>
                 </div>
 
-                {/* Right Side: Active Filters Configuration */}
+
                 <div style={{ flex: 1, padding: '1rem', overflow: 'auto' }}>
                     <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Seçilmiş Filtrlər</h3>
-                    {rules.length === 0 && <div style={{ color: '#999' }}>Sol tərəfdən komponent seçin...</div>}
+                    {rules.length === 0 && <div style={{ color: '#999' }}>Siyahı boşdur. + düyməsi ilə əlavə edin...</div>}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {rules.map((rule, idx) => (
-                            <div
-                                key={idx}
-                                onClick={() => setSelectedRules(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx])}
-                                style={{
-                                    padding: '0.5rem',
-                                    borderBottom: '1px solid #eee',
-                                    background: selectedRules.includes(idx) ? '#e7f1ff' : 'white',
-                                    cursor: 'pointer',
-                                    transition: 'background 0.2s'
-                                }}
-                            >
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {rules.map((rule, idx) => {
+                            const compConfig = filterComponents.find(c => c.id === rule.component)
+                            return (
+                                <div
+                                    key={idx}
+                                    style={{
+                                        padding: '0.25rem',
+                                        borderBottom: '1px solid #eee',
+                                        background: selectedRules.includes(idx) ? '#e7f1ff' : 'white',
+                                        transition: 'background 0.2s'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                        {/* Checkbox for selection */}
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedRules.includes(idx)}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setSelectedRules([...selectedRules, idx])
+                                                else setSelectedRules(selectedRules.filter(i => i !== idx))
+                                            }}
+                                            style={{ cursor: 'pointer' }}
+                                        />
 
-                                    {/* Component Selector */}
-                                    <div style={{ position: 'relative', width: '200px' }} onClick={e => e.stopPropagation()}>
-                                        <div style={{
-                                            border: '1px solid #ddd',
-                                            borderRadius: '4px',
-                                            padding: '0.35rem 0.5rem',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            background: '#f9f9f9',
-                                            height: '38px',
-                                            boxSizing: 'border-box'
-                                        }}>
-                                            <span style={{ fontWeight: '500', fontSize: '0.9rem' }}>
-                                                {components.find(c => c.id === rule.component)?.label}
-                                            </span>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    setActiveComponentDropdown(activeComponentDropdown === idx ? null : idx)
-                                                }}
-                                                style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    fontWeight: 'bold',
-                                                    color: '#666',
-                                                    padding: '0 4px'
-                                                }}
-                                            >
-                                                ...
-                                            </button>
+                                        <div style={{ position: 'relative', width: '220px' }}>
+                                            <div style={{
+                                                border: '1px solid #ddd',
+                                                borderRadius: '4px',
+                                                padding: '0 0.5rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                background: '#fff',
+                                                height: '32px',
+                                                boxSizing: 'border-box'
+                                            }}>
+                                                <span style={{ fontWeight: '500', fontSize: '0.9rem', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                                                    {compConfig?.label || ''}
+                                                </span>
+                                                <div style={{ display: 'flex', gap: '2px' }}>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            setActiveRowDropdown(activeRowDropdown === idx ? null : idx)
+                                                        }}
+                                                        title="Komponenti dəyiş"
+                                                        style={{
+                                                            background: '#eee',
+                                                            border: '1px solid #ccc',
+                                                            borderRadius: '2px',
+                                                            cursor: 'pointer',
+                                                            fontWeight: 'bold',
+                                                            color: '#666',
+                                                            padding: '0 4px',
+                                                            fontSize: '0.8rem',
+                                                            height: '20px',
+                                                            lineHeight: '18px'
+                                                        }}
+                                                    >
+                                                        ...
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            // Clear component and value to "reset" the row
+                                                            updateRule(idx, 'component', '')
+                                                            updateRule(idx, 'value', null)
+                                                        }}
+                                                        title="Komponenti sil"
+                                                        style={{
+                                                            background: '#fee',
+                                                            border: '1px solid #fcc',
+                                                            borderRadius: '2px',
+                                                            cursor: 'pointer',
+                                                            fontWeight: 'bold',
+                                                            color: 'red',
+                                                            padding: '0 4px',
+                                                            fontSize: '0.8rem',
+                                                            height: '20px',
+                                                            lineHeight: '18px'
+                                                        }}
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {activeRowDropdown === idx && (
+                                                <>
+                                                    <div
+                                                        style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}
+                                                        onClick={() => setActiveRowDropdown(null)}
+                                                    />
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: '100%',
+                                                        left: 0,
+                                                        width: '100%',
+                                                        background: 'white',
+                                                        border: '1px solid #ddd',
+                                                        borderRadius: '4px',
+                                                        marginTop: '2px',
+                                                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                                        zIndex: 1000,
+                                                        maxHeight: '200px',
+                                                        overflow: 'auto'
+                                                    }}>
+                                                        {filterComponents.map(c => (
+                                                            <div
+                                                                key={c.id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    updateRule(idx, 'component', c.id)
+                                                                    updateRule(idx, 'value', null)
+                                                                    setActiveRowDropdown(null)
+                                                                }}
+                                                                style={{
+                                                                    padding: '0.5rem',
+                                                                    cursor: 'pointer',
+                                                                    borderBottom: '1px solid #eee',
+                                                                    background: rule.component === c.id ? '#e7f1ff' : 'white',
+                                                                    fontSize: '0.9rem'
+                                                                }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.background = rule.component === c.id ? '#e7f1ff' : '#f8f9fa'}
+                                                                onMouseLeave={(e) => e.currentTarget.style.background = rule.component === c.id ? '#e7f1ff' : 'white'}
+                                                            >
+                                                                {c.label}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
 
-                                        {/* Dropdown */}
-                                        {activeComponentDropdown === idx && (
-                                            <>
-                                                <div
-                                                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}
-                                                    onClick={() => setActiveComponentDropdown(null)}
-                                                />
-                                                <div style={{
-                                                    position: 'absolute',
-                                                    top: '100%',
-                                                    left: 0,
-                                                    width: '100%',
-                                                    background: 'white',
-                                                    border: '1px solid #ddd',
-                                                    borderRadius: '4px',
-                                                    marginTop: '4px',
-                                                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                                                    zIndex: 1000,
-                                                    maxHeight: '200px',
-                                                    overflow: 'auto'
-                                                }}>
-                                                    {components.map(c => (
-                                                        <div
-                                                            key={c.id}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                updateRule(idx, 'component', c.id)
-                                                                updateRule(idx, 'value', null) // Reset value on type change
-                                                                setActiveComponentDropdown(null)
-                                                            }}
-                                                            style={{
-                                                                padding: '0.5rem',
-                                                                cursor: 'pointer',
-                                                                borderBottom: '1px solid #eee',
-                                                                background: rule.component === c.id ? '#e7f1ff' : 'white'
-                                                            }}
-                                                            onMouseEnter={(e) => e.currentTarget.style.background = rule.component === c.id ? '#e7f1ff' : '#f8f9fa'}
-                                                            onMouseLeave={(e) => e.currentTarget.style.background = rule.component === c.id ? '#e7f1ff' : 'white'}
-                                                        >
-                                                            {c.label}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
+                                        <select
+                                            value={rule.condition}
+                                            onChange={(e) => updateRule(idx, 'condition', e.target.value as any)}
+                                            style={{
+                                                padding: '0 0.5rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid #ddd',
+                                                height: '32px',
+                                                boxSizing: 'border-box',
+                                                fontSize: '0.9rem',
+                                                maxWidth: '160px'
+                                            }}
+                                        >
+                                            <option value="equals">Bərabərdir</option>
+                                            <option value="not_equals">Bərabər deyil</option>
+                                            <option value="in">Siyahıda var</option>
+                                            <option value="not_in">Siyahıda yoxdur</option>
+                                            <option value="contains">Tərkibində var</option>
+                                            <option value="not_contains">Tərkibində yoxdur</option>
+                                            <option value="starts_with">İlə başlayır</option>
+                                            <option value="not_starts_with">İlə başlamır</option>
+                                            <option value="greater">Böyükdür</option>
+                                            <option value="greater_or_equal">Böyükdür və ya bərabərdir</option>
+                                            <option value="less">Kiçikdir</option>
+                                            <option value="less_or_equal">Kiçikdir və ya bərabərdir</option>
+                                            <option value="is_set">Doludur</option>
+                                            <option value="is_not_set">Dolu deyil</option>
+                                            <option value="in_group">Qrupdadır</option>
+                                            <option value="not_in_group">Qrupda deyil</option>
+                                        </select>
 
-                                    {/* Condition Select */}
-                                    <select
-                                        value={rule.condition}
-                                        onClick={e => e.stopPropagation()}
-                                        onChange={(e) => updateRule(idx, 'condition', e.target.value)}
-                                        style={{
-                                            padding: '0.35rem 0.5rem',
-                                            borderRadius: '4px',
-                                            border: '1px solid #ddd',
-                                            height: '38px',
-                                            boxSizing: 'border-box'
-                                        }}
-                                    >
-                                        <option value="equals">1 seçim</option>
-                                        <option value="in">1-dən çox seçim</option>
-                                        <option value="not_equals">1 seçimi nəzərə alma</option>
-                                        <option value="not_in">1-dən çox seçimi nəzərə alma</option>
-                                    </select>
-
-                                    {/* Input Area */}
-                                    <div style={{ flex: 1, minWidth: 0 }} onClick={e => e.stopPropagation()}>
-                                        {rule.component === 'product' ? (
-                                            <>
-                                                {(rule.condition === 'equals' || rule.condition === 'not_equals') ? (
-                                                    <ProductSelectInput
-                                                        value={rule.value}
-                                                        onChange={(val) => updateRule(idx, 'value', val)}
-                                                    />
-                                                ) : (
-                                                    /* Multiple Select Logic */
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                                        <ProductSelectInput
-                                                            value={null}
-                                                            onChange={(val) => {
-                                                                if (val) {
-                                                                    const current = Array.isArray(rule.value) ? rule.value : []
-                                                                    if (!current.find((p: Product) => p.id === val.id)) {
-                                                                        updateRule(idx, 'value', [...current, val])
-                                                                    }
-                                                                }
-                                                            }}
-                                                            // Custom placeholder for multiple add
-                                                            placeholder={Array.isArray(rule.value) && rule.value.length > 0 ? "Jurnala bax..." : "Məhsul əlavə et..."}
-                                                            // Pass rendered tags
-                                                            tags={
-                                                                Array.isArray(rule.value) && rule.value.length > 0 && (
-                                                                    <>
-                                                                        {rule.value.slice(0, 2).map((p: Product) => (
-                                                                            <span key={p.id} style={{ background: '#e7f3ff', padding: '2px 8px', borderRadius: '12px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #cce5ff', whiteSpace: 'nowrap' }}>
-                                                                                {p.name}
-                                                                            </span>
-                                                                        ))}
-                                                                        {rule.value.length > 2 && (
-                                                                            <span style={{ fontSize: '0.9rem', color: '#666', fontWeight: 'bold', padding: '0 4px', whiteSpace: 'nowrap' }}>
-                                                                                ... (+{rule.value.length - 2})
-                                                                            </span>
-                                                                        )}
-                                                                    </>
-                                                                )
-                                                            }
-                                                            // Override "..." button to open Multi-Value Editor
-                                                            onOpenSelect={() => {
-                                                                const windowId = 'multi-value-editor-' + idx
-                                                                import('../store/windowStore').then(({ useWindowStore }) => {
-                                                                    useWindowStore.getState().openPageWindow(
-                                                                        windowId,
-                                                                        'Çoxlu Seçim',
-                                                                        '📝',
-                                                                        <div style={{ width: '100%', height: '100%' }}>
-                                                                            <MultiValueEditor
-                                                                                initialValues={Array.isArray(rule.value) ? rule.value : []}
-                                                                                onSave={(values) => {
-                                                                                    updateRule(idx, 'value', values)
-                                                                                    useWindowStore.getState().closePageWindow(windowId)
-                                                                                }}
-                                                                                onCancel={() => useWindowStore.getState().closePageWindow(windowId)}
-                                                                            />
-                                                                        </div>,
-                                                                        { width: 600, height: 500 }
-                                                                    )
-                                                                })
-                                                            }}
-                                                        />
-                                                    </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <input
-                                                type="text"
-                                                value={rule.value || ''}
-                                                onChange={(e) => updateRule(idx, 'value', e.target.value)}
-                                                placeholder={components.find(c => c.id === rule.component)?.label + ' yazın...'}
-                                                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', height: '38px', boxSizing: 'border-box' }}
-                                            />
-                                        )}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            {renderInput(rule, idx)}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </div>
             </div>
@@ -322,8 +712,14 @@ export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilter
                 <button onClick={onClose} style={{ padding: '0.5rem 1rem', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer' }}>Bağla</button>
                 <button
                     onClick={() => {
-                        onApply(rules)
-                        onClose() // usually handled by caller but safe here
+                        // Filter out empty rules, and keep only SELECTED (checked) rules
+                        const activeRules = rules.filter((r, idx) =>
+                            r.component &&
+                            r.component.trim() !== '' &&
+                            selectedRules.includes(idx)
+                        )
+                        onApply(activeRules)
+                        onClose()
                     }}
                     style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', background: '#007bff', color: 'white', cursor: 'pointer' }}
                 >
@@ -332,4 +728,5 @@ export default function AdvancedFilterModal({ onClose, onApply }: AdvancedFilter
             </div>
         </div>
     )
+
 }
