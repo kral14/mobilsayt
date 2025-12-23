@@ -27,6 +27,14 @@ export default function PartnerSelect({
     label = 'Tərəfdaş:',
     style
 }: PartnerSelectProps) {
+    // DEBUG LOGS
+    console.log('[PartnerSelect] Re-render:', {
+        filterType,
+        partnersCount: partners?.length,
+        hasValue: !!value,
+        valueName: value?.name
+    })
+
     const [searchTerm, setSearchTerm] = useState('')
     const [showDropdown, setShowDropdown] = useState(false)
 
@@ -53,7 +61,8 @@ export default function PartnerSelect({
             return (
                 p.name.toLowerCase().includes(term) ||
                 (pCode && pCode.toLowerCase().includes(term)) ||
-                (p.phone && p.phone.toLowerCase().includes(term))
+                (p.phone && p.phone.toLowerCase().includes(term)) ||
+                ('email' in p && (p as any).email && (p as any).email.toLowerCase().includes(term))
             )
         }
 

@@ -968,6 +968,7 @@ export function AlisQaimeleriContent() {
         discount_manual: Number(item.discount_manual || 0),
         discount_auto: Number(item.discount_auto || 0),
         vat_rate: Number(item.vat_rate || 0),
+        searchTerm: item.products?.name || 'Naməlum məhsul',
       }))
 
       // Resolve supplier object if missing in relation (API might not return it in getById)

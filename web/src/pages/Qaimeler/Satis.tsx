@@ -429,7 +429,7 @@ export function SatisQaimeleriContent() {
           content: (
             <InvoiceModal
               modal={modal}
-              suppliers={customers}
+              customers={customers}
               products={products}
               modalIndex={Array.from(openModals.values()).indexOf(modal)}
               isActive={activeModalId === modal.id}
@@ -511,7 +511,7 @@ export function SatisQaimeleriContent() {
           content: (
             <InvoiceModal
               modal={modal}
-              suppliers={customers}
+              customers={customers}
               products={products}
               modalIndex={Array.from(openModals.values()).indexOf(modal)}
               isActive={activeModalId === modal.id}
@@ -938,6 +938,7 @@ export function SatisQaimeleriContent() {
         discount_manual: Number(item.discount_manual || 0),
         discount_auto: Number(item.discount_auto || 0),
         vat_rate: Number(item.vat_rate || 0),
+        searchTerm: item.products?.name || 'Naməlum məhsul'
       }))
 
       const newZIndex = baseZIndex + 1
@@ -956,11 +957,11 @@ export function SatisQaimeleriContent() {
         },
         isMaximized: savedPrefs?.isMaximized || false,
         zIndex: newZIndex,
-        invoiceType: 'purchase',
+        invoiceType: 'sale',
         isActive: fullInvoice ? (fullInvoice.is_active ?? false) : undefined,
         data: {
-          selectedSupplierId: fullInvoice?.customer_id || null,
-          selectedSupplier: fullInvoice?.customers || null,
+          selectedCustomerId: fullInvoice?.customer_id || null,
+          selectedCustomer: fullInvoice?.customers || null,
           invoiceItems: items,
           notes: fullInvoice?.notes || '',
           invoiceNumber: fullInvoice?.invoice_number || '',
@@ -1104,13 +1105,13 @@ export function SatisQaimeleriContent() {
         console.log('[Alis.tsx] Mövcud qaimə yenilənir:', modal.invoiceId)
         console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.update')
         console.log('[Alis.tsx] Request data:', {
-          supplier_id: finalData.selectedSupplierId || undefined,
+          supplier_id: finalData.selectedCustomerId || undefined,
           items,
           notes: finalData.notes || undefined,
         })
 
         const updateResult = await ordersAPI.update(modal.invoiceId.toString(), {
-          customer_id: finalData.selectedSupplierId || undefined,
+          customer_id: finalData.selectedCustomerId || undefined,
           items,
           notes: finalData.notes || undefined,
           invoice_date: finalData.invoiceDate || undefined,
@@ -1173,7 +1174,7 @@ export function SatisQaimeleriContent() {
         })
 
         const newInvoice = await ordersAPI.create({
-          customer_id: finalData.selectedSupplierId || undefined,
+          customer_id: finalData.selectedCustomerId || undefined,
           items,
           notes: finalData.notes || undefined,
           invoice_date: finalData.invoiceDate || undefined,
@@ -1303,7 +1304,7 @@ export function SatisQaimeleriContent() {
         console.log('[Alis.tsx] Mövcud qaimə yenilənir və təsdiqlənir:', modal.invoiceId)
         console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.update')
         console.log('[Alis.tsx] Request data:', {
-          supplier_id: modalData.selectedSupplierId || undefined,
+          supplier_id: modalData.selectedCustomerId || undefined,
           items,
           notes: modalData.notes || undefined,
         })
@@ -1349,13 +1350,13 @@ export function SatisQaimeleriContent() {
         console.log('[Alis.tsx] Yeni qaimə yaradılır və təsdiqlənir...')
         console.log('[Alis.tsx] API çağırışı: purchaseInvoicesAPI.create')
         console.log('[Alis.tsx] Request data:', {
-          supplier_id: modalData.selectedSupplierId || undefined,
+          supplier_id: modalData.selectedCustomerId || undefined,
           items,
           notes: modalData.notes || undefined,
         })
 
         const newInvoice = await ordersAPI.create({
-          customer_id: modalData.selectedSupplierId || undefined,
+          customer_id: modalData.selectedCustomerId || undefined,
           items,
           notes: modalData.notes || undefined,
           invoice_date: modalData.invoiceDate || undefined,
