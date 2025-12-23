@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react'
-import { Category } from '../../../shared/types'
+import { useState, useMemo } from 'react'
+import { Category } from '@shared/types'
 
 interface MoveToCategoryModalProps {
     categories: Category[]

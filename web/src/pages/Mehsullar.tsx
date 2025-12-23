@@ -6,13 +6,7 @@ import { productsAPI, categoriesAPI } from '../services/api'
 import type { Product, Category } from '../../../shared/types'
 import { useWindowStore } from '../store/windowStore'
 import ProductForm from '../components/ProductFormModal'
-import AdvancedFilterModal from '../components/AdvancedFilterModal'
-
-interface FilterRule {
-  component: string
-  condition: 'equals' | 'in' | 'not_equals' | 'not_in'
-  value: any
-}
+import AdvancedFilterModal, { FilterRule } from '../components/AdvancedFilterModal'
 
 const defaultColumns: ColumnConfig[] = [
 

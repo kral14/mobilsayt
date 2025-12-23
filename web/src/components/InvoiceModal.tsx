@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useWindowStore } from '../store/windowStore'
 import { formatDateInput, convertDisplayToRaw, formatDateToDisplay, parseSmartDate } from '../utils/dateUtils'
 import type { Customer, Product, Supplier, WarehouseLocation, DiscountDocument } from '@shared/types'
@@ -12,8 +11,7 @@ import PartnerSelect from './PartnerSelect'
 import InvoiceTable from './InvoiceTable'
 import { InvoiceItem, ModalData, TableColumnConfig, FunctionSettings } from './InvoiceTypes'
 import Products2 from '../pages/Products2'
-import ProductFormModal from './ProductFormModal'
-import { categoriesAPI, productsAPI } from '../services/api'
+import { productsAPI } from '../services/api'
 
 // Re-export for consumers like Satis.tsx
 export type { InvoiceItem, ModalData }
@@ -96,7 +94,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   warehouses = [],
   activeConfirmDialog,
 }) => {
-  const navigate = useNavigate()
   // Products imported at top
   const invoiceType = modal.invoiceType || 'sale' // Default satış
   const isPurchase = invoiceType === 'purchase'
@@ -147,8 +144,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   console.log(`[${new Date().toISOString()}] [InvoiceModal] RENDER CHECK. isActive:`, isActive)
 
   // Product Modal State removed
-
-  const [categories, setCategories] = useState<any[]>([])
 
   // Form state-ləri
 
@@ -1325,7 +1320,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [isVisible, isMinimized, modal.id, onClose, onSave, onPrint, localData, selectedItemIndices, handleAddEmptyRow, isPurchase, isActive, navigate])
+  }, [isVisible, isMinimized, modal.id, onClose, onSave, onPrint, localData, selectedItemIndices, handleAddEmptyRow, isPurchase, isActive])
 
   // Minimize olunmuşsa göstərmə
   if (isMinimized || !isVisible) {
