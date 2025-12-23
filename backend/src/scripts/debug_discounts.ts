@@ -6,7 +6,7 @@ async function main() {
     console.log('--- DEBUG START ---')
 
     // 1. Tedarikçiyi Bul
-    const supplier = await prisma.suppliers.findFirst({
+    const supplier = await prisma.customers.findFirst({
         where: { name: { contains: 'merhemet', mode: 'insensitive' } }
     })
     console.log('Supplier:', supplier ? `${supplier.name} (ID: ${supplier.id})` : 'Not Found')
