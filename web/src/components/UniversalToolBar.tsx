@@ -3,14 +3,19 @@ import {
     AddButton, DeleteButton, EditButton, CopyButton, PrintButton,
     SelectButton, ActivateButton, DeactivateButton, RefreshButton,
     SettingsButton, FoldersButton, FilterButton, SaveFilterButton,
-    SelectFilterButton, SearchInput, UpButton, DownButton, PeriodButton
+    SelectFilterButton, SearchInput, UpButton, DownButton, PeriodButton,
+    HelpButton, LocateButton, MoveButton
 } from './ToolbarButtons'
 import ToolbarConfigModal from './ToolbarConfigModal'
 import DatePeriodPicker, { DatePeriod } from './DatePeriodPicker'
+import HelpModal from './HelpModal'
 import { useWindowStore } from '../store/windowStore'
 import filterIcon from '../assets/icons/toolbar/filter.png'
 import filterSaveIcon from '../assets/icons/toolbar/filtersave.png'
 import filterChangeIcon from '../assets/icons/toolbar/filterchange.png'
+import moveIcon from '../assets/icons/toolbar/folder-kocurme.png'
+import folderIcon from '../assets/icons/toolbar/folder.png'
+import calendarIcon from '../assets/icons/toolbar/teqvim.png.png'
 
 interface UniversalToolBarProps {
     toolbarId?: string // Unique ID for saving configuration
@@ -25,7 +30,9 @@ interface UniversalToolBarProps {
     onSaveFilter?: (e?: any) => void
     onSelectFilter?: (e?: any) => void
     onSelect?: (e?: any) => void
+    onMove?: (e?: any) => void
     onFolders?: (e?: any) => void
+    onLocate?: (e?: any) => void
     onUp?: (e?: any) => void
     onDown?: (e?: any) => void
 
@@ -46,6 +53,16 @@ interface UniversalToolBarProps {
 const FilterImg = <img src={filterIcon} alt="Filtr" style={{ width: 22, height: 22, objectFit: 'contain' }} />
 const SaveFilterImg = <img src={filterSaveIcon} alt="Yadda Saxla" style={{ width: 22, height: 22, objectFit: 'contain' }} />
 const SelectFilterImg = <img src={filterChangeIcon} alt="Seç" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+const MoveImg = <img src={moveIcon} alt="Köçür" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+const FolderImg = <img src={folderIcon} alt="Papkalar" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+const CalendarImg = <img src={calendarIcon} alt="Period" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+
+const LocateSvg = (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22 11V19C22 20.1 21.1 21 20 21H4C2.9 21 2 20.1 2 19V7C2 5.9 2.9 5 4 5H10L12 7H20C21.1 7 22 7.9 22 9V11Z" fill="#FF9800" />
+        <path d="M12 14H17M17 14L15 12M17 14L15 16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+)
 
 const ALL_TOOLS = [
     { key: 'add', label: 'Əlavə et', icon: '+' },
@@ -58,27 +75,31 @@ const ALL_TOOLS = [
     { key: 'deactivate', label: 'Deaktiv et', icon: '🚫' },
     { key: 'refresh', label: 'Yenilə', icon: '🔄' },
     { key: 'settings', label: 'Ayarlar', icon: '⚙️' },
-    { key: 'folders', label: 'Papkalar', icon: '📁' },
+    { key: 'move', label: 'Köçür', icon: MoveImg },
+    { key: 'folders', label: 'Papkalar', icon: FolderImg },
+    { key: 'locate', label: 'Faylın yerini aç', icon: LocateSvg },
     { key: 'up', label: 'Yuxarı', icon: '⬆️' },
     { key: 'down', label: 'Aşağı', icon: '⬇️' },
-    { key: 'period', label: 'Period Seç', icon: '📅' },
+    { key: 'period', label: 'Period Seç', icon: CalendarImg },
     { key: 'filter', label: 'Filtr', icon: FilterImg },
     { key: 'saveFilter', label: 'Filtri Yadda Saxla', icon: SaveFilterImg },
     { key: 'selectFilter', label: 'Filtr Seç', icon: SelectFilterImg },
     { key: 'search', label: 'Axtarış', icon: '🔎' },
+    { key: 'help', label: 'Kömək', icon: '❓' },
 ]
 
 const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
     toolbarId,
     onAdd, onDelete, onPrint, onEdit, onCopy, onRefresh,
     onFilter, onSettings, onSearch, onSaveFilter, onSelectFilter,
-    onSelect, onFolders, onUp, onDown, onActivate, onDeactivate,
-    onPeriodChange,
+    onSelect, onFolders, onLocate, onUp, onDown, onActivate, onDeactivate,
+    onPeriodChange, onMove,
     children
 }) => {
     // Default visible tools: all
     const [visibleTools, setVisibleTools] = useState<string[]>(ALL_TOOLS.map(t => t.key))
     const [showPeriodPicker, setShowPeriodPicker] = useState(false)
+    const [showHelpModal, setShowHelpModal] = useState(false)
 
     useEffect(() => {
         if (toolbarId) {
@@ -129,7 +150,9 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
             case 'deactivate': return <DeactivateButton key={key} onClick={onDeactivate} />
             case 'refresh': return <RefreshButton key={key} onClick={onRefresh} />
             case 'settings': return <SettingsButton key={key} onClick={onSettings || handleContextMenu} />
+            case 'move': return <MoveButton key={key} onClick={onMove} />
             case 'folders': return <FoldersButton key={key} onClick={onFolders} />
+            case 'locate': return <LocateButton key={key} onClick={onLocate} />
             case 'up': return <UpButton key={key} onClick={onUp} />
             case 'down': return <DownButton key={key} onClick={onDown} />
             case 'period': return (
@@ -154,6 +177,7 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
             case 'saveFilter': return <SaveFilterButton key={key} onClick={onSaveFilter} icon={SaveFilterImg} />
             case 'selectFilter': return <SelectFilterButton key={key} onClick={onSelectFilter} icon={SelectFilterImg} />
             case 'search': return <SearchInput key={key} onSearch={onSearch} />
+            case 'help': return <HelpButton key={key} onClick={() => setShowHelpModal(true)} />
 
             default: return null
         }
@@ -182,6 +206,9 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
             {/* Divider for custom children */}
             {(children) && <div style={{ width: '1px', height: '24px', background: '#ccc', margin: '0 0.5rem' }} />}
             {children}
+
+            {/* Help Modal */}
+            {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
         </div>
     )
 }

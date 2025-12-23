@@ -1,11 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
-import Products from './pages/Products'
+import Products2 from './pages/Products2'
 import Login from './pages/Login'
 
 import Profile from './pages/Profile'
 import Hesablar from './pages/Hesablar'
-import Mehsullar from './pages/Mehsullar'
 import AlisQaimeleri from './pages/Qaimeler/Alis'
 import SatisQaimeleri from './pages/Qaimeler/Satis'
 import KassaMedaxil from './pages/Kassa/Medaxil'
@@ -34,7 +33,7 @@ function App() {
           path="/products"
           element={
             <ProtectedRoute>
-              <Products />
+              <Products2 />
             </ProtectedRoute>
           }
         />
@@ -58,7 +57,7 @@ function App() {
           path="/mehsullar"
           element={
             <ProtectedRoute>
-              <Mehsullar />
+              <Products2 />
             </ProtectedRoute>
           }
         />

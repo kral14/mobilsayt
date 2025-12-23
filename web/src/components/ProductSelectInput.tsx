@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ProductSelectCell from './ProductSelectCell'
 import { productsAPI } from '../services/api'
 import type { Product } from '../../../shared/types'
 import { useWindowStore } from '../store/windowStore'
-import Mehsullar from '../pages/Mehsullar'
+import Products2 from '../pages/Products2'
 
 interface ProductSelectInputProps {
     value: Product | null
@@ -18,8 +18,13 @@ export default function ProductSelectInput({ value, onChange, placeholder, onOpe
     const [searchTerm, setSearchTerm] = useState('')
     const [searchResults, setSearchResults] = useState<Product[]>([])
     const [isFocused, setIsFocused] = useState(false)
+    const isTyping = useRef(false)
 
     useEffect(() => {
+        if (isTyping.current) {
+            isTyping.current = false
+            return
+        }
         if (value) {
             setSearchTerm(value.name)
         } else {
@@ -28,7 +33,14 @@ export default function ProductSelectInput({ value, onChange, placeholder, onOpe
     }, [value])
 
     const handleSearch = async (term: string) => {
+        isTyping.current = true
         setSearchTerm(term)
+
+        // Reset selection if typing creates difference or just typing
+        if (value) {
+            onChange(null)
+        }
+
         if (!term.trim()) {
             setSearchResults([])
             return
@@ -39,7 +51,7 @@ export default function ProductSelectInput({ value, onChange, placeholder, onOpe
             const filtered = allProducts.filter(p => p.name.toLowerCase().includes(term.toLowerCase()))
             setSearchResults(filtered)
         } catch (e) {
-            console.error(e)
+            console.error('[ProductSelectInput] Search error:', e)
         }
     }
 
@@ -49,7 +61,7 @@ export default function ProductSelectInput({ value, onChange, placeholder, onOpe
             windowId,
             'Məhsul Seçimi',
             '📦',
-            <Mehsullar
+            <Products2
                 onSelect={(product) => {
                     onChange(product)
                     useWindowStore.getState().closePageWindow(windowId)
@@ -82,7 +94,29 @@ export default function ProductSelectInput({ value, onChange, placeholder, onOpe
             }}
             onClear={() => onChange(null)}
             onOpenSelect={onOpenSelect || openProductSelectWindow}
-            onOpenDetails={() => { }} // Optional
+            onOpenDetails={async (productId: number) => {
+                // Fetch product details to get category_id
+                try {
+                    const product = await productsAPI.getById(productId.toString())
+                    // Open Products2 window and navigate to product's category
+                    useWindowStore.getState().openPageWindow(
+                        'products2-locate',
+                        'Məhsullar',
+                        '📦',
+                        <Products2
+                            initialSelectedProductId={productId}
+                            initialCategoryId={product.category_id || null}
+                            onSelect={() => {
+                                // Close window when user clicks on product in locate mode
+                                useWindowStore.getState().closePageWindow('products2-locate')
+                            }}
+                        />,
+                        { width: 1200, height: 800 }
+                    )
+                } catch (err) {
+                    console.error('[ProductSelectInput] Failed to locate product:', err)
+                }
+            }}
             placeholder={placeholder}
             tags={tags}
             {...rest}

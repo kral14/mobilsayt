@@ -75,19 +75,20 @@ export default function CategoryTree({
         const hasChildren = category.children && category.children.length > 0
 
         return (
-            <div style={{ marginLeft: level > 0 ? '1.2rem' : '0' }}>
+            <div style={{ marginLeft: level === 1 ? '12px' : '0' }}>
                 <div
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        padding: '0.4rem 0.6rem',
+                        padding: '2px 6px',
                         background: isSelected ? '#e3f2fd' : 'transparent',
                         borderRadius: '6px',
-                        marginBottom: '2px',
+                        marginBottom: '1px',
                         cursor: 'pointer',
                         transition: 'background 0.2s',
                         border: isSelected ? '1px solid #2196f3' : '1px solid transparent',
-                        position: 'relative'
+                        position: 'relative',
+                        minHeight: '28px'
                     }}
                     onClick={() => onSelect(category.id)}
                     onDrop={(e) => {
@@ -103,13 +104,13 @@ export default function CategoryTree({
                             toggleExpanded(category.id)
                         }}
                         style={{
-                            marginRight: '0.5rem',
+                            marginRight: '4px',
                             cursor: 'pointer',
                             visibility: productCount > 0 || hasChildren ? 'visible' : 'hidden',
                             transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                             display: 'inline-block',
                             transition: 'transform 0.2s',
-                            fontSize: '0.8rem',
+                            fontSize: '0.7rem',
                             color: '#666'
                         }}
                     >
@@ -117,12 +118,20 @@ export default function CategoryTree({
                     </span>
 
                     {/* Folder Icon */}
-                    <span style={{ marginRight: '0.5rem', fontSize: '1.2rem' }}>
+                    <span style={{ marginRight: '6px', fontSize: '1rem' }}>
                         {isExpanded ? '📂' : '📁'}
                     </span>
 
                     {/* Category Name */}
-                    <span style={{ flex: 1, fontWeight: isSelected ? '600' : '400', color: isSelected ? '#1976D2' : '#333' }}>
+                    <span style={{
+                        flex: 1,
+                        fontWeight: isSelected ? '600' : '400',
+                        color: isSelected ? '#1976D2' : '#333',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        minWidth: 0
+                    }}>
                         {category.name}
                     </span>
 
@@ -154,7 +163,7 @@ export default function CategoryTree({
                 </div>
 
                 {/* Children */}
-                {isExpanded && category.children && category.children.map((child: Category) => (
+                {isExpanded && category.children?.map((child: Category) => (
                     <CategoryTreeItem key={child.id} category={child} level={level + 1} />
                 ))}
             </div>

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import type { Product } from '@shared/types'
 
 interface ProductSelectCellProps {
@@ -37,6 +37,7 @@ export default function ProductSelectCell({
     ...props
 }: ProductSelectCellProps) {
     const inputRef = useRef<HTMLInputElement>(null)
+    const [showDropdown, setShowDropdown] = useState(false)
 
     // Sync focus with isFocused prop (e.g. when transition from Selected -> Search)
     useEffect(() => {
@@ -57,11 +58,13 @@ export default function ProductSelectCell({
             return
         }
 
+        setShowDropdown(false)
         onBlur()
     }
 
     const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
         onFocus()
+        setShowDropdown(true)
         e.target.select()
     }
 
@@ -70,99 +73,15 @@ export default function ProductSelectCell({
             e.preventDefault()
             onOpenSelect()
         }
+
+
+
         if (props.onKeyDown) {
             props.onKeyDown(e)
         }
     }
 
-    if (productId && !tags) {
-        return (
-            <div
-                style={{
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    width: '100%',
-                    maxWidth: '100%',
-                    overflow: 'hidden',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    background: '#fff',
-                    borderColor: isFocused ? '#80bdff' : '#ddd',
-                    boxShadow: isFocused ? '0 0 0 0.2rem rgba(0,123,255,.25)' : 'none',
-                }}
-            >
-                <input
-                    ref={inputRef}
-                    type="text"
-                    value={productName || ''}
-                    readOnly
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
-                    onKeyDown={handleKeyDown}
-                    style={{
-                        flex: 1,
-                        minWidth: 0,
-                        width: '100%',
-                        padding: '0.25rem 0.5rem',
-                        border: 'none',
-                        borderRadius: '4px',
-                        fontSize: '0.9rem',
-                        outline: 'none',
-                        textAlign: 'left',
-                        height: '30px',
-                        boxSizing: 'border-box',
-                        background: 'transparent',
-                        color: '#495057',
-                        cursor: 'default'
-                    }}
-                />
 
-                {/* Clear Button */}
-                <button
-                    className="product-action-btn"
-                    onClick={(e) => {
-                        e.stopPropagation()
-                        onClear()
-                    }}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#dc3545',
-                        fontSize: '1.2rem',
-                        padding: '0 4px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}
-                    title="Sil"
-                >
-                    ×
-                </button>
-
-                {/* Details Button */}
-                <button
-                    className="product-action-btn"
-                    onClick={(e) => {
-                        e.stopPropagation()
-                        if (productId) onOpenDetails(productId, productName)
-                    }}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#007bff',
-                        fontSize: '1rem',
-                        padding: '0 4px',
-                        marginRight: '2px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}
-                    title="Məhsul kartı"
-                >
-                    🔍
-                </button>
-            </div>
-        )
-    }
 
     return (
         <div
@@ -180,7 +99,7 @@ export default function ProductSelectCell({
                 background: '#fff',
                 padding: '2px',
                 height: '38px', // Fixed height
-                overflow: 'hidden', // Hide overflow
+                // overflow: 'hidden', // Removed to allow dropdown to show
                 minWidth: 0 // Allow shrinking in flex container
             }}
         >
@@ -196,7 +115,7 @@ export default function ProductSelectCell({
                 onChange={(e) => onSearchChange(e.target.value)}
                 onBlur={handleBlur}
                 onFocus={handleFocus}
-                onClick={(e) => (e.target as HTMLInputElement).select()}
+
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
                 style={{
@@ -217,32 +136,80 @@ export default function ProductSelectCell({
             />
 
             {/* Action Buttons - Flex Item now */}
-            <div style={{ display: 'flex', alignItems: 'center', paddingRight: '4px', flexShrink: 0, minWidth: 0, overflow: 'hidden' }}>
-                <button
-                    className="product-action-btn"
-                    onClick={(e) => {
-                        e.stopPropagation()
-                        onOpenSelect()
-                    }}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
-                        padding: '0 2px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 'bold',
-                        color: '#495057',
-                        flexShrink: 0 // Prevent button squish
-                    }}
-                    tabIndex={-1} // Skip tab focus for button inside input
-                    title="Məhsul seç"
-                >
-                    ...
-                </button>
+            <div style={{ display: 'flex', alignItems: 'center', paddingRight: '4px', flexShrink: 0, minWidth: 0 }}>
+                {isFocused && (
+                    productId ? (
+                        <>
+                            <button
+                                className="product-action-btn"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    onOpenSelect()
+                                }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#007bff',
+                                    fontSize: '1rem',
+                                    padding: '0 4px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}
+                                tabIndex={-1}
+                                title="Məhsul seçimi"
+                            >
+                                🔍
+                            </button>
+                            <button
+                                className="product-action-btn"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    onOpenDetails(productId, productName)
+                                }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#495057',
+                                    fontSize: '1.2rem',
+                                    padding: '0 4px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontWeight: 'bold'
+                                }}
+                                tabIndex={-1}
+                                title="Məhsulun yerinə get"
+                            >
+                                ⋮
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            className="product-action-btn"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onOpenSelect()
+                            }}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '1rem',
+                                padding: '0 2px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontWeight: 'bold',
+                                color: '#495057',
+                                flexShrink: 0 // Prevent button squish
+                            }}
+                            tabIndex={-1} // Skip tab focus for button inside input
+                            title="Məhsul seç"
+                        >
+                            ...
+                        </button>
+                    )
+                )}
             </div>
 
-            {searchResults.length > 0 && (
+            {showDropdown && searchResults.length > 0 && (
                 <div
                     className="product-dropdown"
                     style={{
@@ -267,6 +234,7 @@ export default function ProductSelectCell({
                             onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
+                                setShowDropdown(false)
                                 onSelect(product)
                             }}
                             style={{

@@ -24,20 +24,25 @@ interface ProductFormData {
     is_active: boolean
 }
 
+import MoveToCategoryModal from './MoveToCategoryModal'
+
 interface ProductFormProps {
     product: Product | null
     categories: Category[]
     existingBarcodes: string[] // For validation
     onSubmit: (data: any) => Promise<void> // Helper to pass submit logic
+    title?: string // Optional custom title
 }
 
 export default function ProductForm({
     product,
     categories,
     existingBarcodes,
-    onSubmit
+    onSubmit,
+    title
 }: ProductFormProps) {
     const windowContext = useWindow()
+    const [showFolderSelect, setShowFolderSelect] = useState(false)
 
     try {
         console.log(`[${new Date().toISOString()}] [ProductForm] Rendered. Product:`, product ? product.name : 'null')
@@ -65,10 +70,21 @@ export default function ProductForm({
         is_active: true
     })
 
-    // const [showBarcodeScanner, setShowBarcodeScanner] = useState(false) // Unused
+    // Helper to find category name within tree
+    const findCategoryName = (cats: Category[], id: number): string | null => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat.name
+            if (cat.children) {
+                const found = findCategoryName(cat.children, id)
+                if (found) return found
+            }
+        }
+        return null
+    }
 
     // Initialize form when product changes
     useEffect(() => {
+        // ... existing useEffect logic ...
         console.log('[ProductForm] Initializing with product:', product)
         if (product) {
             let productionDateStr = ''
@@ -143,28 +159,6 @@ export default function ProductForm({
         }
     }, [product])
 
-    // Unused function - commented out
-    /*
-    const calculateDateDifference = (startDate: Date, endDate: Date) => {
-        let years = endDate.getFullYear() - startDate.getFullYear()
-        let months = endDate.getMonth() - startDate.getMonth()
-        let days = endDate.getDate() - startDate.getDate()
-
-        if (days < 0) {
-            const lastDayOfPrevMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 0).getDate()
-            days += lastDayOfPrevMonth
-            months--
-        }
-
-        if (months < 0) {
-            months += 12
-            years--
-        }
-
-        return { years, months, days }
-    }
-    */
-
     const generateBarcode = () => {
         const timestamp = Date.now().toString()
         const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
@@ -195,22 +189,29 @@ export default function ProductForm({
             alert('Məhsul adı məcburidir')
             return
         }
-
-        // Pass data to parent logic
         await onSubmit(formData)
     }
 
-    const renderCategoryOptions = (categories: Category[], prefix = '') => {
-        return categories.map(cat => (
-            <React.Fragment key={cat.id}>
-                <option value={cat.id.toString()}>
-                    {prefix}{cat.name}
-                </option>
-                {cat.children && cat.children.length > 0 &&
-                    renderCategoryOptions(cat.children, prefix + '  ')
-                }
-            </React.Fragment>
-        ))
+    if (showFolderSelect) {
+        return (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '10px', background: '#f0f0f0', borderBottom: '1px solid #ccc' }}>
+                    <strong>Papka Seçimi</strong>
+                </div>
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <MoveToCategoryModal
+                        categories={categories}
+                        onClose={() => setShowFolderSelect(false)}
+                        onConfirm={(catId) => {
+                            setFormData(prev => ({ ...prev, category_id: catId ? catId.toString() : '' }))
+                            setShowFolderSelect(false)
+                        }}
+                        confirmLabel="Seç"
+                        cancelLabel="Geri"
+                    />
+                </div>
+            </div>
+        )
     }
 
     return (
@@ -218,7 +219,7 @@ export default function ProductForm({
             <div style={{ maxWidth: '100%', width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                     <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>
-                        {product ? 'Məhsul Redaktə Et' : 'Yeni Məhsul Əlavə Et'}
+                        {title || (product ? 'Məhsul Redaktə Et' : 'Yeni Məhsul Əlavə Et')}
                     </h2>
                 </div>
 
@@ -305,7 +306,6 @@ export default function ProductForm({
                                 />
                                 <button
                                     type="button"
-                                    // onClick={() => setShowBarcodeScanner(true)} // Commented - feature not implemented
                                     style={{
                                         padding: '0.75rem',
                                         background: '#17a2b8',
@@ -441,20 +441,53 @@ export default function ProductForm({
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
                                 Papka
                             </label>
-                            <select
-                                value={formData.category_id}
-                                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                                style={{
-                                    width: '100%',
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <div style={{
+                                    flex: 1,
                                     padding: '0.75rem',
                                     border: '1px solid #ddd',
                                     borderRadius: '4px',
-                                    fontSize: '1rem'
-                                }}
-                            >
-                                <option value="">Papka seçin</option>
-                                {renderCategoryOptions(categories)}
-                            </select>
+                                    background: '#f8f9fa',
+                                    color: formData.category_id ? '#333' : '#666'
+                                }}>
+                                    {formData.category_id
+                                        ? (findCategoryName(categories, parseInt(formData.category_id)) || `ID: ${formData.category_id}`)
+                                        : 'Papka seçilməyib (Ana Səhifə)'
+                                    }
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowFolderSelect(true)}
+                                    style={{
+                                        padding: '0.75rem 1rem',
+                                        background: '#6c757d',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    📂 Papka Seç
+                                </button>
+                                {formData.category_id && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, category_id: '' }))}
+                                        style={{
+                                            padding: '0.75rem',
+                                            background: '#dc3545',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer'
+                                        }}
+                                        title="Təmizlə"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>

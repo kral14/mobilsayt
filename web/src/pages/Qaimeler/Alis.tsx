@@ -752,19 +752,45 @@ export function AlisQaimeleriContent() {
           }
           else if (rule.component === 'product') {
             // Product filtering logic
-            // Get selected product IDs (could be single value or array)
-            const selectedIds = Array.isArray(rule.value)
-              ? rule.value.map((v: any) => v.id || v)
-              : [rule.value?.id || rule.value]
+            const isTextOp = ['contains', 'not_contains', 'starts_with', 'not_starts_with'].includes(rule.condition)
 
-            // Check if invoice items contain any of the selected products
-            const invoiceItems = item.purchase_invoice_items || []
-            const hasProduct = invoiceItems.some(invItem => selectedIds.includes(invItem.product_id))
+            if (isTextOp && typeof rule.value === 'string') {
+              // Text search in product names
+              const searchTerm = rule.value.toLowerCase()
+              const invoiceItems = item.purchase_invoice_items || []
 
-            if (rule.condition === 'not_in' || rule.condition === 'not_equals') {
-              return !hasProduct
+              const hasMatchingProduct = invoiceItems.some(invItem => {
+                const product = products.find(p => p.id === invItem.product_id)
+                const productName = product?.name?.toLowerCase() || ''
+
+                if (rule.condition === 'contains') {
+                  return productName.includes(searchTerm)
+                } else if (rule.condition === 'not_contains') {
+                  return !productName.includes(searchTerm)
+                } else if (rule.condition === 'starts_with') {
+                  return productName.startsWith(searchTerm)
+                } else if (rule.condition === 'not_starts_with') {
+                  return !productName.startsWith(searchTerm)
+                }
+                return false
+              })
+
+              return hasMatchingProduct
+            } else {
+              // ID-based filtering (original logic)
+              const selectedIds = Array.isArray(rule.value)
+                ? rule.value.map((v: any) => v.id || v)
+                : [rule.value?.id || rule.value]
+
+              // Check if invoice items contain any of the selected products
+              const invoiceItems = item.purchase_invoice_items || []
+              const hasProduct = invoiceItems.some(invItem => selectedIds.includes(invItem.product_id))
+
+              if (rule.condition === 'not_in' || rule.condition === 'not_equals') {
+                return !hasProduct
+              }
+              return hasProduct
             }
-            return hasProduct
           }
           else if (rule.component === 'invoice_date') {
             // Date comparison (simple string match for now or strict date?)

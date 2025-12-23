@@ -200,28 +200,20 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
         openSettings()
     }
 
-    // Ctrl+A - Select All
+    // Ctrl+A - Select All (Capture Phase to override browser default)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Log all Ctrl presses to debug
-            if (e.ctrlKey || e.metaKey) {
-                console.log('[UniversalTable] Ctrl key detected. Code:', e.code, 'Key:', e.key)
-            }
-
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'a' || e.code === 'KeyA')) {
                 const target = e.target as HTMLElement
-                console.log('[UniversalTable] Ctrl+A candidate. Target:', target.tagName)
 
                 // Allow checkboxes and buttons, block text inputs
                 if (
                     target.matches('textarea, [contenteditable="true"]') ||
                     (target.matches('input') && !['checkbox', 'radio', 'button', 'submit', 'image', 'range', 'color'].includes((target as HTMLInputElement).type))
                 ) {
-                    console.log('[UniversalTable] Blocked by input focus')
                     return
                 }
 
-                console.log('[UniversalTable] Executing Select All. Rows:', data.length)
                 e.preventDefault()
                 e.stopPropagation()
                 const allIds = data.map(row => getRowId(row))
@@ -240,19 +232,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
         }
     }, [selectedRows, onRowSelect])
 
-    // Ctrl+A - hamısını seç
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-                e.preventDefault()
-                const allIds = data.map(row => getRowId(row))
-                setSelectedRows(allIds)
-            }
-        }
 
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [data, getRowId])
 
     // Sıralama
     const handleSort = (columnId: string) => {
@@ -498,7 +478,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                         >
                             {selectable && (
                                 <th style={{
-                                    padding: '0.75rem',
+                                    padding: '0.1rem',
                                     textAlign: 'left',
                                     borderRight: '1px solid #dee2e6',
                                     width: '40px',
@@ -527,7 +507,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                         onDragEnd={isDraggable ? handleDragEnd : undefined}
                                         onClick={() => isSortable && handleSort(column.id)}
                                         style={{
-                                            padding: '0.75rem',
+                                            padding: '0.1rem',
                                             textAlign: 'center', // Always center headers
                                             borderRight: '1px solid #dee2e6',
                                             width: column.width,
@@ -601,7 +581,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                 >
                                     {selectable && (
                                         <td style={{
-                                            padding: '0.75rem',
+                                            padding: '0.1rem',
                                             borderRight: '1px solid #dee2e6'
                                         }}>
                                             <input
@@ -620,7 +600,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                             <td
                                                 key={column.id}
                                                 style={{
-                                                    padding: '0.75rem',
+                                                    padding: '0.1rem',
                                                     textAlign: 'center',
                                                     borderRight: '1px solid #dee2e6',
                                                     userSelect: 'text',

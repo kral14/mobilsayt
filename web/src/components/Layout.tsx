@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useWindowStore } from '../store/windowStore'
@@ -11,7 +11,7 @@ import { NotificationToast } from './NotificationToast'
 
 // Səhifə komponentləri
 import Hesablar from '../pages/Hesablar'
-import Mehsullar from '../pages/Mehsullar'
+import Products2 from '../pages/Products2'
 import { AlisQaimeleriContent } from '../pages/Qaimeler/Alis'
 import { SatisQaimeleriContent } from '../pages/Qaimeler/Satis'
 import KassaMedaxil from '../pages/Kassa/Medaxil'
@@ -29,17 +29,19 @@ export const NAVBAR_HEIGHT = 40 // Navbar hündürlüyü (px)
 export const FOOTER_HEIGHT = 25 // Global Footer hündürlüyü (px)
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user, customer, logout } = useAuthStore()
-  const navigate = useNavigate()
-
   // Dropdown state-ləri
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [activeSubDropdown, setActiveSubDropdown] = useState<string | null>(null)
   const [activeSubSubDropdown, setActiveSubSubDropdown] = useState<string | null>(null) // 3rd level menu
 
   const navRef = useRef<HTMLDivElement>(null)
-  const [mainContentZIndex, setMainContentZIndex] = useState(0)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { user, customer, logout, isAuthenticated } = useAuthStore()
   const { windows, activeWindowId, openPageWindow, restoreWindow, focusMainContent, togglePinWindow } = useWindowStore()
+  const [mainContentZIndex, setMainContentZIndex] = useState(0)
+
+  const isDashboard = location.pathname === '/' || location.pathname === '/web' || location.pathname === '/web/' || location.pathname.includes('dashboard')
   const { isVisible: isFooterVisible } = useFooterStore()
 
   // Toast notifications (global)
@@ -382,9 +384,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         }
         
         
-        /* General Workspace Adjustment */
+        /* General Workspace Adjustment - Fixed redundant padding */
         #workspace {
-            padding-top: ${NAVBAR_HEIGHT}px;
+            padding-top: 0;
             height: ${workspaceHeightCalc};
             box-sizing: border-box;
         }
@@ -432,12 +434,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </button>
               </li>
 
-              {/* MƏHSULLAR (was ANBAR) */}
+              {/* MƏHSULLAR */}
               <li className="nav-item">
-                <button className="nav-link" onClick={() => handleOpenPage('mehsullar', 'Məhsullar', '📦', Mehsullar)}>
+                <button className="nav-link" onClick={() => handleOpenPage('mehsullar', 'Məhsullar', '📦', Products2)}>
                   Məhsullar
                 </button>
               </li>
+
 
               {/* KASSA */}
               <li
@@ -639,10 +642,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           style={{
             width: '100%',
             height: '100%',
-            overflow: 'auto',
+            overflow: isDashboard ? 'hidden' : 'auto',
             position: 'relative',
             zIndex: mainContentZIndex,
-            backgroundColor: '#f5f5f5'
+            backgroundColor: isDashboard ? 'transparent' : '#f5f5f5'
           }}
         >
           {children}
@@ -688,7 +691,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             background: '#2c3e50', display: 'flex', alignItems: 'center', padding: '0 10px',
             color: 'white', borderTop: '1px solid #444'
           }}>
-            <div style={{ marginRight: 'auto', fontWeight: 'bold', fontSize: '0.75rem' }}>📋 Açıq Pəncərələr:</div>
+            <div
+              onClick={() => {
+                useWindowStore.getState().minimizeAllWindows();
+                navigate('/');
+              }}
+              style={{
+                marginRight: 'auto',
+                fontWeight: 'bold',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                transition: 'background 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#34495e'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              🏠 Əsas Səhifə
+            </div>
             {Array.from(windows.values()).map(window => (
               <div
                 key={window.id}
@@ -747,8 +771,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           onClose={() => removeToast(toast.id)}
         />
       ))}
-
-
     </div>
   )
 }

@@ -7,11 +7,12 @@ import FilterSaveModal from './FilterSaveModal'
 import FilterLoadModal from './FilterLoadModal'
 import { useWindowStore } from '../store/windowStore'
 import { useNotificationStore } from '../store/notificationStore'
+import { useWindow } from '../context/WindowContext'
 
 import MultiValueEditor from './MultiValueEditorModal'
 import type { Product, Customer, Supplier } from '../../../shared/types'
 import { customersAPI } from '../services/api'
-import DatePeriodPicker, { DatePeriod } from './DatePeriodPicker'
+import DatePeriodPicker from './DatePeriodPicker'
 
 const DateRuleInput = ({ value, onChange }: { value: any, onChange: (val: any) => void }) => {
     const [isOpen, setIsOpen] = useState(false)
@@ -91,6 +92,7 @@ interface AdvancedFilterModalProps {
     onApply: (rules: FilterRule[]) => void
     filterComponents?: FilterComponentConfig[]
     toolbarId?: string // Unique ID for this modal's toolbar context
+    initialRules?: FilterRule[] // Pre-populate with saved filters
 }
 
 
@@ -105,8 +107,11 @@ const DEFAULT_PRODUCT_COMPONENTS: FilterComponentConfig[] = [
     { id: 'category', label: 'Kateqoriya', type: 'text' }
 ]
 
-export default function AdvancedFilterModal({ onClose, onApply, filterComponents = DEFAULT_PRODUCT_COMPONENTS, toolbarId = 'advanced-filter-general' }: AdvancedFilterModalProps) {
-    const [rules, setRules] = useState<FilterRule[]>([])
+export default function AdvancedFilterModal({ onClose, onApply, filterComponents = DEFAULT_PRODUCT_COMPONENTS, toolbarId = 'advanced-filter-general', initialRules = [] }: AdvancedFilterModalProps) {
+    const windowContext = useWindow()
+    const handleClose = windowContext?.close || onClose
+
+    const [rules, setRules] = useState<FilterRule[]>(initialRules)
     const [selectedRules, setSelectedRules] = useState<number[]>([])
     const [partners, setPartners] = useState<(Customer | Supplier)[]>([])
 
@@ -265,6 +270,14 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
     // -------------------------
 
     const updateRule = (index: number, field: keyof FilterRule, val: any) => {
+        // Auto-enable filter when modified
+        setSelectedRules(prev => {
+            if (!prev.includes(index)) {
+                return [...prev, index]
+            }
+            return prev
+        })
+
         setRules(prevRules => {
             const newRules = [...prevRules]
             newRules[index] = { ...newRules[index], [field]: val }
@@ -323,6 +336,23 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
         }
 
         if (type === 'product') {
+            // Check if text operation is selected
+            const isTextOp = ['contains', 'not_contains', 'starts_with', 'not_starts_with'].includes(rule.condition)
+
+            if (isTextOp) {
+                // For text operations, show simple text input
+                return (
+                    <input
+                        type="text"
+                        value={typeof rule.value === 'string' ? rule.value : (rule.value?.name || '')}
+                        onChange={(e) => updateRule(index, 'value', e.target.value)}
+                        placeholder="Mətn daxil edin..."
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.9rem' }}
+                    />
+                )
+            }
+
+            // For other operations, show product selector
             if (isMulti) {
                 return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -531,6 +561,26 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
                     <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Seçilmiş Filtrlər</h3>
                     {rules.length === 0 && <div style={{ color: '#999' }}>Siyahı boşdur. + düyməsi ilə əlavə edin...</div>}
 
+                    {/* Column Headers */}
+                    {rules.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            padding: '0.5rem 0.25rem',
+                            borderBottom: '2px solid #ddd',
+                            marginBottom: '0.5rem',
+                            fontWeight: 'bold',
+                            fontSize: '0.85rem',
+                            color: '#666'
+                        }}>
+                            <div style={{ width: '20px' }}></div> {/* Checkbox space */}
+                            <div style={{ width: '220px' }}>Komponent</div>
+                            <div style={{ width: '160px' }}>Şərt</div>
+                            <div style={{ flex: 1 }}>Dəyər</div>
+                        </div>
+                    )}
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {rules.map((rule, idx) => {
                             const compConfig = filterComponents.find(c => c.id === rule.component)
@@ -549,9 +599,10 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
                                         <input
                                             type="checkbox"
                                             checked={selectedRules.includes(idx)}
+                                            onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => {
-                                                if (e.target.checked) setSelectedRules([...selectedRules, idx])
-                                                else setSelectedRules(selectedRules.filter(i => i !== idx))
+                                                if (e.target.checked) setSelectedRules(prev => [...prev, idx])
+                                                else setSelectedRules(prev => prev.filter(i => i !== idx))
                                             }}
                                             style={{ cursor: 'pointer' }}
                                         />
@@ -679,22 +730,34 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
                                                 maxWidth: '160px'
                                             }}
                                         >
-                                            <option value="equals">Bərabərdir</option>
-                                            <option value="not_equals">Bərabər deyil</option>
-                                            <option value="in">Siyahıda var</option>
-                                            <option value="not_in">Siyahıda yoxdur</option>
-                                            <option value="contains">Tərkibində var</option>
-                                            <option value="not_contains">Tərkibində yoxdur</option>
-                                            <option value="starts_with">İlə başlayır</option>
-                                            <option value="not_starts_with">İlə başlamır</option>
-                                            <option value="greater">Böyükdür</option>
-                                            <option value="greater_or_equal">Böyükdür və ya bərabərdir</option>
-                                            <option value="less">Kiçikdir</option>
-                                            <option value="less_or_equal">Kiçikdir və ya bərabərdir</option>
-                                            <option value="is_set">Doludur</option>
-                                            <option value="is_not_set">Dolu deyil</option>
-                                            <option value="in_group">Qrupdadır</option>
-                                            <option value="not_in_group">Qrupda deyil</option>
+                                            <optgroup label="Ümumi">
+                                                <option value="equals">Bərabərdir</option>
+                                                <option value="not_equals">Bərabər deyil</option>
+                                            </optgroup>
+                                            <optgroup label="Siyahı Əməliyyatları">
+                                                <option value="in">Siyahıda var</option>
+                                                <option value="not_in">Siyahıda yoxdur</option>
+                                            </optgroup>
+                                            <optgroup label="Mətn Əməliyyatları">
+                                                <option value="contains">Tərkibində var</option>
+                                                <option value="not_contains">Tərkibində yoxdur</option>
+                                                <option value="starts_with">İlə başlayır</option>
+                                                <option value="not_starts_with">İlə başlamır</option>
+                                            </optgroup>
+                                            <optgroup label="Rəqəm Əməliyyatları">
+                                                <option value="greater">Böyükdür</option>
+                                                <option value="greater_or_equal">Böyükdür və ya bərabərdir</option>
+                                                <option value="less">Kiçikdir</option>
+                                                <option value="less_or_equal">Kiçikdir və ya bərabərdir</option>
+                                            </optgroup>
+                                            <optgroup label="Mövcudluq Yoxlaması">
+                                                <option value="is_set">Doludur</option>
+                                                <option value="is_not_set">Dolu deyil</option>
+                                            </optgroup>
+                                            <optgroup label="Qrup Əməliyyatları">
+                                                <option value="in_group">Qrupdadır</option>
+                                                <option value="not_in_group">Qrupda deyil</option>
+                                            </optgroup>
                                         </select>
 
                                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -709,7 +772,7 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
             </div>
 
             <div style={{ padding: '1rem', borderTop: '1px solid #ddd', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', background: 'white' }}>
-                <button onClick={onClose} style={{ padding: '0.5rem 1rem', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer' }}>Bağla</button>
+                <button onClick={handleClose} style={{ padding: '0.5rem 1rem', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer' }}>Bağla</button>
                 <button
                     onClick={() => {
                         // Filter out empty rules, and keep only SELECTED (checked) rules
@@ -719,7 +782,7 @@ export default function AdvancedFilterModal({ onClose, onApply, filterComponents
                             selectedRules.includes(idx)
                         )
                         onApply(activeRules)
-                        onClose()
+                        handleClose()
                     }}
                     style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', background: '#007bff', color: 'white', cursor: 'pointer' }}
                 >

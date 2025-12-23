@@ -100,6 +100,7 @@ interface WindowStore {
   snapWindow: (id: string, direction: SnapDirection) => void
   togglePinWindow: (id: string) => void // Pəncərəni bərkit/aç
   closeSnapAssist: () => void
+  minimizeAllWindows: () => void // Bütün pəncərələri aşağı sal
 
   // Page window əməliyyatları
   openPageWindow: (pageId: string, title: string, icon: string, content: React.ReactNode, size?: { width: number; height: number }) => void
@@ -308,6 +309,25 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
 
     set({ windows: newWindows })
   },
+
+  // Bütün pəncərələri minimize et
+  minimizeAllWindows: () => {
+    const state = get()
+    const newWindows = new Map(state.windows)
+    let hasChanges = false
+
+    newWindows.forEach((window, id) => {
+      if (!window.isMinimized) {
+        newWindows.set(id, { ...window, isMinimized: true })
+        hasChanges = true
+      }
+    })
+
+    if (hasChanges) {
+      set({ windows: newWindows, activeWindowId: null })
+    }
+  },
+
 
   // Pəncərəni bərkit/aç
   togglePinWindow: (id: string) => {

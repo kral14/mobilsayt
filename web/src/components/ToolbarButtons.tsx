@@ -80,13 +80,26 @@ export const ActivateButton: React.FC<ButtonProps> = (props) => <ToolbarButton {
 export const DeactivateButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#dc3545" icon="🚫" defaultTitle="Deaktiv et" />
 export const RefreshButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#007bff" icon="🔄" defaultTitle="Yenilə" />
 export const SettingsButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="gray" icon="⚙️" defaultTitle="Ayarlar" />
-export const FoldersButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#FF9800" icon="📁" defaultTitle="Papkalar" />
+const LocateIcon = () => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22 11V19C22 20.1 21.1 21 20 21H4C2.9 21 2 20.1 2 19V7C2 5.9 2.9 5 4 5H10L12 7H20C21.1 7 22 7.9 22 9V11Z" fill="#FF9800" />
+        <path d="M12 14H17M17 14L15 12M17 14L15 16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+)
+
+import folderIcon from '../assets/icons/toolbar/folder.png'
+import calendarIcon from '../assets/icons/toolbar/teqvim.png.png'
+
+export const FoldersButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#FF9800" icon={<img src={folderIcon} alt="Papkalar" style={{ width: '20px', height: '20px' }} />} defaultTitle="Papkalar" />
+export const LocateButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#FF9800" icon={<LocateIcon />} defaultTitle="Faylın yerini aç" />
 export const FilterButton: React.FC<ButtonProps & { icon?: React.ReactNode }> = (props) => <ToolbarButton {...props} bgColor="#6610f2" icon={props.icon || "🔍"} defaultTitle="Filtr" />
 export const SaveFilterButton: React.FC<ButtonProps & { icon?: React.ReactNode }> = (props) => <ToolbarButton {...props} bgColor="#20c997" icon={props.icon || "💾"} defaultTitle="Filtri Yadda Saxla" />
+import moveIcon from '../assets/icons/toolbar/folder-kocurme.png'
 export const SelectFilterButton: React.FC<ButtonProps & { icon?: React.ReactNode }> = (props) => <ToolbarButton {...props} bgColor="#6c757d" icon={props.icon || "📂"} defaultTitle="Filtr Seç" />
+export const MoveButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#9C27B0" icon={<img src={moveIcon} alt="Move" style={{ width: '20px', height: '20px' }} />} defaultTitle="Köçür" />
 export const UpButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#007bff" icon="⬆️" defaultTitle="Yuxarı" />
 export const DownButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#007bff" icon="⬇️" defaultTitle="Aşağı" />
-export const PeriodButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#fd7e14" icon="📅" defaultTitle="Period Seç" />
+export const PeriodButton: React.FC<ButtonProps> = (props) => <ToolbarButton {...props} bgColor="#fd7e14" icon={<img src={calendarIcon} alt="Period" style={{ width: '20px', height: '20px' }} />} defaultTitle="Period Seç" />
 
 // Search is a bit different
 export const SearchInput: React.FC<{ onSearch?: (term: string) => void, visible?: boolean }> = ({ onSearch, visible = true }) => {
@@ -143,6 +156,16 @@ export const ToolbarDropdown: React.FC<{
                 </div>
             )}
         </div>
+    )
+}
+
+// Help Button
+export const HelpButton: React.FC<ButtonProps> = ({ onClick, title = 'Kömək', visible = true }) => {
+    if (!visible) return null
+    return (
+        <button onClick={onClick} style={buttonStyle('#3d8bfd')} title={title}>
+            <span style={iconStyle}>❓</span>
+        </button>
     )
 }
 

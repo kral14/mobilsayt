@@ -145,7 +145,7 @@ export const categoriesAPI = {
     return response.data
   },
 
-  update: async (id: string, data: { name: string; parent_id?: number }): Promise<any> => {
+  update: async (id: string, data: { name: string; parent_id?: number | null }): Promise<any> => {
     const response = await api.put<any>(`/categories/${id}`, data)
     return response.data
   },

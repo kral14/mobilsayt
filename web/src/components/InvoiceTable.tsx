@@ -295,14 +295,9 @@ export default function InvoiceTable({
                         onBlur={() => setFocusedProductRow(null)}
                         onSearchChange={(val) => {
                             onUpdateItem(idx, {
-                                product_id: null,
-                                product_name: '',
                                 searchTerm: val,
-                                quantity: 0,
-                                unit_price: 0,
-                                discount_auto: 0,
-                                discount_manual: 0,
-                                total_price: 0
+                                product_id: null,
+                                product_name: ''
                             })
                         }}
                         onSelect={(prod) => onProductSelect(idx, prod)}

@@ -11,7 +11,7 @@ import SmartDateInput from './SmartDateInput'
 import PartnerSelect from './PartnerSelect'
 import InvoiceTable from './InvoiceTable'
 import { InvoiceItem, ModalData, TableColumnConfig, FunctionSettings } from './InvoiceTypes'
-import Mehsullar from '../pages/Mehsullar'
+import Products2 from '../pages/Products2'
 import ProductFormModal from './ProductFormModal'
 import { categoriesAPI, productsAPI } from '../services/api'
 
@@ -415,51 +415,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
   const handleOpenProductDetails = async (productId: number, productName: string) => {
     console.log(`[${new Date().toISOString()}] [InvoiceModal] handleOpenProductDetails called`, productId, productName)
-    let product = products.find(p => p.id === productId)
 
-    if (!product) {
-      try {
-        // Fetch single product details
-        product = await productsAPI.getById(productId.toString())
-      } catch (e) {
-        console.error('Failed to fetch product for details', e)
-      }
-    }
+    try {
+      // Fetch product to get category_id
+      const product = await productsAPI.getById(productId.toString())
 
-    if (product) {
-      // Ensure categories are loaded
-      let currentCategories = categories;
-      if (currentCategories.length === 0) {
-        try {
-          currentCategories = await categoriesAPI.getAll();
-          setCategories(currentCategories)
-        } catch (e) {
-          console.error('Categories load error:', e)
-        }
-      }
-
-      const targetProduct = product; // capture for closure
-      // Open in Universal Window
+      // Open Products2 and navigate to product's location
       useWindowStore.getState().openPageWindow(
-        `product-details-${product.id}`,
-        `Məhsul: ${product.name}`,
-        '📝',
-        <ProductFormModal
-          product={product}
-          categories={currentCategories}
-          existingBarcodes={[]}
-          onSubmit={async (data) => {
-            try {
-              await productsAPI.update(targetProduct.id.toString(), data)
-              alert('Məhsul yeniləndi! (Siyahını yeniləmək üçün səhifəni yeniləmək lazım ola bilər)')
-              // Close the window? The user might want to keep it open or close it.
-              // Usually ProductForm doesn't close itself on submit unless explicitly handled.
-              // But handleProductFormSubmit did setShowProductModal(false) which is irrelevant now.
-              // Let's close it to match old behavior.
-              useWindowStore.getState().closePageWindow(`product-details-${targetProduct.id}`)
-            } catch (error: any) {
-              alert('Xəta: ' + (error.response?.data?.message || error.message))
-            }
+        'products2-locate',
+        'Məhsullar',
+        '📦',
+        <Products2
+          initialSelectedProductId={productId}
+          initialCategoryId={product.category_id || null}
+          onSelect={() => {
+            // Close window when user clicks on product in locate mode
+            useWindowStore.getState().closePageWindow('products2-locate')
           }}
         />,
         {
@@ -467,9 +438,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           height: 700
         }
       )
-    } else {
-      console.warn(`Product ${productId} not found via local search or API fetch`)
-      alert('Məhsul məlumatları tapılmadı.')
+    } catch (err) {
+      console.error('[InvoiceModal] Failed to locate product:', err)
+      alert('Məhsul məlumatları yüklənərkən xəta baş verdi.')
     }
   }
 
@@ -578,7 +549,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         discount_auto: 0, // Will update later
         vat_rate: vatRate,
         total_price: (currentQty * price) * (1 - totalDisc / 100),
-        searchTerm: ''
+        searchTerm: product.name
       }
       return { ...prev, invoiceItems: newItems }
     })
@@ -703,7 +674,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       'products-page-select',
       'Məhsul Seçimi',
       '📦',
-      <Mehsullar
+      <Products2
         initialSelectedProductId={currentProductId}
         onSelect={(product: Product) => {
           console.log('[DEBUG] Product selected from Anbar. ID:', product.id, 'Name:', product.name)
