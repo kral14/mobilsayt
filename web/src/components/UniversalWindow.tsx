@@ -212,256 +212,264 @@ export default function UniversalWindow({
                 <div className="window-controls" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
 
                     {/* Settings Button */}
-                    <div style={{ position: 'relative' }}>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                togglePinWindow(id)
-                            }}
-                            title={isPinned ? "Bərkitməni qaldır" : "Bərkit"}
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: isPinned ? '#f1c40f' : '#555',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                padding: '2px 4px',
-                                borderRadius: '3px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transform: isPinned ? 'rotate(45deg)' : 'none'
-                            }}
-                        >
-                            📌
-                        </button>
-                    </div>
-
-                    <div style={{ position: 'relative' }}>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                setShowSettings(!showSettings)
-                            }}
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: isActive ? 'white' : '#555',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                padding: '2px 4px',
-                                borderRadius: '3px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}
-                            title="Ayarlar"
-                        >
-                            ⚙️
-                        </button>
-
-                        {/* Settings Popover */}
-                        {showSettings && (
-                            <div
-                                ref={settingsRef}
-                                style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    right: 0,
-                                    marginTop: '5px',
-                                    background: 'white',
-                                    color: 'black',
-                                    border: '1px solid #ccc',
-                                    borderRadius: '8px',
-                                    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                                    width: '280px',
-                                    zIndex: 1000,
-                                    overflow: 'hidden'
+                    {modalType !== 'confirm' && (
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    togglePinWindow(id)
                                 }}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {/* Popover Header / Tabs */}
-                                <div style={{
+                                title={isPinned ? "Bərkitməni qaldır" : "Bərkit"}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: isPinned ? '#f1c40f' : '#555',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    padding: '2px 4px',
+                                    borderRadius: '3px',
                                     display: 'flex',
-                                    borderBottom: '1px solid #eee',
-                                    background: '#f8f9fa'
-                                }}>
-                                    <div
-                                        style={{
-                                            padding: '8px 12px',
-                                            fontSize: '13px',
-                                            fontWeight: 'bold',
-                                            cursor: 'pointer',
-                                            borderBottom: activeTab === 'view' ? '2px solid #007bff' : 'none',
-                                            color: activeTab === 'view' ? '#007bff' : '#666'
-                                        }}
-                                        onClick={() => setActiveTab('view')}
-                                    >
-                                        Görünüş
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transform: isPinned ? 'rotate(45deg)' : 'none'
+                                }}
+                            >
+                                📌
+                            </button>
+                        </div>
+                    )}
+
+                    {modalType !== 'confirm' && (
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    setShowSettings(!showSettings)
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: isActive ? 'white' : '#555',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    padding: '2px 4px',
+                                    borderRadius: '3px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                title="Ayarlar"
+                            >
+                                ⚙️
+                            </button>
+
+                            {/* Settings Popover */}
+                            {showSettings && (
+                                <div
+                                    ref={settingsRef}
+                                    style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        right: 0,
+                                        marginTop: '5px',
+                                        background: 'white',
+                                        color: 'black',
+                                        border: '1px solid #ccc',
+                                        borderRadius: '8px',
+                                        boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+                                        width: '280px',
+                                        zIndex: 1000,
+                                        overflow: 'hidden'
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {/* Popover Header / Tabs */}
+                                    <div style={{
+                                        display: 'flex',
+                                        borderBottom: '1px solid #eee',
+                                        background: '#f8f9fa'
+                                    }}>
+                                        <div
+                                            style={{
+                                                padding: '8px 12px',
+                                                fontSize: '13px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                borderBottom: activeTab === 'view' ? '2px solid #007bff' : 'none',
+                                                color: activeTab === 'view' ? '#007bff' : '#666'
+                                            }}
+                                            onClick={() => setActiveTab('view')}
+                                        >
+                                            Görünüş
+                                        </div>
                                     </div>
-                                </div>
 
-                                {/* Popover Content */}
-                                <div style={{ padding: '16px' }}>
-                                    {activeTab === 'view' && (
-                                        <div>
-                                            <div style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '500' }}>
-                                                Yaxınlaşdırma (Zoom): {zoom}%
-                                            </div>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-                                                {zoomPresets.map(preset => (
-                                                    <button
-                                                        key={preset}
-                                                        onClick={() => setZoom(preset)}
-                                                        style={{
-                                                            fontSize: '13px',
-                                                            padding: '6px 12px',
-                                                            border: '1px solid #ddd',
-                                                            borderRadius: '4px',
-                                                            background: zoom === preset ? '#e7f1ff' : 'white',
-                                                            color: zoom === preset ? '#007bff' : '#333',
-                                                            cursor: 'pointer',
-                                                            fontWeight: zoom === preset ? '600' : '400'
-                                                        }}
-                                                    >
-                                                        {preset}%
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                <input
-                                                    type="number"
-                                                    value={zoom}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value)
-                                                        if (!isNaN(val) && val > 10 && val <= 300) {
-                                                            setZoom(val)
-                                                        }
-                                                    }}
-                                                    style={{
-                                                        width: '70px',
-                                                        padding: '6px 8px',
-                                                        fontSize: '14px',
-                                                        border: '1px solid #ddd',
-                                                        borderRadius: '4px'
-                                                    }}
-                                                />
-                                                <span style={{ fontSize: '14px', fontWeight: '500' }}>%</span>
-                                            </div>
-
-                                            {pageId && (
-                                                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
-                                                    <label style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '10px',
-                                                        fontSize: '14px',
-                                                        marginBottom: '12px',
-                                                        cursor: 'pointer',
-                                                        userSelect: 'none'
-                                                    }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={!allowMultipleInstances}
-                                                            onChange={(e) => setAllowMultipleInstances(!e.target.checked)}
+                                    {/* Popover Content */}
+                                    <div style={{ padding: '16px' }}>
+                                        {activeTab === 'view' && (
+                                            <div>
+                                                <div style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '500' }}>
+                                                    Yaxınlaşdırma (Zoom): {zoom}%
+                                                </div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                                                    {zoomPresets.map(preset => (
+                                                        <button
+                                                            key={preset}
+                                                            onClick={() => setZoom(preset)}
                                                             style={{
-                                                                width: '18px',
-                                                                height: '18px',
-                                                                cursor: 'pointer'
+                                                                fontSize: '13px',
+                                                                padding: '6px 12px',
+                                                                border: '1px solid #ddd',
+                                                                borderRadius: '4px',
+                                                                background: zoom === preset ? '#e7f1ff' : 'white',
+                                                                color: zoom === preset ? '#007bff' : '#333',
+                                                                cursor: 'pointer',
+                                                                fontWeight: zoom === preset ? '600' : '400'
                                                             }}
-                                                        />
-                                                        <span>Yalnız 1 dəfə açıla bilər</span>
-                                                    </label>
-
-                                                    <button
-                                                        onClick={handleSaveDefaults}
+                                                        >
+                                                            {preset}%
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <input
+                                                        type="number"
+                                                        value={zoom}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value)
+                                                            if (!isNaN(val) && val > 10 && val <= 300) {
+                                                                setZoom(val)
+                                                            }
+                                                        }}
                                                         style={{
-                                                            width: '100%',
-                                                            padding: '10px',
-                                                            background: '#28a745',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            borderRadius: '6px',
-                                                            cursor: 'pointer',
+                                                            width: '70px',
+                                                            padding: '6px 8px',
                                                             fontSize: '14px',
-                                                            fontWeight: '500',
+                                                            border: '1px solid #ddd',
+                                                            borderRadius: '4px'
+                                                        }}
+                                                    />
+                                                    <span style={{ fontSize: '14px', fontWeight: '500' }}>%</span>
+                                                </div>
+
+                                                {pageId && (
+                                                    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
+                                                        <label style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            gap: '8px',
-                                                            transition: 'background 0.2s'
-                                                        }}
-                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#218838'}
-                                                        onMouseLeave={(e) => e.currentTarget.style.background = '#28a745'}
-                                                    >
-                                                        💾 Varsayılan kimi saxla
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                                            gap: '10px',
+                                                            fontSize: '14px',
+                                                            marginBottom: '12px',
+                                                            cursor: 'pointer',
+                                                            userSelect: 'none'
+                                                        }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={!allowMultipleInstances}
+                                                                onChange={(e) => setAllowMultipleInstances(!e.target.checked)}
+                                                                style={{
+                                                                    width: '18px',
+                                                                    height: '18px',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            />
+                                                            <span>Yalnız 1 dəfə açıla bilər</span>
+                                                        </label>
 
-                    <button
-                        className="btn-minimize"
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            minimizeWindow(id)
-                        }}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: isActive ? 'white' : 'black',
-                            cursor: 'pointer',
-                            fontSize: '16px',
-                            fontWeight: 'bold',
-                            padding: '0 8px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                        title="Minimize"
-                    >
-                        −
-                    </button>
-                    <button
-                        className="btn-maximize"
-                        onClick={(e) => {
-                            console.log('[UniversalWindow] Maximize düyməsinə basıldı', { id, isMaximized })
-                            e.stopPropagation()
-                            maximizeWindow(id)
-                        }}
-                        onMouseEnter={() => {
-                            snapMenuTimeoutRef.current = window.setTimeout(() => {
-                                setShowSnapMenu(true)
-                            }, 1000)
-                        }}
-                        onMouseLeave={() => {
-                            if (snapMenuTimeoutRef.current) {
-                                clearTimeout(snapMenuTimeoutRef.current)
-                                snapMenuTimeoutRef.current = null
-                            }
-                        }}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: isActive ? 'white' : 'black',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            padding: '0 8px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                        title={isMaximized ? 'Restore' : 'Maximize'}
-                    >
-                        □
-                    </button>
+                                                        <button
+                                                            onClick={handleSaveDefaults}
+                                                            style={{
+                                                                width: '100%',
+                                                                padding: '10px',
+                                                                background: '#28a745',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '14px',
+                                                                fontWeight: '500',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                gap: '8px',
+                                                                transition: 'background 0.2s'
+                                                            }}
+                                                            onMouseEnter={(e) => e.currentTarget.style.background = '#218838'}
+                                                            onMouseLeave={(e) => e.currentTarget.style.background = '#28a745'}
+                                                        >
+                                                            💾 Varsayılan kimi saxla
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {modalType !== 'confirm' && (
+                        <>
+                            <button
+                                className="btn-minimize"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    minimizeWindow(id)
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: isActive ? 'white' : 'black',
+                                    cursor: 'pointer',
+                                    fontSize: '16px',
+                                    fontWeight: 'bold',
+                                    padding: '0 8px',
+                                    height: '24px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                title="Minimize"
+                            >
+                                −
+                            </button>
+                            <button
+                                className="btn-maximize"
+                                onClick={(e) => {
+                                    console.log('[UniversalWindow] Maximize düyməsinə basıldı', { id, isMaximized })
+                                    e.stopPropagation()
+                                    maximizeWindow(id)
+                                }}
+                                onMouseEnter={() => {
+                                    snapMenuTimeoutRef.current = window.setTimeout(() => {
+                                        setShowSnapMenu(true)
+                                    }, 1000)
+                                }}
+                                onMouseLeave={() => {
+                                    if (snapMenuTimeoutRef.current) {
+                                        clearTimeout(snapMenuTimeoutRef.current)
+                                        snapMenuTimeoutRef.current = null
+                                    }
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: isActive ? 'white' : 'black',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    padding: '0 8px',
+                                    height: '24px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                title={isMaximized ? 'Restore' : 'Maximize'}
+                            >
+                                □
+                            </button>
+                        </>
+                    )}
                     {/* Snap Layout Menu */}
                     {showSnapMenu && (
                         <div
@@ -471,7 +479,8 @@ export default function UniversalWindow({
                             <SnapLayoutMenu windowId={id} onClose={() => setShowSnapMenu(false)} />
                         </div>
                     )}
-                    {modalType !== 'confirm' && (
+                    {/* Close button always visible, even for confirm, but handle it */}
+                    {true && (
                         <button
                             className="btn-close"
                             onClick={(e) => {
@@ -518,9 +527,9 @@ export default function UniversalWindow({
                 </WindowContext.Provider>
             </div>
 
-            {/* Resize Handles */}
+            {/* Resize Handles - Hide for confirm modals */}
             {
-                !isMaximized && (
+                !isMaximized && modalType !== 'confirm' && (
                     <>
                         <div className="resize-handle resize-handle-n" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 'n'); }} />
                         <div className="resize-handle resize-handle-s" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(id, e, 's'); }} />

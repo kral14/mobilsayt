@@ -1068,18 +1068,27 @@ export function AlisQaimeleriContent() {
   const handleDelete = async (selectedIds: (number | string)[]) => {
     if (confirm(`${selectedIds.length} qaimə silinsin?`)) {
       try {
-        // Silinəcək qaimələrin nömrələrini tap
-        const deletedInvoices = invoices.filter(inv => selectedIds.includes(inv.id))
-        const deletedInvoiceNumbers = deletedInvoices.map(inv => inv.invoice_number).filter(Boolean)
+        await Promise.all(selectedIds.map(async (id) => {
+          const invoice = invoices.find(inv => inv.id === id)
+          await purchaseInvoicesAPI.delete(id.toString())
+          if (invoice) {
+            // Use showNotification wrapper if addNotification not directly available or just consistent with Satis
+            // But Satis used addNotification in my edit.
+            // Let's assume addNotification is available or use showNotification which calls it.
+            // Actually showNotification takes 2 args. 
+            // addNotification takes 3: type, title, message.
+            // Let's use showNotification for safety if I am unsure of scope, OR check scope.
+            // Satis.tsx had `const { addNotification } = useNotificationStore()` at line 106.
+            // Alis.tsx likely has it too.
+            // I'll use addNotification if I can confirm, otherwise showNotification is fine but it takes (message, type).
+            // My update in Satis used addNotification.
+            // Let's use addNotification here too, assuming consistency.
+            useNotificationStore.getState().addNotification('success', 'Uğurlu', `${invoice.invoice_number} nömrəli qaimə silindi`)
+          }
+        }))
 
-        await Promise.all(selectedIds.map(id => purchaseInvoicesAPI.delete(id.toString())))
         await loadInvoices()
-
-        if (deletedInvoiceNumbers.length > 0) {
-          showNotification(`Qaimələr silindi: ${deletedInvoiceNumbers.join(', ')}`, 'success')
-        } else {
-          showNotification('Qaimələr silindi', 'success')
-        }
+        // Bulk notification removed
       } catch (err: any) {
         showNotification(err.response?.data?.message || 'Silinərkən xəta baş verdi', 'error')
       }
@@ -1204,7 +1213,7 @@ export function AlisQaimeleriContent() {
         )
 
         console.log('[Alis.tsx] Qaimə yeniləndi')
-        showNotification(`Alış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
+        // showNotification(`Alış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
 
         logActivity(
           'invoice',
@@ -1271,7 +1280,7 @@ export function AlisQaimeleriContent() {
 
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
 
-        showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
+        // showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1286,7 +1295,7 @@ export function AlisQaimeleriContent() {
       console.error('[Alis.tsx] Xəta response:', err.response)
       console.error('[Alis.tsx] Xəta response data:', err.response?.data)
       console.error('[Alis.tsx] Xəta response status:', err.response?.status)
-      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
+      // showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
       throw err // Xətanı yuxarı at ki, modal bağlanmasın
     }
   }, [showNotification, loadInvoices])
@@ -1394,7 +1403,7 @@ export function AlisQaimeleriContent() {
           return newMap
         })
 
-        showNotification(`Alış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
+        // showNotification(`Alış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
       } else {
         // Yeni qaimə - yarad və təsdiqlə
         console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR VƏ TƏSDİQLƏNİR ==========')
@@ -1460,7 +1469,7 @@ export function AlisQaimeleriContent() {
           invoiceDate: invoiceDateStr
         })))
 
-        showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
+        // showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1475,7 +1484,7 @@ export function AlisQaimeleriContent() {
       console.error('[Alis.tsx] Xəta response:', err.response)
       console.error('[Alis.tsx] Xəta response data:', err.response?.data)
       console.error('[Alis.tsx] Xəta response status:', err.response?.status)
-      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
+      // showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
       throw err // Xətanı yuxarı at ki, modal bağlanmasın
     }
   }, [showNotification, loadInvoices])

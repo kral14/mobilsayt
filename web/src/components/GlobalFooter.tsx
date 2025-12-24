@@ -50,6 +50,10 @@ export default function GlobalFooter({ taskbarHeight = 25 }: GlobalFooterProps) 
         }
     }, [showNotificationPanel, isPinned])
 
+    const activeNotification = notifications.find(n => !n.read)
+    const messageColor = activeNotification?.type === 'success' ? '#28a745' :
+        activeNotification?.type === 'error' ? '#dc3545' : '#2d3436'
+
     if (!isVisible) return null
 
     return (
@@ -98,7 +102,7 @@ export default function GlobalFooter({ taskbarHeight = 25 }: GlobalFooterProps) 
 
                     {/* Integrated Animated Notification */}
                     <div ref={bellRef}>
-                        {notifications.some(n => !n.read) ? (
+                        {activeNotification ? (
                             <div
                                 onClick={() => setShowNotificationPanel(!showNotificationPanel)}
                                 style={{
@@ -106,7 +110,7 @@ export default function GlobalFooter({ taskbarHeight = 25 }: GlobalFooterProps) 
                                     alignItems: 'center',
                                     cursor: 'pointer',
                                     gap: '8px',
-                                    color: '#2d3436' // Qara mətn
+                                    color: messageColor // Apply dynamic color here
                                 }}
                             >
                                 <div style={{
@@ -114,7 +118,7 @@ export default function GlobalFooter({ taskbarHeight = 25 }: GlobalFooterProps) 
                                     display: 'flex',
                                     alignItems: 'center'
                                 }}>
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e67e22" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeNotification.type === 'success' ? '#28a745' : '#e67e22'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                                         <polyline points="22,6 12,13 2,6"></polyline>
                                     </svg>
@@ -122,14 +126,14 @@ export default function GlobalFooter({ taskbarHeight = 25 }: GlobalFooterProps) 
                                 <div style={{
                                     overflow: 'hidden',
                                     whiteSpace: 'nowrap',
-                                    borderRight: '2px solid #e67e22',
+                                    borderRight: `2px solid ${activeNotification.type === 'success' ? '#28a745' : '#e67e22'}`,
                                     width: '0',
                                     animation: 'typing 2.5s steps(30, end) forwards, blink 0.5s step-end infinite',
                                     fontWeight: '600',
                                     fontSize: '0.75rem',
-                                    color: '#2d3436' // Qara mətn
+                                    color: messageColor // And here
                                 }}>
-                                    {notifications.find(n => !n.read)?.message || 'Sizə yeni mesajınız var!'}
+                                    {activeNotification.message}
                                 </div>
                             </div>
                         ) : (

@@ -108,8 +108,8 @@ export const authAPI = {
 
 // Products API
 export const productsAPI = {
-  getAll: async (): Promise<Product[]> => {
-    const response = await api.get<Product[]>('/products')
+  getAll: async (params?: any): Promise<Product[]> => {
+    const response = await api.get<Product[]>('/products', { params })
     return response.data
   },
 

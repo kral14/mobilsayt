@@ -16,126 +16,140 @@ import Admin from './pages/Admin'
 import DiscountDocuments from './pages/Discounts/DiscountDocuments'
 import ProtectedRoute from './components/ProtectedRoute'
 
+import { Toaster } from 'react-hot-toast'
+
 function App() {
   return (
-    <BrowserRouter
-      basename="/web"
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
+    <>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            zIndex: 99999
+          }
+        }}
+        containerStyle={{
+          zIndex: 99999
+        }}
+      />
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
 
-        <Route
-          path="/products"
-          element={
-            <ProtectedRoute>
-              <Products2 />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/hesablar"
-          element={
-            <ProtectedRoute>
-              <Hesablar />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mehsullar"
-          element={
-            <ProtectedRoute>
-              <Products2 />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/qaimeler/alis"
-          element={
-            <ProtectedRoute>
-              <AlisQaimeleri />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/qaimeler/satis"
-          element={
-            <ProtectedRoute>
-              <SatisQaimeleri />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/kassa/medaxil"
-          element={
-            <ProtectedRoute>
-              <KassaMedaxil />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/kassa/mexaric"
-          element={
-            <ProtectedRoute>
-              <KassaMexaric />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/musteriler/alici"
-          element={
-            <ProtectedRoute>
-              <Alicilar />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/musteriler/satici"
-          element={
-            <ProtectedRoute>
-              <Saticilar />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <Admin />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/documents/supplier-discounts"
-          element={
-            <ProtectedRoute>
-              <DiscountDocuments type="SUPPLIER" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/documents/product-discounts"
-          element={
-            <ProtectedRoute>
-              <DiscountDocuments type="PRODUCT" />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/window-test" element={<WindowTest />} />
-      </Routes>
-    </BrowserRouter>
+          <Route
+            path="/products"
+            element={
+              <ProtectedRoute>
+                <Products2 />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/hesablar"
+            element={
+              <ProtectedRoute>
+                <Hesablar />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mehsullar"
+            element={
+              <ProtectedRoute>
+                <Products2 />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/qaimeler/alis"
+            element={
+              <ProtectedRoute>
+                <AlisQaimeleri />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/qaimeler/satis"
+            element={
+              <ProtectedRoute>
+                <SatisQaimeleri />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kassa/medaxil"
+            element={
+              <ProtectedRoute>
+                <KassaMedaxil />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kassa/mexaric"
+            element={
+              <ProtectedRoute>
+                <KassaMexaric />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/musteriler/alici"
+            element={
+              <ProtectedRoute>
+                <Alicilar />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/musteriler/satici"
+            element={
+              <ProtectedRoute>
+                <Saticilar />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <Admin />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/documents/supplier-discounts"
+            element={
+              <ProtectedRoute>
+                <DiscountDocuments type="SUPPLIER" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/documents/product-discounts"
+            element={
+              <ProtectedRoute>
+                <DiscountDocuments type="PRODUCT" />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/window-test" element={<WindowTest />} />
+        </Routes>
+      </BrowserRouter>
+    </>
   )
 }
 

@@ -1017,18 +1017,16 @@ export function SatisQaimeleriContent() {
   const handleDelete = async (selectedIds: (number | string)[]) => {
     if (confirm(`${selectedIds.length} qaimə silinsin?`)) {
       try {
-        // Silinəcək qaimələrin nömrələrini tap
-        const deletedInvoices = invoices.filter(inv => selectedIds.includes(inv.id))
-        const deletedInvoiceNumbers = deletedInvoices.map(inv => inv.invoice_number).filter(Boolean)
+        await Promise.all(selectedIds.map(async (id) => {
+          const invoice = invoices.find(inv => inv.id === id)
+          await ordersAPI.delete(id.toString())
+          if (invoice) {
+            addNotification('success', 'Uğurlu', `${invoice.invoice_number} nömrəli qaimə silindi`)
+          }
+        }))
 
-        await Promise.all(selectedIds.map(id => ordersAPI.delete(id.toString())))
         await loadInvoices()
-
-        if (deletedInvoiceNumbers.length > 0) {
-          showNotification(`Qaimələr silindi: ${deletedInvoiceNumbers.join(', ')}`, 'success')
-        } else {
-          showNotification('Qaimələr silindi', 'success')
-        }
+        // Bulk notification removed
       } catch (err: any) {
         showNotification(err.response?.data?.message || 'Silinərkən xəta baş verdi', 'error')
       }
@@ -1153,7 +1151,7 @@ export function SatisQaimeleriContent() {
         )
 
         console.log('[Alis.tsx] Qaimə yeniləndi')
-        showNotification(`Satış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
+        // showNotification(`Satış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
 
         logActivity(
           'invoice',
@@ -1220,7 +1218,7 @@ export function SatisQaimeleriContent() {
 
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
 
-        showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
+        // showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1235,7 +1233,7 @@ export function SatisQaimeleriContent() {
       console.error('[Alis.tsx] Xəta response:', err.response)
       console.error('[Alis.tsx] Xəta response data:', err.response?.data)
       console.error('[Alis.tsx] Xəta response status:', err.response?.status)
-      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
+      // showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
       throw err // Xətanı yuxarı at ki, modal bağlanmasın
     }
   }, [showNotification, loadInvoices])
@@ -1343,7 +1341,7 @@ export function SatisQaimeleriContent() {
           return newMap
         })
 
-        showNotification(`Satış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
+        // showNotification(`Satış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
       } else {
         // Yeni qaimə - yarad və təsdiqlə
         console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR VƏ TƏSDİQLƏNİR ==========')
@@ -1409,7 +1407,7 @@ export function SatisQaimeleriContent() {
           invoiceDate: invoiceDateStr
         })))
 
-        showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
+        // showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1424,7 +1422,7 @@ export function SatisQaimeleriContent() {
       console.error('[Alis.tsx] Xəta response:', err.response)
       console.error('[Alis.tsx] Xəta response data:', err.response?.data)
       console.error('[Alis.tsx] Xəta response status:', err.response?.status)
-      showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
+      // showNotification(err.response?.data?.message || 'Qaimə yadda saxlanılarkən xəta baş verdi', 'error')
       throw err // Xətanı yuxarı at ki, modal bağlanmasın
     }
   }, [showNotification, loadInvoices])

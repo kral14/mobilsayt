@@ -48,6 +48,8 @@ interface UniversalToolBarProps {
     onFilter?: (e?: any) => void
     onSearch?: (term: string) => void
     onPeriodChange?: (period: DatePeriod) => void
+    onBarcode?: (e?: any) => void
+    initialTools?: string[]
 }
 
 const FilterImg = <img src={filterIcon} alt="Filtr" style={{ width: 22, height: 22, objectFit: 'contain' }} />
@@ -85,6 +87,7 @@ const ALL_TOOLS = [
     { key: 'saveFilter', label: 'Filtri Yadda Saxla', icon: SaveFilterImg },
     { key: 'selectFilter', label: 'Filtr Seç', icon: SelectFilterImg },
     { key: 'search', label: 'Axtarış', icon: '🔎' },
+    { key: 'barcode', label: 'Barkod', icon: '📱' },
     { key: 'help', label: 'Kömək', icon: '❓' },
 ]
 
@@ -93,11 +96,14 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
     onAdd, onDelete, onPrint, onEdit, onCopy, onRefresh,
     onFilter, onSettings, onSearch, onSaveFilter, onSelectFilter,
     onSelect, onFolders, onLocate, onUp, onDown, onActivate, onDeactivate,
-    onPeriodChange, onMove,
+    onPeriodChange, onMove, onBarcode,
+    initialTools,
     children
 }) => {
-    // Default visible tools: all
-    const [visibleTools, setVisibleTools] = useState<string[]>(ALL_TOOLS.map(t => t.key))
+    // Default visible tools: use provided initialTools or all
+    const [visibleTools, setVisibleTools] = useState<string[]>(
+        initialTools || ALL_TOOLS.map(t => t.key)
+    )
     const [showPeriodPicker, setShowPeriodPicker] = useState(false)
     const [showHelpModal, setShowHelpModal] = useState(false)
 
@@ -178,6 +184,26 @@ const UniversalToolBar: React.FC<UniversalToolBarProps> = ({
             case 'selectFilter': return <SelectFilterButton key={key} onClick={onSelectFilter} icon={SelectFilterImg} />
             case 'search': return <SearchInput key={key} onSearch={onSearch} />
             case 'help': return <HelpButton key={key} onClick={() => setShowHelpModal(true)} />
+            case 'barcode': return (
+                <button
+                    key={key}
+                    onClick={onBarcode}
+                    style={{
+                        background: 'none',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1.2rem'
+                    }}
+                    title="Barkod Oxut"
+                >
+                    📱
+                </button>
+            )
 
             default: return null
         }

@@ -92,7 +92,7 @@ interface WindowStore {
 
   // Pəncərə əməliyyatları
   createWindow: (type: string, content: React.ReactNode, icon?: string) => void
-  closeWindow: (id: string) => void
+  closeWindow: (id: string, force?: boolean) => void
   minimizeWindow: (id: string) => void
   restoreWindow: (id: string) => void
   maximizeWindow: (id: string) => void
@@ -168,17 +168,17 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   },
 
   // Pəncərəni bağla
-  closeWindow: (id: string) => {
+  closeWindow: (id: string, force?: boolean) => {
     const state = get()
     const window = state.windows.get(id)
 
-    // Əgər bərkidilibsə bağlama
-    if (window?.isPinned) {
+    // Əgər bərkidilibsə bağlama (force olanda bağla)
+    if (window?.isPinned && !force) {
       return
     }
 
     // onBeforeClose yoxlaması
-    if (window?.onBeforeClose) {
+    if (!force && window?.onBeforeClose) {
       console.log(`[DEBUG] closeWindow: check onBeforeClose for ${id}`)
       const shouldClose = window.onBeforeClose()
       console.log(`[DEBUG] closeWindow: onBeforeClose result for ${id}: ${shouldClose}`)
@@ -186,7 +186,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
         console.log(`[DEBUG] closeWindow: aborting close for ${id}`)
         return
       }
-    } else {
+    } else if (!force) {
       console.log(`[DEBUG] closeWindow: NO onBeforeClose handler for ${id}`)
     }
 

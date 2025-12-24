@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import toast from 'react-hot-toast'
+import { useNotificationStore } from '../store/notificationStore'
 import UniversalToolBar from '../components/UniversalToolBar'
 import CategoryTree from '../components/CategoryTree'
 import UniversalTable, { ColumnConfig, UniversalTableRef } from '../components/UniversalTable'
@@ -10,6 +12,7 @@ import AdvancedFilterModal, { FilterRule } from '../components/AdvancedFilterMod
 
 import ProductBottomPanel from '../components/ProductBottomPanel'
 import MoveToCategoryModal from '../components/MoveToCategoryModal'
+import ConfirmationModal from '../components/ConfirmationModal'
 
 type GridItem = ((Product & { type: 'product' }) | (Category & { type: 'category' })) & { isParent?: boolean }
 
@@ -176,6 +179,8 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(initialCategoryId || null)
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false)
   const tableRef = useRef<UniversalTableRef>(null)
+  const { addNotification } = useNotificationStore()
+
 
   // Resizing states
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -493,23 +498,68 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   const handleDelete = async () => {
     if (selectedRows.length === 0) return
     if (!functionSettings.deleteEnabled) {
-      alert('Delete funksiyası deaktivdir. Ayarlardan aktivləşdirin.')
+      toast.error('Delete funksiyası deaktivdir. Ayarlardan aktivləşdirin.')
       return
     }
-    if (!confirm(`${selectedRows.length} element silinsin?`)) return
 
-    try {
-      const prodIds = selectedRows.filter(id => id.startsWith('prod_')).map(id => id.replace('prod_', ''))
-      const catIds = selectedRows.filter(id => id.startsWith('cat_')).map(id => id.replace('cat_', ''))
 
-      if (prodIds.length > 0) await Promise.all(prodIds.map(id => productsAPI.delete(id)))
-      if (catIds.length > 0) await Promise.all(catIds.map(id => categoriesAPI.delete(id)))
+    const confirmDelete = async () => {
+      try {
+        const prodIds = selectedRows.filter(id => id.startsWith('prod_')).map(id => Number(id.replace('prod_', '')))
+        const catIds = selectedRows.filter(id => id.startsWith('cat_')).map(id => Number(id.replace('cat_', '')))
 
-      await loadData()
-      setSelectedRows([])
-    } catch (err: any) {
-      alert('Silmə zamanı xəta baş verdi')
+        // Delete Products
+        if (prodIds.length > 0) {
+          await Promise.all(prodIds.map(async (id) => {
+            const product = products.find(p => p.id === id)
+            await productsAPI.delete(id.toString())
+            if (product) {
+              const identifier = product.code ? `"${product.code}" kodlu` : `"${product.name}"`
+              addNotification('success', 'Uğurlu', `${identifier} məhsul silindi`)
+            }
+          }))
+        }
+
+        // Delete Categories
+        if (catIds.length > 0) {
+          await Promise.all(catIds.map(async (id) => {
+            const category = categories.find(c => c.id === id)
+            await categoriesAPI.delete(id.toString())
+            if (category) {
+              addNotification('success', 'Uğurlu', `"${category.name}" kateqoriyası silindi`)
+            }
+          }))
+        }
+
+        await loadData()
+        setSelectedRows([])
+      } catch (err: any) {
+        addNotification('error', 'Xəta', 'Silmə zamanı xəta baş verdi')
+      }
     }
+
+    useWindowStore.getState().addWindow({
+      id: 'confirm-delete',
+      title: 'Təsdiq',
+      icon: '⚠️',
+      type: 'confirm',
+      modalType: 'confirm',
+      content: <ConfirmationModal
+        message={`${selectedRows.length} element silinsin?`}
+        onConfirm={async () => {
+          await confirmDelete()
+          useWindowStore.getState().closeWindow('confirm-delete')
+        }}
+        onCancel={() => useWindowStore.getState().closeWindow('confirm-delete')}
+        confirmText="Sil"
+        cancelText="İmtina"
+      />,
+      size: { width: 400, height: 200 },
+      position: { x: (window.innerWidth - 400) / 2, y: (window.innerHeight - 200) / 2 },
+      isMaximized: false,
+      isMinimized: false,
+      zIndex: 9999
+    })
   }
 
   // Delete düyməsi ilə silmə
@@ -565,9 +615,28 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
           '✏️',
           <ProductForm
             product={product}
+            title={`Redaktə: ${product.name}`}
+            mode="edit"
             categories={categories}
             existingBarcodes={existingBarcodes}
-            onSubmit={async (formData) => {
+            onSubmit={async (formData, shouldClose) => {
+              // Validation: Check for duplicates
+              // Exclude current product from check
+              const isDuplicateCode = formData.code && products.some(p => p.code === formData.code && p.id !== product.id)
+              if (isDuplicateCode) {
+                throw new Error('Bu kodla məhsul artıq mövcuddur!')
+              }
+
+              const isDuplicateBarcode = formData.barcode && products.some(p => p.barcode === formData.barcode && p.id !== product.id)
+              if (isDuplicateBarcode) {
+                throw new Error('Bu barkodla məhsul artıq mövcuddur!')
+              }
+
+              const isDuplicateArticle = formData.article && products.some(p => p.article === formData.article && p.id !== product.id)
+              if (isDuplicateArticle) {
+                throw new Error('Bu artikulla məhsul artıq mövcuddur!')
+              }
+
               await productsAPI.update(product.id.toString(), {
                 name: formData.name,
                 code: formData.code || undefined,
@@ -602,8 +671,11 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
               })
 
               await loadData()
-              alert('Məhsul uğurla yeniləndi!')
-              useWindowStore.getState().closeWindow(`edit-product-${product.id}`)
+              await loadData()
+              // toast.success('Məhsul uğurla yeniləndi!')
+              if (shouldClose) {
+                useWindowStore.getState().closePageWindow(`edit-product-${product.id}`)
+              }
             }}
           />,
           { width: 800, height: 700 }
@@ -621,9 +693,27 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
       '➕',
       <ProductForm
         product={null}
+        title="Yeni Məhsul"
+        mode="create"
         categories={categories}
         existingBarcodes={existingBarcodes}
-        onSubmit={async (formData) => {
+        onSubmit={async (formData, shouldClose) => {
+          // Validation: Check for duplicates
+          const isDuplicateCode = formData.code && products.some(p => p.code === formData.code)
+          if (isDuplicateCode) {
+            throw new Error('Bu kodla məhsul artıq mövcuddur!')
+          }
+
+          const isDuplicateBarcode = formData.barcode && products.some(p => p.barcode === formData.barcode)
+          if (isDuplicateBarcode) {
+            throw new Error('Bu barkodla məhsul artıq mövcuddur!')
+          }
+
+          const isDuplicateArticle = formData.article && products.some(p => p.article === formData.article)
+          if (isDuplicateArticle) {
+            throw new Error('Bu artikulla məhsul artıq mövcuddur!')
+          }
+
           const generateBarcode = () => {
             const timestamp = Date.now().toString()
             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
@@ -643,42 +733,51 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
             finalCode = finalBarcode.slice(-6)
           }
 
-          await productsAPI.create({
-            name: formData.name,
-            code: finalCode || undefined,
-            barcode: finalBarcode || undefined,
-            article: formData.article || undefined,
-            description: formData.description || undefined,
-            unit: formData.unit,
-            purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : 0,
-            sale_price: formData.sale_price ? parseFloat(formData.sale_price) : 0,
-            category_id: formData.category_id ? parseInt(formData.category_id) : null,
-            type: formData.type || undefined,
-            brand: formData.brand || undefined,
-            warranty_period: (() => {
-              if (formData.production_date && formData.expiry_date) {
-                try {
-                  const productionDate = new Date(formData.production_date + 'T00:00:00')
-                  const expiryDate = new Date(formData.expiry_date + 'T00:00:00')
-                  if (!isNaN(productionDate.getTime()) && !isNaN(expiryDate.getTime())) {
-                    const { years, months, days } = calculateDateDifference(productionDate, expiryDate)
-                    const totalMonths = years * 12 + months + (days >= 15 ? 1 : 0)
-                    return totalMonths > 0 ? totalMonths : undefined
+          try {
+            await productsAPI.create({
+              name: formData.name,
+              code: finalCode || undefined,
+              barcode: finalBarcode || undefined,
+              article: formData.article || undefined,
+              description: formData.description || undefined,
+              unit: formData.unit,
+              purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : 0,
+              sale_price: formData.sale_price ? parseFloat(formData.sale_price) : 0,
+              category_id: formData.category_id ? parseInt(formData.category_id) : null,
+              type: formData.type || undefined,
+              brand: formData.brand || undefined,
+              warranty_period: (() => {
+                if (formData.production_date && formData.expiry_date) {
+                  try {
+                    const productionDate = new Date(formData.production_date + 'T00:00:00')
+                    const expiryDate = new Date(formData.expiry_date + 'T00:00:00')
+                    if (!isNaN(productionDate.getTime()) && !isNaN(expiryDate.getTime())) {
+                      const { years, months, days } = calculateDateDifference(productionDate, expiryDate)
+                      const totalMonths = years * 12 + months + (days >= 15 ? 1 : 0)
+                      return totalMonths > 0 ? totalMonths : undefined
+                    }
+                  } catch (e) {
+                    console.error('Zəmanət müddəti hesablanarkən xəta:', e)
                   }
-                } catch (e) {
-                  console.error('Zəmanət müddəti hesablanarkən xəta:', e)
                 }
-              }
-              return undefined
-            })(),
-            production_date: formData.production_date ? new Date(formData.production_date + 'T00:00:00').toISOString() : undefined,
-            expiry_date: formData.expiry_date ? new Date(formData.expiry_date + 'T00:00:00').toISOString() : undefined,
-            is_active: formData.is_active
-          })
+                return undefined
+              })(),
+              production_date: formData.production_date ? new Date(formData.production_date + 'T00:00:00').toISOString() : undefined,
+              expiry_date: formData.expiry_date ? new Date(formData.expiry_date + 'T00:00:00').toISOString() : undefined,
+              is_active: formData.is_active
+            })
 
-          await loadData()
-          alert('Yeni məhsul uğurla əlavə edildi!')
-          useWindowStore.getState().closeWindow('new-product')
+            await loadData()
+            await loadData()
+            // toast.success('Yeni məhsul uğurla əlavə edildi!')
+            if (shouldClose) {
+              useWindowStore.getState().closePageWindow('new-product')
+            }
+          } catch (e) {
+            console.error(e)
+            console.error(e)
+            throw e
+          }
         }}
       />,
       { width: 800, height: 700 }
@@ -694,7 +793,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   const handleLocate = () => {
     // ... existing locate logic ...
     if (selectedRows.length !== 1) {
-      alert('Zəhmət olmasa bir element seçin.')
+      toast.error('Zəhmət olmasa bir element seçin.')
       return
     }
     const selectedId = selectedRows[0]
@@ -724,7 +823,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
 
   const handleMove = () => {
     if (selectedRows.length === 0) {
-      alert('Zəhmət olmasa köçürmək üçün ən azı bir element seçin.')
+      toast.error('Zəhmət olmasa köçürmək üçün ən azı bir element seçin.')
       return
     }
     setIsMoveModalOpen(true)
@@ -755,13 +854,13 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
         }))
       }
 
-      alert('Uğurla köçürüldü!')
+      toast.success('Uğurla köçürüldü!')
       setIsMoveModalOpen(false)
       setSelectedRows([])
       await loadData() // Refresh
     } catch (e) {
       console.error('Move error:', e)
-      alert('Köçürmə zamanı xəta baş verdi.')
+      toast.error('Köçürmə zamanı xəta baş verdi.')
     }
   }
 
@@ -769,7 +868,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
     const selectedProdIds = selectedRows.filter(id => id.startsWith('prod_'))
 
     if (selectedProdIds.length !== 1) {
-      alert('Kopyalamaq üçün zəhmət olmasa 1 məhsul seçin')
+      toast.error('Kopyalamaq üçün zəhmət olmasa 1 məhsul seçin')
       return
     }
 
@@ -782,7 +881,23 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
       const productCopy = { ...product, code: '', barcode: '', article: '' }
 
       // Custom submit handler for copy (creates new product)
-      const handleCopySubmit = async (formData: any) => {
+      const handleCopySubmit = async (formData: any, shouldClose: boolean) => {
+        // Validation: Check for duplicates
+        const isDuplicateCode = formData.code && products.some(p => p.code === formData.code)
+        if (isDuplicateCode) {
+          throw new Error('Bu kodla məhsul artıq mövcuddur!')
+        }
+
+        const isDuplicateBarcode = formData.barcode && products.some(p => p.barcode === formData.barcode)
+        if (isDuplicateBarcode) {
+          throw new Error('Bu barkodla məhsul artıq mövcuddur!')
+        }
+
+        const isDuplicateArticle = formData.article && products.some(p => p.article === formData.article)
+        if (isDuplicateArticle) {
+          throw new Error('Bu artikulla məhsul artıq mövcuddur!')
+        }
+
         const generateBarcode = () => {
           const timestamp = Date.now().toString()
           const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
@@ -835,8 +950,11 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
         })
 
         await loadData()
-        alert('Məhsul uğurla kopyalandı!')
-        useWindowStore.getState().closeWindow('copy-product')
+        await loadData()
+        // toast.success('Məhsul uğurla kopyalandı!')
+        if (shouldClose) {
+          useWindowStore.getState().closePageWindow('copy-product')
+        }
       }
 
       useWindowStore.getState().openPageWindow(
@@ -846,6 +964,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
         <ProductForm
           product={productCopy}
           title="Məhsul Kopyala"
+          mode="copy"
           categories={categories}
           existingBarcodes={existingBarcodes}
           onSubmit={handleCopySubmit}
@@ -864,7 +983,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
       : filteredProducts
 
     if (productsToPrint.length === 0) {
-      alert('Çap üçün məhsul seçilməyib')
+      toast.error('Çap üçün məhsul seçilməyib')
       return
     }
 
@@ -1073,7 +1192,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   // Məhsulları kateqoriyaya köçür
   const handleMoveToCategory = async (productIds: number[], categoryId: number | null) => {
     if (productIds.length === 0) {
-      alert('Məhsul seçin')
+      toast.error('Məhsul seçin')
       return
     }
 
@@ -1081,9 +1200,9 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
       await categoriesAPI.moveProducts(productIds, categoryId)
       await loadData()
       setSelectedRows([])
-      alert('Məhsullar köçürüldü')
+      toast.success('Məhsullar köçürüldü')
     } catch (err: any) {
-      alert('Köçürmə zamanı xəta baş verdi')
+      toast.error('Köçürmə zamanı xəta baş verdi')
     }
   }
 
@@ -1095,7 +1214,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
         await categoriesAPI.update(category.id.toString(), { name: newName.trim() })
         await loadData()
       } catch (err: any) {
-        alert('Papka adı dəyişdirilərkən xəta baş verdi')
+        toast.error('Papka adı dəyişdirilərkən xəta baş verdi')
       }
     }
   }
@@ -1103,25 +1222,45 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   // Papka sil
   const handleDeleteCategory = async (category: Category) => {
     const productCount = category._count?.products || 0
-    if (productCount > 0) {
-      if (!confirm(`Bu papkada ${productCount} məhsul var. Papkanı silmək istəyirsiniz?`)) {
-        return
-      }
-    } else {
-      if (!confirm(`"${category.name}" papkasını silmək istəyirsiniz?`)) {
-        return
+    const executeDelete = async () => {
+      try {
+        await categoriesAPI.delete(category.id.toString())
+        await loadData()
+        if (selectedCategoryId === category.id) {
+          setSelectedCategoryId(null)
+        }
+      } catch (err: any) {
+        toast.error('Papka silinərkən xəta baş verdi')
       }
     }
 
-    try {
-      await categoriesAPI.delete(category.id.toString())
-      await loadData()
-      if (selectedCategoryId === category.id) {
-        setSelectedCategoryId(null)
-      }
-    } catch (err: any) {
-      alert('Papka silinərkən xəta baş verdi')
+    let message = `"${category.name}" papkasını silmək istəyirsiniz?`
+    if (productCount > 0) {
+      message = `Bu papkada ${productCount} məhsul var. Papkanı silmək istəyirsiniz?`
     }
+
+    useWindowStore.getState().addWindow({
+      id: 'confirm-delete-category',
+      title: 'Papka Sil',
+      icon: '⚠️',
+      type: 'confirm',
+      modalType: 'confirm',
+      content: <ConfirmationModal
+        message={message}
+        onConfirm={async () => {
+          await executeDelete()
+          useWindowStore.getState().closeWindow('confirm-delete-category')
+        }}
+        onCancel={() => useWindowStore.getState().closeWindow('confirm-delete-category')}
+        confirmText="Sil"
+        confirmColor="#dc3545"
+      />,
+      size: { width: 400, height: 200 },
+      position: { x: (window.innerWidth - 400) / 2, y: (window.innerHeight - 200) / 2 },
+      isMaximized: false,
+      isMinimized: false,
+      zIndex: 9999
+    })
   }
 
   // Papkanı başqa papkaya köçür
@@ -1133,7 +1272,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
     )
 
     if (availableCategories.length === 0) {
-      alert('Başqa papka yoxdur')
+      toast.error('Başqa papka yoxdur')
       return
     }
 
@@ -1151,7 +1290,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
     const newParentId = input.trim() === '' ? null : parseInt(input.trim())
 
     if (newParentId !== null && isNaN(newParentId)) {
-      alert('Yanlış ID')
+      toast.error('Yanlış ID')
       return
     }
 
@@ -1163,7 +1302,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
       await categoriesAPI.update(category.id.toString(), { name: category.name, parent_id: newParentId ?? undefined })
       await loadData()
     } catch (err: any) {
-      alert('Papka köçürülərkən xəta baş verdi')
+      toast.error('Papka köçürülərkən xəta baş verdi')
     }
   }
 
@@ -1179,7 +1318,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
         })
         await loadData()
       } catch (err: any) {
-        alert('Papka yaradılarkən xəta baş verdi')
+        toast.error('Papka yaradılarkən xəta baş verdi')
       }
     }
   }

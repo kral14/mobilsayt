@@ -8,6 +8,7 @@ import { useWindowStore } from '../store/windowStore'
 import ProductForm from '../components/ProductFormModal'
 import AdvancedFilterModal, { FilterRule } from '../components/AdvancedFilterModal'
 
+
 const defaultColumns: ColumnConfig[] = [
 
   { id: 'id', label: 'ID', visible: true, width: 60, order: 1 },
@@ -303,7 +304,19 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
             product={product}
             categories={categories}
             existingBarcodes={existingBarcodes}
-            onSubmit={async (formData) => {
+            onSubmit={async (formData, shouldClose) => {
+              // Validation: Check for duplicates
+              // Exclude current product from check
+              const isDuplicateCode = formData.code && products.some(p => p.code === formData.code && p.id !== product.id)
+              if (isDuplicateCode) {
+                throw new Error('Bu kodla məhsul artıq mövcuddur!')
+              }
+
+              const isDuplicateBarcode = formData.barcode && products.some(p => p.barcode === formData.barcode && p.id !== product.id)
+              if (isDuplicateBarcode) {
+                throw new Error('Bu barkodla məhsul artıq mövcuddur!')
+              }
+
               await productsAPI.update(product.id.toString(), {
                 name: formData.name,
                 code: formData.code || undefined,
@@ -337,7 +350,9 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
               })
 
               await loadProducts(selectedCategoryId)
-              useWindowStore.getState().closeWindow(`edit-product-${product.id}`)
+              if (shouldClose) {
+                useWindowStore.getState().closePageWindow(`edit-product-${product.id}`)
+              }
             }}
           />,
           { width: 800, height: 700 }
@@ -357,7 +372,18 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
         product={null}
         categories={categories}
         existingBarcodes={existingBarcodes}
-        onSubmit={async (formData) => {
+        onSubmit={async (formData, shouldClose) => {
+          // Validation: Check for duplicates
+          const isDuplicateCode = formData.code && products.some(p => p.code === formData.code)
+          if (isDuplicateCode) {
+            throw new Error('Bu kodla məhsul artıq mövcuddur!')
+          }
+
+          const isDuplicateBarcode = formData.barcode && products.some(p => p.barcode === formData.barcode)
+          if (isDuplicateBarcode) {
+            throw new Error('Bu barkodla məhsul artıq mövcuddur!')
+          }
+
           const generateBarcode = () => {
             const timestamp = Date.now().toString()
             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
@@ -410,7 +436,9 @@ export default function Mehsullar({ initialSelectedProductId, onSelect }: Mehsul
           })
 
           await loadProducts(selectedCategoryId)
-          useWindowStore.getState().closeWindow('new-product')
+          if (shouldClose) {
+            useWindowStore.getState().closePageWindow('new-product')
+          }
         }}
       />,
       { width: 800, height: 700 }
