@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useWindowStore } from '../store/windowStore'
 import type { Customer, Product, Supplier, WarehouseLocation } from '@shared/types'
 import TableSettingsModal from './TableSettingsModal'
@@ -237,45 +237,97 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     )
   }
 
-  const getFilteredProductsForRow = (searchTerm: string) => {
-    if (!searchTerm.trim()) return []
-    const term = searchTerm.toLowerCase()
+  // Async Search State
+  const [autocompleteResults, setAutocompleteResults] = useState<Product[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-    // Filter first matches
-    const matches = products.filter(product =>
-      product.name.toLowerCase().includes(term) ||
-      product.code?.toLowerCase().includes(term) ||
-      product.barcode?.toLowerCase().includes(term)
-    )
+  const handleAsyncSearch = useCallback(async (term: string) => {
+    if (!term.trim()) {
+      setAutocompleteResults([])
+      return
+    }
 
-    // Sort by relevance:
-    // 1. Exact Code Match
-    // 2. Exact Barcode Match
-    // 3. Name starts with term
-    // 4. Others
-    return matches.sort((a, b) => {
-      const aCode = a.code?.toLowerCase() === term
-      const bCode = b.code?.toLowerCase() === term
-      if (aCode && !bCode) return -1
-      if (!aCode && bCode) return 1
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
 
-      const aBarcode = a.barcode?.toLowerCase() === term
-      const bBarcode = b.barcode?.toLowerCase() === term
-      if (aBarcode && !bBarcode) return -1
-      if (!aBarcode && bBarcode) return 1
+    setIsSearching(true)
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Determine price type for optimization? API just returns products.
+        // We limit to 20 items for dropdown
+        const results = await productsAPI.getAll({
+          search: term,
+          limit: 20,
+          page: 1
+        })
+        setAutocompleteResults(results)
+      } catch (error) {
+        console.error("Search error:", error)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300) // 300ms debounce
+  }, [])
 
-      const aNameStart = a.name.toLowerCase().startsWith(term)
-      const bNameStart = b.name.toLowerCase().startsWith(term)
-      if (aNameStart && !bNameStart) return -1
-      if (!aNameStart && bNameStart) return 1
-
-      return 0
-    }).slice(0, 10)
+  // Wrapper for item updates to trigger search
+  const handleItemUpdateWithSearch = (index: number, updates: Partial<InvoiceItem>) => {
+    handleTableUpdateItem(index, updates)
+    if (updates.searchTerm !== undefined) {
+      handleAsyncSearch(updates.searchTerm)
+    }
   }
+
+  // Product Cache for existing items
+  const [productCache, setProductCache] = useState<Map<number, Product>>(new Map())
+
+  // Fetch details for items currently in invoice if missing from props/search
+  useEffect(() => {
+    const fetchMissingProducts = async () => {
+      const currentIds = localData.invoiceItems
+        .map(item => item.product_id)
+        .filter((id): id is number => id !== null)
+
+      // Check which IDs are missing from everywhere
+      const missingIds = currentIds.filter(id => {
+        const inProps = products.some(p => p.id === id)
+        const inSearch = autocompleteResults.some(p => p.id === id)
+        const inCache = productCache.has(id)
+        return !inProps && !inSearch && !inCache
+      })
+
+      if (missingIds.length === 0) return
+
+      try {
+        // Deduplicate ids
+        const uniqueIds = Array.from(new Set(missingIds))
+        if (uniqueIds.length === 0) return
+
+        console.log('Fetching missing products:', uniqueIds)
+        const fetchedProducts = await productsAPI.getAll({ ids: uniqueIds.join(',') })
+
+        if (fetchedProducts && fetchedProducts.length > 0) {
+          setProductCache(prev => {
+            const newCache = new Map(prev)
+            fetchedProducts.forEach(p => newCache.set(p.id, p))
+            return newCache
+          })
+        }
+      } catch (err) {
+        console.error("Failed to fetch missing products:", err)
+      }
+    }
+
+    const timer = setTimeout(fetchMissingProducts, 500)
+    return () => clearTimeout(timer)
+  }, [localData.invoiceItems, products, autocompleteResults, productCache])
 
   const getProductInfo = (productId: number | null) => {
     if (!productId) return { code: '', barcode: '', unit: '' }
+    // Look in all sources: 1. Props (if any), 2. Search Results, 3. Cache
     const product = products.find(p => p.id === productId)
+      || autocompleteResults.find(p => p.id === productId)
+      || productCache.get(productId)
+
     return {
       code: product?.code || '',
       barcode: product?.barcode || '',
@@ -570,15 +622,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               selectedItemIndices={selectedItemIndices}
               onRowSelect={setSelectedItemIndices}
               functionSettings={functionSettings}
-              onUpdateItem={handleTableUpdateItem}
-              onProductSelect={(idx, prod) => handleProductSelectInRow(idx, prod.id)}
+              onUpdateItem={handleItemUpdateWithSearch}
+              onProductSelect={(idx, prod) => handleProductSelectInRow(idx, prod.id, prod)}
               onOpenProductSelect={openProductsSelect}
               onOpenProductDetails={handleOpenProductDetails}
               sortColumn={sortColumn}
               sortDirection={sortDirection}
               onSort={handleSort}
               getProductInfo={getProductInfo}
-              getFilteredProductsForRow={getFilteredProductsForRow}
+              suggestions={autocompleteResults}
+              isSearching={isSearching}
               isPurchase={isPurchase}
             />
             {/* Total Row */}

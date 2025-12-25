@@ -3,9 +3,40 @@ import prisma from '../config/database'
 import { AuthRequest } from '../middleware/auth'
 
 // Alış fakturaları (purchase_invoices)
+// Alış fakturaları (purchase_invoices)
 export const getAllPurchaseInvoices = async (req: AuthRequest, res: Response) => {
   try {
+    const page = parseInt(req.query.page as string) || 1
+    const limit = parseInt(req.query.limit as string) || 20
+    const skip = (page - 1) * limit
+    const search = req.query.search as string
+
+    // Filters
+    const startDate = req.query.startDate as string
+    const endDate = req.query.endDate as string
+
+    const where: any = {}
+
+    if (search) {
+      where.OR = [
+        { invoice_number: { contains: search, mode: 'insensitive' } },
+        { customer: { name: { contains: search, mode: 'insensitive' } } },
+        { notes: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+
+    if (startDate || endDate) {
+      where.invoice_date = {}
+      if (startDate) where.invoice_date.gte = new Date(startDate)
+      if (endDate) where.invoice_date.lte = new Date(endDate)
+    }
+
+    const total = await prisma.purchase_invoices.count({ where })
+
     const invoices = await prisma.purchase_invoices.findMany({
+      where,
+      skip,
+      take: limit,
       include: {
         customer: true,
         purchase_invoice_items: {
@@ -19,7 +50,15 @@ export const getAllPurchaseInvoices = async (req: AuthRequest, res: Response) =>
       },
     })
 
-    res.json(invoices)
+    res.json({
+      data: invoices,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
     console.error('Get purchase invoices error:', error)
     res.status(500).json({ message: 'Alış qaimələri yüklənərkən xəta baş verdi' })

@@ -7,12 +7,13 @@ import UniversalToolBar from '../../components/UniversalToolBar'
 import UniversalTable, { ColumnConfig, UniversalTableRef } from '../../components/UniversalTable'
 import UniversalFooter from '../../components/UniversalFooter'
 import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
-import { ordersAPI, productsAPI, customersAPI, warehousesAPI } from '../../services/api'
+import { ordersAPI, customersAPI, warehousesAPI } from '../../services/api'
 import type { SaleInvoice, Product, Customer, WarehouseLocation } from '@shared/types'
 import { useWindowStore } from '../../store/windowStore'
 import { logActivity } from '../../store/logStore'
 
 import { useNotificationStore } from '../../store/notificationStore'
+import { ConfirmWindow } from '../../components/ConfirmWindow'
 
 // Development rejimində console.log üçün helper
 const devLog = (...args: any[]) => {
@@ -84,7 +85,16 @@ const defaultColumns: ColumnConfig[] = [
       return <span style={{ fontSize: '1.2rem' }}>📄</span>
     }
   },
-  { id: 'invoice_number', label: '№', visible: true, width: 140, order: 2 },
+  {
+    id: 'row_index',
+    label: '№',
+    visible: true,
+    width: 60,
+    order: 2,
+    sortable: false,
+    render: (_: any, __: any, index: number) => index + 1
+  },
+  { id: 'invoice_number', label: 'Faktura №', visible: true, width: 140, order: 3 },
   { id: 'customers', label: 'Müştəri', visible: true, width: 220, order: 3, render: (value: any) => value?.name || '-' },
   { id: 'invoice_date', label: 'Tarix', visible: true, width: 180, order: 4 },
   { id: 'payment_date', label: 'Son ödəniş tarixi', visible: true, width: 180, order: 5 },
@@ -99,9 +109,15 @@ export function SatisQaimeleriContent() {
   const [invoices, setInvoices] = useState<SaleInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filteredInvoices, setFilteredInvoices] = useState<SaleInvoice[]>([])
+  const [filteredInvoices, setFilteredInvoices] = useState<SaleInvoice[]>([]) // Deprecated but kept for type compatibility if needed
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
   const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>([])
+
+  // Pagination State
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [pageSize] = useState(50)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
   // Global notification store
   const { addNotification } = useNotificationStore()
 
@@ -365,11 +381,60 @@ export function SatisQaimeleriContent() {
   }, [openModals])
 
   // loadInvoices funksiyasını useEffect-dən əvvəl təyin et (handleModalSave-dən əvvəl lazımdır)
-  const loadInvoices = useCallback(async () => {
+  // Sort state
+  const [sortConfig, setSortConfig] = useState<{ column: string, direction: 'asc' | 'desc' } | null>(null)
+
+  const isFetchingMoreRef = useRef(false)
+
+  // loadInvoices function
+  const loadInvoices = useCallback(async (pageToLoad = 1, isReset = false) => {
+    // Prevent potential race conditions or duplicate calls
+    if (!isReset && pageToLoad > 1 && isFetchingMoreRef.current) return
+
     try {
-      setLoading(true)
-      const data = await ordersAPI.getAll()
-      setInvoices(data)
+      if (isReset || pageToLoad === 1) {
+        setLoading(true)
+      } else {
+        setIsFetchingMore(true)
+        isFetchingMoreRef.current = true
+      }
+
+      const params: any = {
+        page: pageToLoad,
+        limit: pageSize,
+        search: searchTerm
+      }
+
+      if (sortConfig) {
+        params.sort_by = sortConfig.column
+        params.order = sortConfig.direction
+      }
+
+      const data = await ordersAPI.getAll(params)
+
+      if (data && data.pagination) {
+        // New paginated response
+        if (isReset || pageToLoad === 1) {
+          setInvoices(data.data)
+        } else {
+          setInvoices(prev => {
+            // Deduplicate just in case
+            // Use Map for faster lookup if list is huge, but array is fine for 100s
+            const existingIds = new Set(prev.map((inv: any) => inv.id));
+            const newInvoices = data.data.filter((inv: any) => !existingIds.has(inv.id))
+            return [...prev, ...newInvoices]
+          })
+        }
+        setTotal(data.pagination.total)
+        // setPage(data.pagination.page) // Managed by local state usually
+      } else if (Array.isArray(data)) {
+        // Fallback for legacy array response
+        setInvoices(data)
+        setTotal(data.length)
+      }
+
+      // Update filtered invoices logic - direct map for now, as server handles filtering
+      // We will update filteredInvoices in useEffect or here directly
     } catch (err: any) {
       console.error('Qaimələr yüklənərkən xəta:', err)
       addNotification(
@@ -379,8 +444,54 @@ export function SatisQaimeleriContent() {
       )
     } finally {
       setLoading(false)
+      setIsFetchingMore(false)
+      isFetchingMoreRef.current = false
     }
-  }, [addNotification])
+  }, [addNotification, pageSize, searchTerm, sortConfig]) // Removed isFetchingMore dependency
+
+  // Handle server-side sort
+  const handleSort = useCallback((column: string, direction: 'asc' | 'desc') => {
+    setSortConfig({ column, direction })
+    // loadInvoices will be triggered by useEffect because sortConfig changed
+    // Wait, loadInvoices is in dependency of useEffect? No.
+    // We need a separate useEffect for sort?
+    // Or simply call loadInvoices directly here?
+    // If we call directly, we might race with state update if loadInvoices depends on sortConfig state.
+    // But loadInvoices is a callback dependent on sortConfig.
+    // So if sortConfig changes, loadInvoices changes.
+    // We should use a useEffect to trigger reload when sortConfig changes.
+  }, [])
+
+  // Effect to reload when sort changes
+  useEffect(() => {
+    if (sortConfig) {
+      loadInvoices(1, true)
+    }
+  }, [sortConfig, loadInvoices])
+
+
+  // Handle Scroll for Infinite Loading
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    // Trigger when close to bottom (e.g., 200px)
+    if (scrollHeight - scrollTop - clientHeight < 200 && !loading && !isFetchingMore && invoices.length < total) {
+      loadInvoices(page + 1)
+      setPage(prev => prev + 1)
+    }
+  }
+
+  const handleJumpToStart = () => {
+    loadInvoices(1, true)
+    setPage(1)
+  }
+
+  const handleJumpToEnd = () => {
+    const lastPage = Math.ceil(total / pageSize)
+    if (lastPage > 1) {
+      loadInvoices(lastPage, true)
+      setPage(lastPage)
+    }
+  }
 
   // Pəncərələri izlə və global store-a əlavə et
   useEffect(() => {
@@ -682,8 +793,9 @@ export function SatisQaimeleriContent() {
 
   const loadProducts = async () => {
     try {
-      const data = await productsAPI.getAll()
-      setProducts(data)
+      // OPTIMIZATION: Don't load all products. InvoiceModal handles async search & caching.
+      // const data = await productsAPI.getAll()
+      setProducts([])
     } catch (err: any) {
       console.error('Məhsullar yüklənərkən xəta:', err)
     }
@@ -699,157 +811,29 @@ export function SatisQaimeleriContent() {
   }
 
   const filterInvoices = () => {
-    let filtered = invoices
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(invoice => {
-        return (
-          invoice.invoice_number?.toLowerCase().includes(term) ||
-          invoice.customers?.name?.toLowerCase().includes(term) ||
-          invoice.notes?.toLowerCase().includes(term) ||
-          invoice.total_amount?.toString().includes(term)
-        )
-      })
-    }
-
-    // Apply advanced filters
-    if (appliedFilters.length > 0) {
-      filtered = filtered.filter(item => {
-        return appliedFilters.every(rule => {
-          if (!rule.value) return true // Skip empty rules
-
-          let itemValue: any = (item as any)[rule.component]
-          let ruleValue = rule.value
-
-          // Handle specific field logic
-          if (rule.component === 'customer_id') {
-            const isTextOp = ['contains', 'not_contains', 'starts_with', 'not_starts_with'].includes(rule.condition)
-            const isSubjectString = typeof rule.value === 'string'
-
-            if (isTextOp || isSubjectString) {
-              // Compare Names
-              const customer = customers.find(c => c.id === item.customer_id)
-              itemValue = customer?.name || ''
-
-              if (typeof rule.value === 'object' && rule.value !== null) {
-                ruleValue = rule.value.name
-              } else {
-                ruleValue = String(rule.value || '')
-              }
-            } else {
-              // Compare IDs
-              itemValue = item.customer_id;
-              if (typeof rule.value === 'object' && rule.value !== null) {
-                ruleValue = rule.value.id
-              } else {
-                ruleValue = rule.value
-              }
-            }
-          }
-          else if (rule.component === 'product') {
-            // Product filtering logic
-            // Get selected product IDs (could be single value or array)
-            const selectedIds = Array.isArray(rule.value)
-              ? rule.value.map((v: any) => v.id || v)
-              : [rule.value?.id || rule.value]
-
-            // Check if invoice items contain any of the selected products
-            const invoiceItems = item.sale_invoice_items || []
-            const hasProduct = invoiceItems.some(invItem => selectedIds.includes(invItem.product_id))
-
-            if (rule.condition === 'not_in' || rule.condition === 'not_equals') {
-              return !hasProduct
-            }
-            return hasProduct
-          }
-          else if (rule.component === 'invoice_date') {
-            // Date comparison (simple string match for now or strict date?)
-            // item.invoice_date is ISO string "2023-12-22T..."
-            // rule.value is "2023-12-22"
-            if (itemValue && typeof itemValue === 'string') {
-              itemValue = itemValue.split('T')[0]
-            }
-
-            // Handle Date Period Object
-            if (rule.value && typeof rule.value === 'object' && (rule.value.startDate || rule.value.endDate)) {
-              const { startDate, endDate } = rule.value
-              if (startDate && itemValue < startDate) return false
-              if (endDate && itemValue > endDate) return false
-              return true
-            }
-          }
-
-          if (rule.condition === 'equals') {
-            // Loose equality for numbers/strings
-            return itemValue == ruleValue
-          }
-          if (rule.condition === 'not_equals') {
-            return itemValue != ruleValue
-          }
-          if (rule.condition === 'in') {
-            // Multi-select values
-            if (Array.isArray(ruleValue)) {
-              // If ruleValue is array of objects (e.g. partners), map to IDs
-              const ids = ruleValue.map((v: any) => v.id || v)
-              return ids.includes(itemValue)
-            }
-            return false
-          }
-          if (rule.condition === 'not_in') {
-            if (Array.isArray(ruleValue)) {
-              const ids = ruleValue.map((v: any) => v.id || v)
-              return !ids.includes(itemValue)
-            }
-            return true
-          }
-
-          // Operatorlar expanded
-          if (rule.condition === 'contains') {
-            return String(itemValue || '').toLowerCase().includes(String(ruleValue || '').toLowerCase())
-          }
-          if (rule.condition === 'not_contains') {
-            return !String(itemValue || '').toLowerCase().includes(String(ruleValue || '').toLowerCase())
-          }
-          if (rule.condition === 'starts_with') {
-            return String(itemValue || '').toLowerCase().startsWith(String(ruleValue || '').toLowerCase())
-          }
-          if (rule.condition === 'not_starts_with') {
-            return !String(itemValue || '').toLowerCase().startsWith(String(ruleValue || '').toLowerCase())
-          }
-          if (rule.condition === 'greater') {
-            return Number(itemValue) > Number(ruleValue)
-          }
-          if (rule.condition === 'greater_or_equal') {
-            return Number(itemValue) >= Number(ruleValue)
-          }
-          if (rule.condition === 'less') {
-            return Number(itemValue) < Number(ruleValue)
-          }
-          if (rule.condition === 'less_or_equal') {
-            return Number(itemValue) <= Number(ruleValue)
-          }
-          if (rule.condition === 'is_set') {
-            return itemValue !== null && itemValue !== undefined && itemValue !== ''
-          }
-          if (rule.condition === 'is_not_set') {
-            return itemValue === null || itemValue === undefined || itemValue === ''
-          }
-
-          return true
-        })
-      })
-    }
-
-    setFilteredInvoices(filtered)
+    // Server-side filtering is used, so valid data is always in 'invoices'.
+    // Just sync filteredInvoices with invoices.
+    setFilteredInvoices(invoices)
   }
+
+  // Debounced server-side search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm !== '') { // Optional: prevent check on initial mount if desired, but consistent state is better
+        loadInvoices(1, true)
+      } else {
+        loadInvoices(1, true) // Reset
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm]) // Don't include loadInvoices to avoid loop if it changes often
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term)
   }, [])
 
   // Çoxlu modal açmaq üçün funksiya
-  const openModalForInvoice = async (invoiceId: number | null = null) => {
+  const openModalForInvoice = async (invoiceId: number | null = null, initialData: ModalData['data'] | null = null) => {
     try {
       // Əgər invoiceId varsa, eyni qaimə artıq açıqdırsa, onu fokusla
       if (invoiceId) {
@@ -959,7 +943,7 @@ export function SatisQaimeleriContent() {
         zIndex: newZIndex,
         invoiceType: 'sale',
         isActive: fullInvoice ? (fullInvoice.is_active ?? false) : undefined,
-        data: {
+        data: initialData || {
           selectedCustomerId: fullInvoice?.customer_id || null,
           selectedCustomer: fullInvoice?.customers || null,
           invoiceItems: items,
@@ -1015,28 +999,44 @@ export function SatisQaimeleriContent() {
   }
 
   const handleDelete = async (selectedIds: (number | string)[]) => {
-    if (confirm(`${selectedIds.length} qaimə silinsin?`)) {
-      try {
-        await Promise.all(selectedIds.map(async (id) => {
-          const invoice = invoices.find(inv => inv.id === id)
-          await ordersAPI.delete(id.toString())
-          if (invoice) {
-            addNotification('success', 'Uğurlu', `${invoice.invoice_number} nömrəli qaimə silindi`)
-          }
-        }))
-
-        await loadInvoices()
-        // Bulk notification removed
-      } catch (err: any) {
-        showNotification(err.response?.data?.message || 'Silinərkən xəta baş verdi', 'error')
-      }
-    }
+    addWindow({
+      id: 'delete-confirmation',
+      title: 'Təsdiq',
+      type: 'modal',
+      position: { x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 100 },
+      size: { width: 400, height: 200 },
+      isMinimized: false,
+      isMaximized: false,
+      zIndex: 9999,
+      normalState: null,
+      content: (
+        <ConfirmWindow
+          message={`${selectedIds.length} qaimə silinsin?`}
+          onConfirm={async () => {
+            try {
+              await Promise.all(selectedIds.map(async (id) => {
+                const invoice = invoices.find(inv => inv.id === id)
+                await ordersAPI.delete(id.toString())
+                if (invoice) {
+                  addNotification('success', 'Uğurlu', `${invoice.invoice_number} nömrəli qaimə silindi`)
+                }
+              }))
+              await loadInvoices(1, true) // Reload list
+              useWindowStore.getState().closeWindow('delete-confirmation')
+              setSelectedInvoiceIds([]) // Clear selection
+            } catch (err: any) {
+              showNotification(err.response?.data?.message || 'Silinərkən xəta baş verdi', 'error')
+              useWindowStore.getState().closeWindow('delete-confirmation')
+            }
+          }}
+          onCancel={() => useWindowStore.getState().closeWindow('delete-confirmation')}
+        />
+      )
+    })
   }
 
-  const handleCopy = (_selectedIds: (number | string)[]) => {
-    // TODO: Kopyalama funksiyası
-    showNotification('Kopyalama funksiyası hazırlanır...', 'info')
-  }
+
+
 
   // F4 qısayolu InvoiceModal-da idarə olunur
 
@@ -1428,6 +1428,52 @@ export function SatisQaimeleriContent() {
   }, [showNotification, loadInvoices])
 
 
+  // Handle Copy/Duplicate
+  const handleCopy = useCallback(async (ids: (number | string)[]) => {
+    if (ids.length !== 1) {
+      showNotification('Kopyalamaq üçün yalnız bir qaimə seçin', 'warning')
+      return
+    }
+
+    try {
+      const id = ids[0]
+      // Full invoice fetch
+      const existingInvoice = await ordersAPI.getById(id.toString())
+
+      if (!existingInvoice) {
+        showNotification('Qaimə tapılmadı', 'error')
+        return
+      }
+
+      // Prepare data for new invoice
+      const newInvoiceData: ModalData['data'] = {
+        invoiceNumber: '', // Let backend generate new number
+        invoiceDate: new Date().toISOString(),
+        selectedCustomerId: existingInvoice.customer_id,
+        selectedSupplierId: undefined,
+        notes: existingInvoice.notes ? `${existingInvoice.notes} (Kopyalanıb)` : '(Kopyalanıb)',
+        invoiceItems: existingInvoice.sale_invoice_items?.map((item: any) => ({
+          product_id: item.product_id,
+          product_name: item.products?.name || 'Naməlum məhsul',
+          searchTerm: item.products?.name || 'Naməlum məhsul',
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          total_price: Number(item.total_price),
+          vat_rate: Number(item.vat_rate || 0),
+          discount_manual: Number(item.discount_manual || 0),
+          discount_auto: Number(item.discount_auto || 0)
+        })) || []
+      }
+
+      openModalForInvoice(null, newInvoiceData)
+      showNotification('Qaimə kopyalandı. Zəhmət olmasa yoxlayın və yadda saxlayın.', 'success')
+
+    } catch (err: any) {
+      console.error('Kopyalama xətası:', err)
+      showNotification('Kopyalama zamanı xəta baş verdi', 'error')
+    }
+  }, [openModalForInvoice, showNotification])
+
   const handlePrint = async () => {
     // Seçilmiş sənədləri al
     const invoicesToPrint = selectedInvoiceIds.length > 0
@@ -1658,6 +1704,11 @@ export function SatisQaimeleriContent() {
         getRowId={(row: any) => row.id}
         onRowSelect={setSelectedInvoiceIds}
         onRowClick={(row: any) => handleEdit([row.id])}
+        onScroll={handleScroll}
+        onJumpToStart={handleJumpToStart}
+        onJumpToEnd={handleJumpToEnd}
+        serverSideSort={true}
+        onSort={handleSort}
       />
 
       <UniversalFooter

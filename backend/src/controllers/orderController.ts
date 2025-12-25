@@ -3,11 +3,68 @@ import prisma from '../config/database'
 import { AuthRequest } from '../middleware/auth'
 
 // Satış fakturaları (sale_invoices) - bu bizim "orders" kimi işləyir
+// Satış fakturaları (sale_invoices) - bu bizim "orders" kimi işləyir
 export const getAllOrders = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!
 
+    // Query parameters
+    const page = parseInt(req.query.page as string) || 1
+    const limit = parseInt(req.query.limit as string) || 20
+    const skip = (page - 1) * limit
+    const search = req.query.search as string
+
+    // Filters
+    const startDate = req.query.startDate as string
+    const endDate = req.query.endDate as string
+
+    // Build where clause
+    const where: any = {
+      // is_active: true, // Optional: might want to see all
+    }
+
+    if (search) {
+      where.OR = [
+        { invoice_number: { contains: search, mode: 'insensitive' } },
+        { customers: { name: { contains: search, mode: 'insensitive' } } },
+        { notes: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+
+    if (startDate || endDate) {
+      where.invoice_date = {}
+      if (startDate) where.invoice_date.gte = new Date(startDate)
+      if (endDate) where.invoice_date.lte = new Date(endDate)
+    }
+
+    // Get total count for pagination
+    const total = await prisma.sale_invoices.count({ where })
+
+    // Sorting logic
+    console.log('[DEBUG] Query Params:', req.query)
+    const sortBy = req.query.sort_by as string
+    const order = (req.query.order as string) === 'asc' ? 'asc' : 'desc'
+
+    let orderBy: any = { created_at: 'desc' } // Default
+
+    if (sortBy) {
+      // Map frontend fields to DB fields if different
+      if (sortBy === 'customers') {
+        orderBy = { customers: { name: order } }
+      } else if (sortBy === 'invoice_number') {
+        // String sorting for invoice number
+        orderBy = { invoice_number: order }
+      } else if (['total_amount', 'invoice_date', 'payment_date', 'id'].includes(sortBy)) {
+        orderBy = { [sortBy]: order }
+      }
+    }
+
+    console.log('[DEBUG] Applied orderBy:', JSON.stringify(orderBy, null, 2))
+
     const invoices = await prisma.sale_invoices.findMany({
+      where,
+      skip,
+      take: limit,
       include: {
         customers: true,
         sale_invoice_items: {
@@ -16,12 +73,18 @@ export const getAllOrders = async (req: AuthRequest, res: Response) => {
           },
         },
       },
-      orderBy: {
-        created_at: 'desc',
-      },
+      orderBy,
     })
 
-    res.json(invoices)
+    res.json({
+      data: invoices,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
   } catch (error: any) {
     console.error('❌ [ERROR] Get orders error:')
     console.error('❌ [ERROR] Error message:', error.message)

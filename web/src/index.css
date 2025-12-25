@@ -404,3 +404,31 @@ nav div[style*="position: absolute"] button::after {
 #root {
   min-height: 100vh;
 }
+
+/* Universal Table Scrollbar */
+.universal-table-container::-webkit-scrollbar {
+  width: 14px;
+  /* Wider for easier grabbing */
+  height: 14px;
+  background-color: #f1f1f1;
+  /* Visible track */
+}
+
+.universal-table-container::-webkit-scrollbar-thumb {
+  background-color: #c1c1c1;
+  /* Visible thumb */
+  border-radius: 7px;
+  border: 3px solid #f1f1f1;
+  /* Creates padding effect */
+  background-clip: content-box;
+  transition: background-color 0.2s;
+}
+
+.universal-table-container::-webkit-scrollbar-thumb:hover {
+  background-color: #a8a8a8;
+  /* Darker on hover */
+}
+
+.universal-table-container::-webkit-scrollbar-corner {
+  background-color: #f1f1f1;
+}

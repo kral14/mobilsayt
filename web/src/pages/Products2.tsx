@@ -161,6 +161,28 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
 
+  // Pagination State
+  const [page, setPage] = useState(1)
+  const pageRef = useRef(1) // Ref to break dependency cycle
+  const [hasMore, setHasMore] = useState(true)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
+  const LIMIT = 50
+
+  // Sync ref with state
+  useEffect(() => {
+    pageRef.current = page
+  }, [page])
+
+
+  // Search debouncing
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
 
   // localStorage-dan papka ağacının görünürlüyünü yüklə (default: true - həmişə açıq)
   const loadCategoryTreeVisibility = (): boolean => {
@@ -290,25 +312,14 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
     return (product as any).warehouse?.[0]?.quantity || 0
   }
 
-  const filterFieldMap: Record<string, string> = {
-    'product': 'id',
-    'code': 'code',
-    'barcode': 'barcode',
-    'article': 'article',
-    'brand': 'brand',
-    'model': 'model',
-    'category': 'category_id'
-  }
+  // Advanced filtering logic removed - Server Side Filtering used instead
+  // const filterFieldMap: { [key: string]: string } = { ... }
+
 
   // Filtr və axtarış
   const gridData = useMemo<GridItem[]>(() => {
     // Helper for search
-    const matchesSearch = (item: { name: string, code?: string | null, barcode?: string | null }) => {
-      const term = searchTerm.toLowerCase()
-      return item.name.toLowerCase().includes(term) ||
-        (item.code && item.code.toLowerCase().includes(term)) ||
-        (item.barcode && item.barcode.toLowerCase().includes(term))
-    }
+    // Search match logic removed - Server Side Filtering used instead
 
     // 0. Ancestor Stack (Full Path Up to Current)
     let parentRow: GridItem[] = []
@@ -333,44 +344,20 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
 
     // 1. Categories
     const currentCategories = categories.filter(c => {
-      if (searchTerm) return matchesSearch(c)
-      if (selectedCategoryId) return c.parent_id === selectedCategoryId
-      return c.parent_id === null
+      // Show if parent matches or (if search active) name matches
+      if (searchTerm) {
+        return c.name.toLowerCase().includes(searchTerm.toLowerCase())
+      }
+      return c.parent_id === selectedCategoryId
     }).map(c => ({ ...c, type: 'category' } as GridItem))
 
-    // 2. Products
-    const currentProducts = products.filter(p => {
-      if (searchTerm) return matchesSearch(p)
-
-      // Navigation mode
-      if (selectedCategoryId !== null) {
-        if (p.category_id !== selectedCategoryId) return false
-      } else {
-        if (p.category_id !== null) return false
-      }
-
-      // Advanced filters
-      if (appliedFilters.length > 0) {
-        return appliedFilters.every(rule => {
-          const field = filterFieldMap[rule.component] || rule.component
-          const val = (p as any)[field]
-          const target = rule.value
-
-          if (rule.condition === 'equals') {
-            if (rule.component === 'product') return val === (target?.id)
-            return String(val || '').toLowerCase() === String(target || '').toLowerCase()
-          }
-          return true
-        })
-      }
-      return true
-    }).map(p => ({ ...p, type: 'product' } as GridItem))
+    // Products are already filtered by server, just map them
+    const currentProducts = products.map(p => ({ ...p, type: 'product' } as GridItem))
 
     return [...parentRow, ...currentCategories, ...currentProducts]
-  }, [products, categories, selectedCategoryId, searchTerm, appliedFilters, filterFieldMap])
+  }, [products, categories, selectedCategoryId, searchTerm])
 
-  // Backward compatibility for existing handlers
-  const filteredProducts = useMemo(() => gridData.filter(item => item.type === 'product') as Product[], [gridData])
+  const filteredProducts = products // Backward compatibility
 
 
   // Kontekst menyu state-ləri
@@ -387,22 +374,45 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
     type: null
   })
 
-  const loadProducts = useCallback(async (categoryId?: number | null) => {
+  // Load Products (Server-Side)
+  const loadProducts = useCallback(async (reset = false) => {
+    if (!reset && !hasMore) return // No more data to load
+    if (isFetchingMore && !reset) return // Already fetching more
+
     try {
-      setLoading(true)
-      const data = await productsAPI.getAll()
-      // Frontend-də filtr et
-      let filtered = data
-      if (categoryId !== undefined && categoryId !== null) {
-        filtered = data.filter(p => p.category_id === categoryId)
+      if (reset || !isFetchingMore) setIsFetchingMore(true)
+
+      const currentPage = reset ? 1 : pageRef.current
+      const params = {
+        page: currentPage,
+        limit: LIMIT,
+        search: debouncedSearch,
+        category_id: selectedCategoryId
       }
-      setProducts(filtered)
+
+      console.log('Fetching products:', params)
+      const data = await productsAPI.getAll(params)
+
+      if (reset) {
+        setProducts(data)
+        setPage(2)
+      } else {
+        setProducts(prev => {
+          const newItems = data.filter(item => !prev.some(p => p.id === item.id))
+          return [...prev, ...newItems]
+        })
+        setPage(prev => prev + 1)
+      }
+
+      setHasMore(data.length === LIMIT)
+
     } catch (err: any) {
       console.error(err.response?.data?.message || 'Məhsullar yüklənərkən xəta baş verdi')
     } finally {
-      setLoading(false)
+      setIsFetchingMore(false)
     }
-  }, [])
+  }, [hasMore, debouncedSearch, selectedCategoryId, isFetchingMore])
+
 
   const loadCategories = useCallback(async () => {
     try {
@@ -414,13 +424,39 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   }, [])
 
   const loadData = useCallback(async () => {
-    await loadProducts(selectedCategoryId)
-    await loadCategories()
-  }, [loadProducts, loadCategories, selectedCategoryId])
+    try {
+      setLoading(true)
+      // Initial load uses reset=true
+      await Promise.all([
+        loadProducts(true),
+        loadCategories()
+      ])
+    } catch (e) {
+      console.error('Error loading data:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [loadCategories, loadProducts]) // Correct deps
+
+  // Infinite Scroll Handler
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    if (scrollHeight - scrollTop <= clientHeight + 100) { // Load when 100px from bottom
+      if (!isFetchingMore && hasMore && !loading && products.length > 0) {
+        loadProducts(false)
+      }
+    }
+  }
 
   useEffect(() => {
     loadData()
-  }, [loadData])
+  }, [debouncedSearch, selectedCategoryId, loadCategories]) // Only reload when parameters change
+  // Note: loadData is conceptually dependent on loadProducts, but loadProducts is stable enough now, 
+  // and even if it changes, we don't want to auto-fire unless search/cat changes.
+  // Actually, loadData depends on loadProducts. 
+  // With page removed from loadProducts deps, loadProducts only changes when search/cat changes.
+  // So [loadData] is safe now.
+
 
   // Auto-select product if initialSelectedProductId is provided
   useEffect(() => {
@@ -1490,7 +1526,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
 
               <UniversalTable
                 ref={tableRef}
-                tableId="products2"
+                tableId="products-table"
                 data={gridData}
                 columns={defaultColumns}
                 loading={loading}
@@ -1521,6 +1557,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
                     }
                   }
                 }}
+                onScroll={handleScroll}
               />
             </div>
             {/* Move Modal */}

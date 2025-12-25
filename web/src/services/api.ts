@@ -108,7 +108,7 @@ export const authAPI = {
 
 // Products API
 export const productsAPI = {
-  getAll: async (params?: any): Promise<Product[]> => {
+  getAll: async (params?: { page?: number; limit?: number; search?: string; category_id?: number | null; ids?: string }): Promise<Product[]> => {
     const response = await api.get<Product[]>('/products', { params })
     return response.data
   },
@@ -179,8 +179,8 @@ export const productDiscountsAPI = {
 
 // Orders API (Sale Invoices)
 export const ordersAPI = {
-  getAll: async (): Promise<SaleInvoice[]> => {
-    const response = await api.get<SaleInvoice[]>('/orders')
+  getAll: async (params?: { page?: number; limit?: number; search?: string; startDate?: string; endDate?: string; sort_by?: string; order?: 'asc' | 'desc' }): Promise<any> => {
+    const response = await api.get<any>('/orders', { params })
     return response.data
   },
 
@@ -211,8 +211,8 @@ export const ordersAPI = {
 
 // Purchase Invoices API
 export const purchaseInvoicesAPI = {
-  getAll: async (): Promise<PurchaseInvoice[]> => {
-    const response = await api.get<PurchaseInvoice[]>('/purchase-invoices')
+  getAll: async (params?: { page?: number; limit?: number; search?: string; startDate?: string; endDate?: string }): Promise<any> => {
+    const response = await api.get<any>('/purchase-invoices', { params })
     return response.data
   },
 

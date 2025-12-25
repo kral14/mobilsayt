@@ -8,7 +8,7 @@ import UniversalToolBar from '../../components/UniversalToolBar'
 import UniversalTable, { ColumnConfig, UniversalTableRef } from '../../components/UniversalTable'
 import UniversalFooter from '../../components/UniversalFooter'
 import InvoiceModal, { type ModalData, type InvoiceItem } from '../../components/InvoiceModal'
-import { purchaseInvoicesAPI, productsAPI, customersAPI, warehousesAPI } from '../../services/api'
+import { purchaseInvoicesAPI, customersAPI, warehousesAPI } from '../../services/api'
 import type { PurchaseInvoice, Product, Supplier, WarehouseLocation } from '@shared/types'
 import { useWindowStore } from '../../store/windowStore'
 import { logActivity } from '../../store/logStore'
@@ -110,6 +110,12 @@ export function AlisQaimeleriContent() {
   const [filteredInvoices, setFilteredInvoices] = useState<PurchaseInvoice[]>([])
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<(number | string)[]>([])
   const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>([])
+
+  // Pagination State
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [pageSize] = useState(50)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
   // Global notification store
   const { addNotification } = useNotificationStore()
 
@@ -372,18 +378,67 @@ export function AlisQaimeleriContent() {
     }
   }, [openModals])
 
-  // loadInvoices funksiyasını useEffect-dən əvvəl təyin et (handleModalSave-dən əvvəl lazımdır)
-  const loadInvoices = useCallback(async () => {
+  // loadInvoices function based on Satis.tsx pattern
+  const loadInvoices = useCallback(async (pageToLoad = 1, isReset = false) => {
+    // Prevent potential race conditions or duplicate calls
+    if (!isReset && pageToLoad > 1 && isFetchingMore) return
+
     try {
-      setLoading(true)
-      const data = await purchaseInvoicesAPI.getAll()
-      setInvoices(data)
+      if (isReset || pageToLoad === 1) {
+        setLoading(true)
+      } else {
+        setIsFetchingMore(true)
+      }
+
+      const data = await purchaseInvoicesAPI.getAll({
+        page: pageToLoad,
+        limit: pageSize,
+        search: searchTerm
+      })
+
+      if (data && data.pagination) {
+        if (isReset || pageToLoad === 1) {
+          setInvoices(data.data)
+        } else {
+          setInvoices(prev => {
+            const existingIds = new Set(prev.map((inv: any) => inv.id));
+            return [...prev, ...data.data.filter((inv: any) => !existingIds.has(inv.id))]
+          })
+        }
+        setTotal(data.pagination.total)
+      } else if (Array.isArray(data)) {
+        setInvoices(data)
+        setTotal(data.length)
+      }
     } catch (err: any) {
       showNotification(err.response?.data?.message || 'Qaimələr yüklənərkən xəta baş verdi', 'error')
     } finally {
       setLoading(false)
+      setIsFetchingMore(false)
     }
-  }, [])
+  }, [pageSize, searchTerm, showNotification, isFetchingMore])
+
+  // Handle Scroll
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    if (scrollHeight - scrollTop - clientHeight < 200 && !loading && !isFetchingMore && invoices.length < total) {
+      loadInvoices(page + 1)
+      setPage(prev => prev + 1)
+    }
+  }
+
+  const handleJumpToStart = () => {
+    loadInvoices(1, true)
+    setPage(1)
+  }
+
+  const handleJumpToEnd = () => {
+    const lastPage = Math.ceil(total / pageSize)
+    if (lastPage > 1) {
+      loadInvoices(lastPage, true)
+      setPage(lastPage)
+    }
+  }
 
   // Pəncərələri izlə və global store-a əlavə et
   useEffect(() => {
@@ -685,8 +740,9 @@ export function AlisQaimeleriContent() {
 
   const loadProducts = async () => {
     try {
-      const data = await productsAPI.getAll()
-      setProducts(data)
+      // OPTIMIZATION: Don't load all products. InvoiceModal handles async search & caching.
+      // const data = await productsAPI.getAll()
+      setProducts([])
     } catch (err: any) {
       console.error('Məhsullar yüklənərkən xəta:', err)
     }
@@ -1718,6 +1774,9 @@ export function AlisQaimeleriContent() {
         getRowId={(row: any) => row.id}
         onRowSelect={setSelectedInvoiceIds}
         onRowClick={(row: any) => handleEdit([row.id])}
+        onScroll={handleScroll}
+        onJumpToStart={handleJumpToStart}
+        onJumpToEnd={handleJumpToEnd}
       />
 
       <UniversalFooter

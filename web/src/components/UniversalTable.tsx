@@ -10,7 +10,7 @@ export interface ColumnConfig {
     align?: 'left' | 'right' | 'center'
     sortable?: boolean
     order?: number
-    render?: (value: any, row: any) => React.ReactNode
+    render?: (value: any, row: any, index: number) => React.ReactNode
 }
 
 interface UniversalTableProps<T = any> {
@@ -22,18 +22,15 @@ interface UniversalTableProps<T = any> {
     sortable?: boolean
     getRowId: (row: T) => number | string
     onRowSelect?: (ids: (number | string)[]) => void
-    onRowClick?: (row: T) => void
+    onRowClick?: (row: T, id: string | number, event: React.MouseEvent) => void
+    onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
+    onJumpToStart?: () => void
+    onJumpToEnd?: () => void
+    virtual?: boolean
+    serverSideSort?: boolean // Enable server-side sorting (disables local sort)
+    onSort?: (column: string, direction: 'asc' | 'desc') => void
 }
 
-/**
- * UniversalTable - Universal cədvəl komponenti
- * 
- * Özünü idarə edən (self-contained) cədvəl:
- * - Sütunların yerinin dəyişdirilməsi (Drag & Drop)
- * - Sütunların ölçüsünün dəyişdirilməsi (Resize)
- * - Ayarların yadda saxlanması (LocalStorage) - tableId varsa
- * - Context Menu (Sağ klik) ilə ayarlar pəncərəsi
- */
 // Define ref interface
 export interface UniversalTableRef {
     openSettings: () => void
@@ -57,7 +54,13 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
     sortable = true,
     getRowId,
     onRowSelect,
-    onRowClick
+    onRowClick,
+    onJumpToStart,
+    onJumpToEnd,
+    virtual = false,
+    serverSideSort = false,
+    onSort,
+    onScroll
 }, ref) => {
     // Columns configuration state
     const [columns, setColumns] = useState<ColumnConfig[]>(() => {
@@ -235,26 +238,32 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
 
 
     // Sıralama
+    // Sıralama
     const handleSort = (columnId: string) => {
         if (!sortable) return
 
         setSortConfig(prev => {
+            let newDirection: 'asc' | 'desc' = 'asc'
+
             if (prev.column === columnId) {
-                return {
-                    column: columnId,
-                    direction: prev.direction === 'asc' ? 'desc' : 'asc'
-                }
+                newDirection = prev.direction === 'asc' ? 'desc' : 'asc'
             }
+
+            // Call external handler if provided
+            if (onSort) {
+                onSort(columnId, newDirection)
+            }
+
             return {
                 column: columnId,
-                direction: 'asc'
+                direction: newDirection
             }
         })
     }
 
     // Sıralanmış məlumatlar
     const sortedData = useMemo(() => {
-        if (!sortConfig.column || !sortable) {
+        if (serverSideSort || !sortConfig.column || !sortable) {
             return data
         }
 
@@ -318,7 +327,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
         if (lastClickedId === id && timeDiff < 300) {
             // Sənədi aç
             if (onRowClick) {
-                onRowClick(row)
+                onRowClick(row, id, event) // Fixed arguments
             }
             setLastClickTime(0)
             setLastClickedId(null)
@@ -446,12 +455,34 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
     const visibleColumns = useMemo(() => columns.filter(col => col.visible !== false).sort((a, b) => (a.order || 0) - (b.order || 0)), [columns])
 
     return (
-        <div style={{
-            flex: 1,
-            overflow: 'auto',
-            minHeight: 0,
-            backgroundColor: 'white'
-        }}>
+        <div
+            tabIndex={0}
+            className="universal-table-container"
+            onKeyDown={(e) => {
+                if (e.key === 'Home') {
+                    e.preventDefault()
+                    if (onJumpToStart) {
+                        onJumpToStart()
+                    } else {
+                        e.currentTarget.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                } else if (e.key === 'End') {
+                    e.preventDefault()
+                    if (onJumpToEnd) {
+                        onJumpToEnd()
+                    } else {
+                        e.currentTarget.scrollTo({ top: e.currentTarget.scrollHeight, behavior: 'smooth' })
+                    }
+                }
+            }}
+            onScroll={onScroll}
+            style={{
+                flex: 1,
+                overflow: 'auto',
+                minHeight: 0,
+                backgroundColor: 'white',
+                outline: 'none'
+            }}>
             {loading && (
                 <div style={{ padding: '2rem', textAlign: 'center' }}>
                     Yüklənir...
@@ -531,11 +562,29 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                             <span>{column.label}</span>
                                             {isSortable && (
                                                 <span style={{
-                                                    fontSize: '0.8rem',
-                                                    color: isSorted ? '#1976d2' : '#999',
-                                                    fontWeight: isSorted ? 'bold' : 'normal'
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    color: isSorted ? '#1976d2' : '#ccc',
+                                                    marginLeft: '4px'
                                                 }}>
-                                                    {isSorted ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '⇅'}
+                                                    {isSorted ? (
+                                                        sortConfig.direction === 'asc' ? (
+                                                            // Ascending (A-Z, 0-9) - Bars getting bigger
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                                                <path d="M3 12h18v2H3v-2zm0-7h12v2H3V5zm0 14h6v2H3v-2z" />
+                                                            </svg>
+                                                        ) : (
+                                                            // Descending (Z-A, 9-0) - Bars getting smaller
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                                                <path d="M3 12h12v2H3v-2zm0-7h18v2H3V5zm0 14h6v2H3v-2z" />
+                                                            </svg>
+                                                        )
+                                                    ) : (
+                                                        // Default (Unsorted) - Neutral bars
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                                            <path d="M3 13h12v-2H3v2zm0-5v2h12V8H3zm0 9h12v-2H3v2zm16-4h-2v4h-2l3 3 3-3h-2v-4zM17 5v4h2V5h2l-3-3-3 3h2z" />
+                                                        </svg>
+                                                    )}
                                                 </span>
                                             )}
                                         </div>
@@ -565,7 +614,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                     </thead>
 
                     <tbody>
-                        {sortedData.map((row, index) => {
+                        {sortedData.map((row, rowIndex) => {
                             const rowId = getRowId(row)
                             const isSelected = selectedRows.includes(rowId)
 
@@ -574,7 +623,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                     key={rowId}
                                     onClick={(e) => handleRowClick(row, rowId, e)}
                                     style={{
-                                        background: isSelected ? '#e3f2fd' : index % 2 === 0 ? 'white' : '#f8f9fa',
+                                        background: isSelected ? '#e3f2fd' : rowIndex % 2 === 0 ? 'white' : '#f8f9fa',
                                         cursor: selectable || onRowClick ? 'pointer' : 'default',
                                         borderBottom: '1px solid #dee2e6'
                                     }}
@@ -611,17 +660,17 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                                 }}
                                                 onClick={(e) => {
                                                     // Mətni seç
-                                                    const range = document.createRange();
-                                                    const selection = window.getSelection();
-                                                    range.selectNodeContents(e.currentTarget);
-                                                    selection?.removeAllRanges();
-                                                    selection?.addRange(range);
+                                                    const range = document.createRange()
+                                                    const selection = window.getSelection()
+                                                    range.selectNodeContents(e.currentTarget)
+                                                    selection?.removeAllRanges()
+                                                    selection?.addRange(range)
 
                                                     // Event propagation dayandır ki, row click-ə təsir etməsin (əgər lazımdırsa)
-                                                    // Amma row da seçilməlidir, ona görə dayandırmırıq.
+                                                    e.stopPropagation()
                                                 }}
                                             >
-                                                {column.render ? column.render(value, row) : value}
+                                                {column.render ? column.render(value, row, rowIndex) : value}
                                             </td>
                                         )
                                     })}

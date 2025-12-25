@@ -103,15 +103,41 @@ export const PeriodButton: React.FC<ButtonProps> = (props) => <ToolbarButton {..
 
 // Search is a bit different
 export const SearchInput: React.FC<{ onSearch?: (term: string) => void, visible?: boolean }> = ({ onSearch, visible = true }) => {
+    const [value, setValue] = React.useState('')
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value
+        setValue(val)
+        if (onSearch) onSearch(val)
+    }
+
+    const handleClear = () => {
+        setValue('')
+        if (onSearch) onSearch('')
+    }
+
     if (!visible || !onSearch) return null
     return (
         <div style={{ display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #ccc', borderRadius: '4px', padding: '0 0.5rem' }}>
-            <span style={iconStyle}>🔎</span>
+            <span
+                style={{
+                    ...iconStyle,
+                    cursor: value ? 'pointer' : 'default',
+                    color: value ? '#dc3545' : 'inherit',
+                    fontSize: '1.2rem',
+                    marginRight: '4px'
+                }}
+                onClick={value ? handleClear : undefined}
+                title={value ? "Axtarışı təmizlə" : "Axtarış"}
+            >
+                {value ? '✖' : '🔎'}
+            </span>
             <input
                 type="text"
+                value={value}
                 placeholder="Axtarış..."
                 style={{ border: 'none', padding: '0.4rem', outline: 'none' }}
-                onChange={(e) => onSearch(e.target.value)}
+                onChange={handleChange}
             />
         </div>
     )

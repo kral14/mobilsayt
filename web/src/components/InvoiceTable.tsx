@@ -97,7 +97,8 @@ interface InvoiceTableProps {
 
     // Helpers
     getProductInfo: (id: number | null) => { code: string, barcode: string, unit: string }
-    getFilteredProductsForRow: (term: string) => Product[]
+    suggestions: Product[]
+    isSearching?: boolean
     isPurchase: boolean
 }
 
@@ -113,7 +114,8 @@ export default function InvoiceTable({
     onOpenProductSelect,
     onOpenProductDetails,
     getProductInfo,
-    getFilteredProductsForRow,
+    suggestions,
+    isSearching,
     isPurchase,
     sortColumn,
     sortDirection,
@@ -285,7 +287,8 @@ export default function InvoiceTable({
                         productName={item.product_name}
                         productId={item.product_id}
                         searchTerm={item.searchTerm || ''}
-                        searchResults={getFilteredProductsForRow(item.searchTerm || '')}
+                        searchResults={suggestions}
+                        isLoading={isSearching}
                         isPurchase={isPurchase}
                         isFocused={focusedProductRow === idx}
                         onFocus={() => {

@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import type { Category } from '../../../shared/types'
 
 interface CategoryTreeProps {
@@ -12,6 +11,147 @@ interface CategoryTreeProps {
     onCreateSubCategory: (parentCategory: Category | null) => void // null for root
     onMoveProducts: (categoryId: number | null) => void
 }
+
+interface CategoryTreeItemProps {
+    category: Category
+    level?: number
+    expandedCategories: Set<number>
+    selectedCategoryId: number | null
+    onSelect: (categoryId: number | null) => void
+    toggleExpanded: (categoryId: number) => void
+    onEdit: (category: Category) => void
+    onDelete: (category: Category) => void
+    onMove: (category: Category) => void
+    onCreateSubCategory: (parentCategory: Category | null) => void
+    onMoveProducts: (categoryId: number | null) => void
+}
+
+const CategoryTreeItem = memo(({
+    category,
+    level = 0,
+    expandedCategories,
+    selectedCategoryId,
+    onSelect,
+    toggleExpanded,
+    onEdit,
+    onDelete,
+    onMove,
+    onCreateSubCategory,
+    onMoveProducts
+}: CategoryTreeItemProps) => {
+    const isExpanded = expandedCategories.has(category.id)
+    const isSelected = selectedCategoryId === category.id
+    const productCount = category._count?.products || 0
+    const hasChildren = category.children && category.children.length > 0
+
+    return (
+        <div style={{ marginLeft: level === 1 ? '12px' : '0' }}>
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px 6px',
+                    background: isSelected ? '#e3f2fd' : 'transparent',
+                    borderRadius: '6px',
+                    marginBottom: '1px',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                    border: isSelected ? '1px solid #2196f3' : '1px solid transparent',
+                    position: 'relative',
+                    minHeight: '28px'
+                }}
+                onClick={() => onSelect(category.id)}
+                onDrop={(e) => {
+                    e.preventDefault()
+                    onMoveProducts(category.id)
+                }}
+                onDragOver={(e) => e.preventDefault()}
+            >
+                {/* Expand/Collapse Icon */}
+                <span
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        toggleExpanded(category.id)
+                    }}
+                    style={{
+                        marginRight: '4px',
+                        cursor: 'pointer',
+                        visibility: productCount > 0 || hasChildren ? 'visible' : 'hidden',
+                        transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                        display: 'inline-block',
+                        transition: 'transform 0.2s',
+                        fontSize: '0.7rem',
+                        color: '#666'
+                    }}
+                >
+                    ▶
+                </span>
+
+                {/* Folder Icon */}
+                <span style={{ marginRight: '6px', fontSize: '1rem' }}>
+                    {isExpanded ? '📂' : '📁'}
+                </span>
+
+                {/* Category Name */}
+                <span style={{
+                    flex: 1,
+                    fontWeight: isSelected ? '600' : '400',
+                    color: isSelected ? '#1976D2' : '#333',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    minWidth: 0
+                }}>
+                    {category.name}
+                </span>
+
+                {/* Product Count Badge */}
+                {productCount > 0 && (
+                    <span style={{
+                        background: isSelected ? '#1976D2' : '#eee',
+                        color: isSelected ? '#fff' : '#666',
+                        padding: '0.1rem 0.5rem',
+                        borderRadius: '10px',
+                        fontSize: '0.75rem',
+                        minWidth: '20px',
+                        textAlign: 'center',
+                        marginRight: '0.5rem'
+                    }}>
+                        {productCount}
+                    </span>
+                )}
+
+                {/* Action Buttons for Selected Category */}
+                {isSelected && (
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                        <button onClick={(e) => { e.stopPropagation(); onCreateSubCategory(category) }} title="Alt papka" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>➕</button>
+                        <button onClick={(e) => { e.stopPropagation(); onEdit(category) }} title="Redaktə" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>✏️</button>
+                        <button onClick={(e) => { e.stopPropagation(); onMove(category) }} title="Köçür" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>📦</button>
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(category) }} title="Sil" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>🗑️</button>
+                    </div>
+                )}
+            </div>
+
+            {/* Children */}
+            {isExpanded && category.children?.map((child: Category) => (
+                <CategoryTreeItem
+                    key={child.id}
+                    category={child}
+                    level={level + 1}
+                    expandedCategories={expandedCategories}
+                    selectedCategoryId={selectedCategoryId}
+                    onSelect={onSelect}
+                    toggleExpanded={toggleExpanded}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onMove={onMove}
+                    onCreateSubCategory={onCreateSubCategory}
+                    onMoveProducts={onMoveProducts}
+                />
+            ))}
+        </div>
+    )
+})
 
 export default function CategoryTree({
     categories,
@@ -57,118 +197,18 @@ export default function CategoryTree({
         saveExpandedCategories(newExpanded)
     }
 
-    const buildCategoryTree = (cats: Category[], parentId: number | null = null): Category[] => {
-        return cats
-            .filter(cat => cat.parent_id === parentId)
-            .map(cat => ({
-                ...cat,
-                children: buildCategoryTree(cats, cat.id)
-            }))
-    }
-
-    const categoryTree = buildCategoryTree(categories)
-
-    const CategoryTreeItem = ({ category, level = 0 }: { category: Category; level?: number }) => {
-        const isExpanded = expandedCategories.has(category.id)
-        const isSelected = selectedCategoryId === category.id
-        const productCount = category._count?.products || 0
-        const hasChildren = category.children && category.children.length > 0
-
-        return (
-            <div style={{ marginLeft: level === 1 ? '12px' : '0' }}>
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '2px 6px',
-                        background: isSelected ? '#e3f2fd' : 'transparent',
-                        borderRadius: '6px',
-                        marginBottom: '1px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                        border: isSelected ? '1px solid #2196f3' : '1px solid transparent',
-                        position: 'relative',
-                        minHeight: '28px'
-                    }}
-                    onClick={() => onSelect(category.id)}
-                    onDrop={(e) => {
-                        e.preventDefault()
-                        onMoveProducts(category.id)
-                    }}
-                    onDragOver={(e) => e.preventDefault()}
-                >
-                    {/* Expand/Collapse Icon */}
-                    <span
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            toggleExpanded(category.id)
-                        }}
-                        style={{
-                            marginRight: '4px',
-                            cursor: 'pointer',
-                            visibility: productCount > 0 || hasChildren ? 'visible' : 'hidden',
-                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                            display: 'inline-block',
-                            transition: 'transform 0.2s',
-                            fontSize: '0.7rem',
-                            color: '#666'
-                        }}
-                    >
-                        ▶
-                    </span>
-
-                    {/* Folder Icon */}
-                    <span style={{ marginRight: '6px', fontSize: '1rem' }}>
-                        {isExpanded ? '📂' : '📁'}
-                    </span>
-
-                    {/* Category Name */}
-                    <span style={{
-                        flex: 1,
-                        fontWeight: isSelected ? '600' : '400',
-                        color: isSelected ? '#1976D2' : '#333',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        minWidth: 0
-                    }}>
-                        {category.name}
-                    </span>
-
-                    {/* Product Count Badge */}
-                    {productCount > 0 && (
-                        <span style={{
-                            background: isSelected ? '#1976D2' : '#eee',
-                            color: isSelected ? '#fff' : '#666',
-                            padding: '0.1rem 0.5rem',
-                            borderRadius: '10px',
-                            fontSize: '0.75rem',
-                            minWidth: '20px',
-                            textAlign: 'center',
-                            marginRight: '0.5rem'
-                        }}>
-                            {productCount}
-                        </span>
-                    )}
-
-                    {/* Action Buttons for Selected Category */}
-                    {isSelected && (
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
-                            <button onClick={(e) => { e.stopPropagation(); onCreateSubCategory(category) }} title="Alt papka" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>➕</button>
-                            <button onClick={(e) => { e.stopPropagation(); onEdit(category) }} title="Redaktə" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>✏️</button>
-                            <button onClick={(e) => { e.stopPropagation(); onMove(category) }} title="Köçür" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>📦</button>
-                            <button onClick={(e) => { e.stopPropagation(); onDelete(category) }} title="Sil" style={{ border: 'none', background: 'none', cursor: 'pointer' }}>🗑️</button>
-                        </div>
-                    )}
-                </div>
-
-                {/* Children */}
-                {isExpanded && category.children?.map((child: Category) => (
-                    <CategoryTreeItem key={child.id} category={child} level={level + 1} />
-                ))}
-            </div>
-        )
-    }
+    // Memoize category tree calculation
+    const categoryTree = useMemo(() => {
+        const buildCategoryTree = (cats: Category[], parentId: number | null = null): Category[] => {
+            return cats
+                .filter(cat => cat.parent_id === parentId)
+                .map(cat => ({
+                    ...cat,
+                    children: buildCategoryTree(cats, cat.id)
+                }))
+        }
+        return buildCategoryTree(categories)
+    }, [categories])
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -213,7 +253,19 @@ export default function CategoryTree({
 
             <div style={{ overflow: 'auto', flex: 1 }}>
                 {categoryTree.map(cat => (
-                    <CategoryTreeItem key={cat.id} category={cat} />
+                    <CategoryTreeItem
+                        key={cat.id}
+                        category={cat}
+                        expandedCategories={expandedCategories}
+                        selectedCategoryId={selectedCategoryId}
+                        onSelect={onSelect}
+                        toggleExpanded={toggleExpanded}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onMove={onMove}
+                        onCreateSubCategory={onCreateSubCategory}
+                        onMoveProducts={onMoveProducts}
+                    />
                 ))}
             </div>
         </div>

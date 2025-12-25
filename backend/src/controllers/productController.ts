@@ -6,29 +6,37 @@ export const getAllProducts = async (req: AuthRequest, res: Response) => {
   try {
     console.log('🔍 [DEBUG] getAllProducts çağırıldı')
     console.log('🔍 [DEBUG] Query params:', req.query)
-    
-    const { category_id } = req.query
+
+    const { category_id, search, page, limit } = req.query
+
+    // Pagination defaults
+    const pageNum = page ? parseInt(page as string) : 1
+    const limitNum = limit ? parseInt(limit as string) : 50
+    const skip = (pageNum - 1) * limitNum
+
     const where: any = {}
-    
-    // Check if category_id column exists before filtering
-    if (category_id) {
-      try {
-        const columnCheck: any = await prisma.$queryRaw`
-          SELECT column_name 
-          FROM information_schema.columns 
-          WHERE table_schema = 'public' 
-          AND table_name = 'products' 
-          AND column_name = 'category_id'
-          LIMIT 1
-        `
-        if (columnCheck && Array.isArray(columnCheck) && columnCheck.length > 0) {
-          where.category_id = parseInt(category_id as string)
-          console.log('🔍 [DEBUG] category_id filter:', where.category_id)
-        } else {
-          console.log('⚠️ [WARN] category_id sütunu yoxdur, filter tətbiq edilmir')
-        }
-      } catch (e) {
-        console.log('⚠️ [WARN] category_id sütunu yoxlanıla bilmədi, filter tətbiq edilmir')
+
+    // Search filter
+    if (search) {
+      const searchStr = search as string
+      where['OR'] = [
+        { name: { contains: searchStr, mode: 'insensitive' } },
+        { code: { contains: searchStr, mode: 'insensitive' } },
+        { barcode: { contains: searchStr, mode: 'insensitive' } }
+      ]
+    }
+
+    // Check if category_id column exists/is valid before filtering
+    if (category_id && category_id !== 'null' && category_id !== 'undefined') {
+      where.category_id = parseInt(category_id as string)
+    }
+
+    // Filter by IDs
+    const { ids } = req.query
+    if (ids) {
+      const idsArray = (ids as string).split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+      if (idsArray.length > 0) {
+        where.id = { in: idsArray }
       }
     }
 
@@ -37,36 +45,27 @@ export const getAllProducts = async (req: AuthRequest, res: Response) => {
       warehouse: true,
       category: true, // Include category relation
     }
-    
-    console.log('🔍 [DEBUG] Include options:', includeOptions)
-    console.log('🔍 [DEBUG] Where clause:', where)
 
-    console.log('🔍 [DEBUG] Prisma query başladı...')
+    console.log(`🔍 [DEBUG] Fetching page ${pageNum} (limit ${limitNum})`)
+
     const products = await prisma.products.findMany({
       where,
       include: includeOptions,
       orderBy: {
         created_at: 'desc',
       },
+      skip: skip,
+      take: limitNum
     })
 
     console.log('✅ [DEBUG] Prisma query uğurlu, məhsul sayı:', products.length)
-    console.log('🔍 [DEBUG] İlk məhsul nümunəsi:', products[0] ? JSON.stringify(products[0], null, 2) : 'Məhsul yoxdur')
 
     res.json(products)
   } catch (error: any) {
-    console.error('❌ [ERROR] Get products error:')
-    console.error('❌ [ERROR] Error message:', error.message)
-    console.error('❌ [ERROR] Error code:', error.code)
-    console.error('❌ [ERROR] Error stack:', error.stack)
-    console.error('❌ [ERROR] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2))
-    
-    // Əgər cədvəl yoxdursa və ya sahə yoxdursa, xəta məlumatını göstər
-    res.status(500).json({ 
-      message: 'Məhsullar yüklənərkən xəta baş verdi', 
-      error: error.message,
-      code: error.code,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    console.error('❌ [ERROR] Get products error:', error)
+    res.status(500).json({
+      message: 'Məhsullar yüklənərkən xəta baş verdi',
+      error: error.message
     })
   }
 }
@@ -95,7 +94,7 @@ export const getProductById = async (req: AuthRequest, res: Response) => {
 
 export const createProduct = async (req: AuthRequest, res: Response) => {
   try {
-    const { 
+    const {
       name, barcode, description, unit, purchase_price, sale_price, code, article,
       category_id, type, brand, model, color, size, weight, country, manufacturer,
       warranty_period, production_date, expiry_date, min_stock, max_stock, tax_rate, is_active
@@ -126,7 +125,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
         AND column_name IN ('article', 'category_id', 'type', 'brand', 'model', 'color', 'size', 'weight', 'country', 'manufacturer', 'warranty_period', 'production_date', 'expiry_date', 'min_stock', 'max_stock', 'tax_rate', 'is_active')
       `
       const existingColumns = columnCheck.map((c: any) => c.column_name)
-      
+
       if (existingColumns.includes('article')) productData.article = article || null
       if (existingColumns.includes('category_id') && category_id) productData.category_id = parseInt(category_id)
       if (existingColumns.includes('type')) productData.type = type || null
@@ -171,7 +170,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
 export const updateProduct = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params
-    const { 
+    const {
       name, barcode, description, unit, purchase_price, sale_price, code, article,
       category_id, type, brand, model, color, size, weight, country, manufacturer,
       warranty_period, production_date, expiry_date, min_stock, max_stock, tax_rate, is_active
@@ -187,7 +186,7 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
 
     // Build update data with only existing fields
     const updateData: any = {}
-    
+
     if (name) updateData.name = name
     if (barcode !== undefined) updateData.barcode = barcode
     if (description !== undefined) updateData.description = description
@@ -206,7 +205,7 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
         AND column_name IN ('article', 'category_id', 'type', 'brand', 'model', 'color', 'size', 'weight', 'country', 'manufacturer', 'warranty_period', 'production_date', 'expiry_date', 'min_stock', 'max_stock', 'tax_rate', 'is_active')
       `
       const existingColumns = columnCheck.map((c: any) => c.column_name)
-      
+
       if (existingColumns.includes('article') && article !== undefined) updateData.article = article
       if (existingColumns.includes('category_id') && category_id !== undefined) {
         updateData.category_id = category_id ? parseInt(category_id) : null

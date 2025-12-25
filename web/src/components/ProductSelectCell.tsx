@@ -15,7 +15,8 @@ interface ProductSelectCellProps {
     onClear: () => void
     onOpenSelect: () => void
     onOpenDetails: (productId: number, productName: string) => void
-    tags?: React.ReactNode // New prop for embedded tags
+    tags?: React.ReactNode
+    isLoading?: boolean
     [key: string]: any
 }
 
@@ -33,31 +34,26 @@ export default function ProductSelectCell({
     onClear,
     onOpenSelect,
     onOpenDetails,
-    tags, // Destructure tags
+    tags,
+    isLoading,
     ...props
 }: ProductSelectCellProps) {
     const inputRef = useRef<HTMLInputElement>(null)
     const [showDropdown, setShowDropdown] = useState(false)
 
-    // Sync focus with isFocused prop (e.g. when transition from Selected -> Search)
     useEffect(() => {
         if (isFocused && inputRef.current) {
             inputRef.current.focus()
         }
-    }, [isFocused, productId]) // Re-run when view mode toggles
+    }, [isFocused, productId])
 
-    // Handle blur with delay to allow clicking on dropdown
     const handleBlur = (e: React.FocusEvent) => {
-        // e.persist() // React 17+ doesn't need persist, but safe to ignore
         const relatedTarget = e.relatedTarget as HTMLElement
-
-        // If clicking inside the cell components (dropdown, buttons), don't treat as blur
         if (relatedTarget &&
             (relatedTarget.closest('.product-dropdown') || relatedTarget.closest('.product-action-btn'))
         ) {
             return
         }
-
         setShowDropdown(false)
         onBlur()
     }
@@ -73,15 +69,10 @@ export default function ProductSelectCell({
             e.preventDefault()
             onOpenSelect()
         }
-
-
-
         if (props.onKeyDown) {
             props.onKeyDown(e)
         }
     }
-
-
 
     return (
         <div
@@ -89,7 +80,7 @@ export default function ProductSelectCell({
                 position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
-                flexWrap: 'nowrap', // Prevent wrapping
+                flexWrap: 'nowrap',
                 width: '100%',
                 maxWidth: '100%',
                 border: '1px solid #ddd',
@@ -98,44 +89,60 @@ export default function ProductSelectCell({
                 boxShadow: isFocused ? '0 0 0 0.2rem rgba(0,123,255,.25)' : 'none',
                 background: '#fff',
                 padding: '2px',
-                height: '38px', // Fixed height
-                // overflow: 'hidden', // Removed to allow dropdown to show
-                minWidth: 0 // Allow shrinking in flex container
+                height: '38px',
+                minWidth: 0
             }}
         >
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
+
             {tags && <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '4px', marginRight: '4px', overflow: 'hidden', maxWidth: '80%' }}>{tags}</div>}
 
             <input
-
                 ref={inputRef}
                 type="text"
-                onKeyDown={handleKeyDown}
                 placeholder="Məhsul adını yazın..."
                 value={searchTerm || ''}
                 onChange={(e) => onSearchChange(e.target.value)}
                 onBlur={handleBlur}
                 onFocus={handleFocus}
-
+                onKeyDown={handleKeyDown}
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
                 style={{
                     flex: 1,
                     minWidth: 0,
                     width: '100%',
-                    padding: '0.25rem 0.5rem', // Standard padding
-                    border: 'none', // Removed border
-                    borderRadius: '4px', // Keep radius but inner
+                    padding: '0.25rem 0.5rem',
+                    border: 'none',
+                    borderRadius: '4px',
                     fontSize: '0.9rem',
                     textAlign: 'left',
                     boxSizing: 'border-box',
-                    height: '30px', // Slightly less than container to fit? Or inherit. 32-2=30 roughly.
+                    height: '30px',
                     outline: 'none',
                     background: 'transparent'
                 }}
                 {...props}
             />
 
-            {/* Action Buttons - Flex Item now */}
+            {isLoading && (
+                <div style={{
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid #007bff',
+                    borderTopColor: 'transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 0.6s linear infinite',
+                    marginRight: '6px',
+                    flexShrink: 0
+                }} />
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', paddingRight: '4px', flexShrink: 0, minWidth: 0 }}>
                 {isFocused && (
                     productId ? (
@@ -198,9 +205,9 @@ export default function ProductSelectCell({
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontWeight: 'bold',
                                 color: '#495057',
-                                flexShrink: 0 // Prevent button squish
+                                flexShrink: 0
                             }}
-                            tabIndex={-1} // Skip tab focus for button inside input
+                            tabIndex={-1}
                             title="Məhsul seç"
                         >
                             ...
