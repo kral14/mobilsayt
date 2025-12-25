@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename)
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // Desktop və Web üçün relative path
+  base: '/web/', // Production deployment path
   resolve: {
     alias: {
       '@shared': path.resolve(__dirname, '../shared'),
