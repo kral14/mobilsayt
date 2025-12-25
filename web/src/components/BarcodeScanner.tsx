@@ -10,9 +10,7 @@ interface BarcodeScannerProps {
 
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     onScanSuccess,
-    onScanFailure,
-    width = 400,
-    height = 400
+    width = 400
 }) => {
     const [html5QrCode, setHtml5QrCode] = useState<Html5Qrcode | null>(null);
     const [isCameraRunning, setIsCameraRunning] = useState(false);

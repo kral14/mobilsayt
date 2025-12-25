@@ -57,7 +57,6 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
     onRowClick,
     onJumpToStart,
     onJumpToEnd,
-    virtual = false,
     serverSideSort = false,
     onSort,
     onScroll

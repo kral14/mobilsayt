@@ -18,11 +18,15 @@ export const OverdueInvoicesWidget: React.FC<OverdueInvoicesWidgetProps> = ({ is
     const loadOverdueInvoices = async () => {
         try {
             setLoading(true)
-            const invoices = await ordersAPI.getAll()
+            const response = await ordersAPI.getAll()
+
+            // Handle both legacy array and new paginated response
+            const invoicesList: any[] = Array.isArray(response) ? response : (response.data || [])
+
             const today = new Date()
             today.setHours(0, 0, 0, 0)
 
-            const overdue = invoices.filter(invoice => {
+            const overdue = invoicesList.filter((invoice: any) => {
                 if (!invoice.payment_date) return false
                 const paymentDate = new Date(invoice.payment_date)
                 paymentDate.setHours(0, 0, 0, 0)
