@@ -244,9 +244,9 @@ export function SatisQaimeleriContent() {
     return true
   }, [])
 
-  const handleModalClose = useCallback((modalId: string) => {
-    // Yadda saxlanmamış dəyişiklikləri yoxla
-    if (!handleModalBeforeClose(modalId)) {
+  const handleModalClose = useCallback((modalId: string, force?: boolean) => {
+    // Yadda saxlanmamış dəyişiklikləri yoxla (əgər məcburi bağlanmırsa)
+    if (!force && !handleModalBeforeClose(modalId)) {
       return
     }
 
@@ -1151,7 +1151,7 @@ export function SatisQaimeleriContent() {
         )
 
         console.log('[Alis.tsx] Qaimə yeniləndi')
-        // showNotification(`Satış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
+        showNotification(`Satış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
 
         logActivity(
           'invoice',
@@ -1218,7 +1218,7 @@ export function SatisQaimeleriContent() {
 
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
 
-        // showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
+        showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')
@@ -1341,7 +1341,7 @@ export function SatisQaimeleriContent() {
           return newMap
         })
 
-        // showNotification(`Satış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
+        showNotification(`Satış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
       } else {
         // Yeni qaimə - yarad və təsdiqlə
         console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR VƏ TƏSDİQLƏNİR ==========')
@@ -1407,7 +1407,7 @@ export function SatisQaimeleriContent() {
           invoiceDate: invoiceDateStr
         })))
 
-        // showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
+        showNotification(`Satış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')

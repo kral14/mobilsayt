@@ -242,9 +242,9 @@ export function AlisQaimeleriContent() {
     return true
   }, [])
 
-  const handleModalClose = useCallback((modalId: string) => {
-    // Yadda saxlanmamış dəyişiklikləri yoxla
-    if (!handleModalBeforeClose(modalId)) {
+  const handleModalClose = useCallback((modalId: string, force?: boolean) => {
+    // Yadda saxlanmamış dəyişiklikləri yoxla (əgər məcburi bağlanmırsa)
+    if (!force && !handleModalBeforeClose(modalId)) {
       return
     }
 
@@ -1269,7 +1269,7 @@ export function AlisQaimeleriContent() {
         )
 
         console.log('[Alis.tsx] Qaimə yeniləndi')
-        // showNotification(`Alış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
+        showNotification(`Alış qaiməsi ${finalData.invoiceNumber} uğurla yeniləndi`, 'success')
 
         logActivity(
           'invoice',
@@ -1298,6 +1298,9 @@ export function AlisQaimeleriContent() {
         })
 
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)
+
+        showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı (təsdiqsiz)`, 'success')
+
         console.log('[Alis.tsx] Yeni qaimə ID:', newInvoice.id)
 
         // Tesdiqsiz saxla (default olaraq tesdiqsizdir, amma açıq şəkildə təyin edək)
@@ -1459,7 +1462,7 @@ export function AlisQaimeleriContent() {
           return newMap
         })
 
-        // showNotification(`Alış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
+        showNotification(`Alış qaiməsi ${updateResult.invoice_number} uğurla yeniləndi və təsdiq edildi`, 'success')
       } else {
         // Yeni qaimə - yarad və təsdiqlə
         console.log('[Alis.tsx] ========== YENİ QAIMƏ YARADILIR VƏ TƏSDİQLƏNİR ==========')
@@ -1525,7 +1528,7 @@ export function AlisQaimeleriContent() {
           invoiceDate: invoiceDateStr
         })))
 
-        // showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
+        showNotification(`Alış qaiməsi ${newInvoice.invoice_number} uğurla yaradıldı və təsdiq edildi`, 'success')
       }
 
       console.log('[Alis.tsx] ========== CƏDVƏL YENİLƏNİR ==========')

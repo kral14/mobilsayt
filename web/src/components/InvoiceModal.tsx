@@ -59,7 +59,7 @@ interface InvoiceModalProps {
   products: Product[]
   modalIndex: number
   isActive: boolean
-  onClose: (modalId: string) => void
+  onClose: (modalId: string, force?: boolean) => void
   onUpdate: (modalId: string, updates: Partial<ModalData>) => void
   onSave: (modalId: string, modalData: ModalData['data']) => Promise<void>
   onSaveAndConfirm?: (modalId: string, modalData: ModalData['data']) => Promise<void>
@@ -662,11 +662,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
         modalId={modal.id}
         isPurchase={isPurchase}
         onClose={(id, force) => {
-          if (force) {
-            useWindowStore.getState().closeWindow(id, true)
-          } else {
-            onClose(id)
-          }
+          onClose(id, force)
         }}
         onSave={onSave}
         onSaveAndConfirm={onSaveAndConfirm}

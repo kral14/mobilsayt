@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useNotificationStore } from '../store/notificationStore'
 import { ModalData } from './InvoiceTypes'
 
 interface InvoiceFooterProps {
@@ -25,7 +26,7 @@ const InvoiceFooter: React.FC<InvoiceFooterProps> = ({
     isOKDisabled
 }) => {
     const [notesFocused, setNotesFocused] = useState(false)
-    const [notification, setNotification] = useState<{ status: 'success' | 'error' | null, message?: string }>({ status: null })
+    const { addNotification } = useNotificationStore()
 
     // Debug logging for mount/unmount and notifications
     React.useEffect(() => {
@@ -33,20 +34,15 @@ const InvoiceFooter: React.FC<InvoiceFooterProps> = ({
         return () => console.log('[InvoiceFooter] UNMOUNTED for modal:', modalId)
     }, [modalId])
 
-    React.useEffect(() => {
-        console.log('[InvoiceFooter] Notification State Updated:', notification)
-    }, [notification])
-
     const handleSaveClick = async () => {
         if (!onSave) return
-        setNotification({ status: null })
         try {
             await onSave(modalId, localData)
-            setNotification({ status: 'success', message: 'Uğurla yadda saxlanıldı' })
+            // Success notification handled by parent (e.g. Satis.tsx)
         } catch (error: any) {
             console.error('Save failed:', error)
             const msg = error?.response?.data?.message || error?.message || 'Xəta baş verdi'
-            setNotification({ status: 'error', message: msg })
+            addNotification('error', 'Xəta', msg)
         }
     }
 
@@ -68,19 +64,18 @@ const InvoiceFooter: React.FC<InvoiceFooterProps> = ({
             return
         }
 
-        setNotification({ status: null })
         try {
             if (onSaveAndConfirm) {
                 await onSaveAndConfirm(modalId, localData)
             } else if (onSave) {
                 await onSave(modalId, localData)
             }
-            setNotification({ status: 'success', message: 'Uğurla icra edildi' })
+            // Success notification handled by parent
             onClose(modalId, true)
         } catch (error: any) {
             console.error('Save/Confirm failed:', error)
             const msg = error?.response?.data?.message || error?.message || 'Xəta baş verdi'
-            setNotification({ status: 'error', message: msg })
+            addNotification('error', 'Xəta', msg)
         }
     }
 
@@ -115,51 +110,8 @@ const InvoiceFooter: React.FC<InvoiceFooterProps> = ({
                 />
             </div>
 
-            {/* Notification Icon & Text */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginRight: '10px'
-            }} title={notification.message || ''}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '35px',
-                    height: '35px',
-                    color: notification.status === 'success' ? '#28a745' : notification.status === 'error' ? '#dc3545' : '#ccc',
-                    transition: 'color 0.3s ease'
-                }}>
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    >
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                        <polyline points="22,6 12,13 2,6"></polyline>
-                    </svg>
-                </div>
-                {notification.status && notification.message && (
-                    <span style={{
-                        fontSize: '0.9rem',
-                        fontWeight: '500',
-                        color: notification.status === 'success' ? '#28a745' : '#dc3545',
-                        maxWidth: '250px',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis'
-                    }}>
-                        {notification.message}
-                    </span>
-                )}
-            </div>
+            {/* Notification Icon & Text - MOVED TO GLOBAL FOOTER */}
+            <div style={{ flex: 1 }} />
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '6px' }}>

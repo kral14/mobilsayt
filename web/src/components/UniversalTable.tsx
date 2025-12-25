@@ -666,7 +666,8 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
                                                     selection?.addRange(range)
 
                                                     // Event propagation dayandır ki, row click-ə təsir etməsin (əgər lazımdırsa)
-                                                    e.stopPropagation()
+                                                    // e.stopPropagation() - LƏĞV EDİLDİ: Row click və selection işləməsi üçün event bubble olmalıdır
+                                                    // Amma text selection hələ də işləyəcək çünki native browser behavior
                                                 }}
                                             >
                                                 {column.render ? column.render(value, row, rowIndex) : value}
