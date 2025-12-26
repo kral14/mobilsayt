@@ -1,1 +1,0 @@
-QueryAs<'_, _, get_order_by_id::{closure#0}::InvoiceWithCustomer, _>

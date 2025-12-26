@@ -50,3 +50,10 @@ version_manager/version_state.json
 
 # Test files
 navbar-gesture-test.tsx
+
+# Rust
+target/
+*/target/
+Cargo.lock
+debug/
+release/
