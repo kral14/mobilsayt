@@ -200,7 +200,7 @@ export const ordersAPI = {
   },
 
   updateStatus: async (id: string, is_active: boolean): Promise<SaleInvoice> => {
-    const response = await api.patch<SaleInvoice>(`/orders/${id}/status`, { is_active })
+    const response = await api.put<SaleInvoice>(`/orders/${id}/status`, { is_active })
     return response.data
   },
 

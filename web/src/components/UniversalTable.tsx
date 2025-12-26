@@ -21,6 +21,7 @@ interface UniversalTableProps<T = any> {
     selectable?: boolean
     sortable?: boolean
     getRowId: (row: T) => number | string
+    selectedIds?: (number | string)[]
     onRowSelect?: (ids: (number | string)[]) => void
     onRowClick?: (row: T, id: string | number, event: React.MouseEvent) => void
     onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
@@ -53,6 +54,7 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
     selectable = true,
     sortable = true,
     getRowId,
+    selectedIds,
     onRowSelect,
     onRowClick,
     onJumpToStart,
@@ -120,7 +122,19 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
         setColumns(initialColumns.map((col, index) => ({ ...col, order: index })))
     }, [initialColumns, tableId])
 
-    const [selectedRows, setSelectedRows] = useState<(number | string)[]>([])
+    const [selectedRows, setSelectedRows] = useState<(number | string)[]>(selectedIds || [])
+
+    useEffect(() => {
+        if (selectedIds !== undefined) {
+            setSelectedRows((prev: (number | string)[]) => {
+                // Simple array comparison to prevent infinite loops
+                if (prev.length === selectedIds.length && prev.every((val, i) => val === selectedIds[i])) {
+                    return prev
+                }
+                return selectedIds
+            })
+        }
+    }, [selectedIds])
     const [sortConfig, setSortConfig] = useState<{ column: string | null; direction: 'asc' | 'desc' }>({
         column: null,
         direction: 'asc'
@@ -227,12 +241,18 @@ const UniversalTable = React.forwardRef<UniversalTableRef, UniversalTableProps<a
         return () => window.removeEventListener('keydown', handleKeyDown, true)
     }, [data, getRowId])
 
+    // Callback ref to avoid dependency loop
+    const onRowSelectRef = useRef(onRowSelect)
+    useEffect(() => {
+        onRowSelectRef.current = onRowSelect
+    }, [onRowSelect])
+
     // Seçilmiş sətirlər dəyişdikdə callback çağır
     useEffect(() => {
-        if (onRowSelect) {
-            onRowSelect(selectedRows)
+        if (onRowSelectRef.current) {
+            onRowSelectRef.current(selectedRows)
         }
-    }, [selectedRows, onRowSelect])
+    }, [selectedRows])
 
 
 

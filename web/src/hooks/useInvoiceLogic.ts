@@ -41,9 +41,15 @@ export const useInvoiceLogic = ({
             isSyncingFromProps.current = false
             return
         }
-        if (JSON.stringify(localData) !== JSON.stringify(modal.data)) {
-            onUpdate(modal.id, { data: localData })
-        }
+
+        // Debounce upward sync to prevent lag during typing
+        const timeoutId = setTimeout(() => {
+            if (JSON.stringify(localData) !== JSON.stringify(modal.data)) {
+                onUpdate(modal.id, { data: localData })
+            }
+        }, 500) // 500ms debounce
+
+        return () => clearTimeout(timeoutId)
     }, [localData, modal.data, modal.id, onUpdate])
 
     // Initial Date Setup
@@ -174,7 +180,25 @@ export const useInvoiceLogic = ({
         setLocalData(prev => {
             const updatedItems = [...prev.invoiceItems]
             const currentItem = updatedItems[index]
-            const newItem = { ...currentItem, ...updates }
+            let newItem = { ...currentItem, ...updates }
+
+            // If product name is cleared, reset all product-related fields
+            if (updates.product_name === '') {
+                newItem = {
+                    ...newItem,
+                    product_id: null,
+                    unit_price: 0,
+                    total_price: 0,
+                    searchTerm: updates.searchTerm !== undefined ? updates.searchTerm : '',
+                    discount_auto: 0,
+                    discount_manual: 0,
+                    vat_rate: 0,
+                    unit: '',
+                    product_code: '',
+                    product_barcode: '',
+                    product_unit: ''
+                }
+            }
 
             if ('quantity' in updates || 'unit_price' in updates || 'discount_manual' in updates || 'discount_auto' in updates) {
                 const qty = newItem.quantity || 0

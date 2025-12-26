@@ -11,7 +11,7 @@ export const logsAPI = {
             // Get current user ID from auth store
             const userId = useAuthStore.getState().user?.id || null
 
-            const response = await axios.post(`${API_BASE_URL}/api/logs`, {
+            const response = await axios.post(`${API_BASE_URL}/logs`, {
                 logs: logs.map(log => ({
                     log_id: log.id, // Map frontend 'id' to backend 'log_id'
                     user_id: userId, // Get from auth store
@@ -59,7 +59,7 @@ export const logsAPI = {
             if (options?.startDate) params.append('startDate', options.startDate.toISOString())
             if (options?.endDate) params.append('endDate', options.endDate.toISOString())
 
-            const response = await axios.get(`${API_BASE_URL}/api/logs/${userId}?${params}`)
+            const response = await axios.get(`${API_BASE_URL}/logs/${userId}?${params}`)
 
             return {
                 logs: response.data.logs.map((log: any) => ({
@@ -82,7 +82,7 @@ export const logsAPI = {
     // Clear user's logs from server
     async clearUserLogs(userId: string): Promise<boolean> {
         try {
-            await axios.delete(`${API_BASE_URL}/api/logs/${userId}`)
+            await axios.delete(`${API_BASE_URL}/logs/${userId}`)
             return true
         } catch (error) {
             console.error('[logsAPI] Failed to clear user logs:', error)

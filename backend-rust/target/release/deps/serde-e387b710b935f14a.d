@@ -1,0 +1,14 @@
+C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\deps\serde-e387b710b935f14a.d: C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\build\serde-c14511bf6de0c723\out/private.rs
+
+C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\deps\libserde-e387b710b935f14a.rlib: C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\build\serde-c14511bf6de0c723\out/private.rs
+
+C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\deps\libserde-e387b710b935f14a.rmeta: C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\build\serde-c14511bf6de0c723\out/private.rs
+
+C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\nesib\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+C:\Users\nesib\Desktop\mobilsayt\backend-rust\target\release\build\serde-c14511bf6de0c723\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\nesib\\Desktop\\mobilsayt\\backend-rust\\target\\release\\build\\serde-c14511bf6de0c723\\out

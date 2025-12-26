@@ -150,15 +150,35 @@ const defaultColumns: ColumnConfig[] = [
 interface Products2Props {
   initialSelectedProductId?: number | null
   initialCategoryId?: number | null
+  initialSearchTerm?: string
   onSelect?: (product: Product) => void
 }
 
-export default function Products2({ initialSelectedProductId, initialCategoryId, onSelect }: Products2Props = {}) {
+export default function Products2({ initialSelectedProductId, initialCategoryId, initialSearchTerm, onSelect }: Products2Props = {}) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '')
+
+  // Search debouncing
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearchTerm || '')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // Update internal search term if the prop changes (e.g. when opening from a different row)
+  useEffect(() => {
+    if (initialSearchTerm !== undefined) {
+      setSearchTerm(initialSearchTerm)
+      setDebouncedSearch(initialSearchTerm) // Skip debounce when opening from parent
+    }
+  }, [initialSearchTerm])
+
   const [selectedRows, setSelectedRows] = useState<string[]>([])
 
   // Pagination State
@@ -174,14 +194,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
   }, [page])
 
 
-  // Search debouncing
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchTerm)
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [searchTerm])
+
 
 
   // localStorage-dan papka ağacının görünürlüyünü yüklə (default: true - həmişə açıq)
@@ -1534,6 +1547,7 @@ export default function Products2({ initialSelectedProductId, initialCategoryId,
                   if (row.type === 'category') return `cat_${row.id}`
                   return `prod_${row.id}`
                 }}
+                selectedIds={selectedRows}
                 onRowSelect={(ids) => setSelectedRows(ids as string[])}
                 onRowClick={(row) => {
                   if (row.type === 'category') {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useWindowStore } from '../store/windowStore'
 import type { Customer, Product, Supplier, WarehouseLocation } from '@shared/types'
+import ProductForm from './ProductFormModal'
 import TableSettingsModal from './TableSettingsModal'
 import ConfirmDialog from './ConfirmDialog'
 import InvoiceTable from './InvoiceTable'
@@ -170,6 +171,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const openProductsSelect = (index: number) => {
     const currentItem = localData.invoiceItems[index]
     const currentProductId = currentItem?.product_id || null
+    // Prefer searchTerm if available (user typed something), otherwise product name
+    const initialSearchTerm = currentItem?.searchTerm || currentItem?.product_name || ''
+
+    console.log(`Open Products2 for row ${index}:`, { searchTerm: initialSearchTerm, item: currentItem })
 
     useWindowStore.getState().openPageWindow(
       'products-page-select',
@@ -177,6 +182,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       '📦',
       <Products2
         initialSelectedProductId={currentProductId}
+        initialSearchTerm={initialSearchTerm}
         onSelect={(product: Product) => {
           handleProductSelectInRow(index, product.id, product)
           useWindowStore.getState().closePageWindow('products-page-select')
@@ -193,15 +199,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     try {
       const product = await productsAPI.getById(productId.toString())
       useWindowStore.getState().openPageWindow(
-        'products2-locate',
-        'Məhsullar',
-        '📦',
-        <Products2
-          initialSelectedProductId={productId}
-          initialCategoryId={product.category_id || null}
-          onSelect={() => useWindowStore.getState().closePageWindow('products2-locate')}
+        `product-details-${productId}`,
+        `Məhsul Kartı: ${product.name}`,
+        '📝',
+        <ProductForm
+          product={product}
+          mode="edit"
+          categories={[]} // Categories will be loaded inside if needed, or we might need to fetch them
+          existingBarcodes={[]} // Not critical for just viewing/editing existing
+          onSubmit={async (data, shouldClose) => {
+            // Handle update
+            await productsAPI.update(productId.toString(), data)
+            if (shouldClose) useWindowStore.getState().closePageWindow(`product-details-${productId}`)
+          }}
+          title={`Məhsul Kartı: ${product.name}`}
         />,
-        { width: 850, height: 700 }
+        { width: 850, height: 750 }
       )
     } catch (err) {
       console.error('[InvoiceModal] Failed to locate product:', err)
@@ -266,7 +279,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
       } finally {
         setIsSearching(false)
       }
-    }, 300) // 300ms debounce
+    }, 150) // 150ms debounce for faster feedback
   }, [])
 
   // Wrapper for item updates to trigger search

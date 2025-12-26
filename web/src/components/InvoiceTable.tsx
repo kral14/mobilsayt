@@ -314,19 +314,19 @@ export default function InvoiceTable({
             case 'code':
                 return (
                     <div style={{ textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {getProductInfo(item.product_id).code || '-'}
+                        {item.product_code || getProductInfo(item.product_id).code || '-'}
                     </div>
                 )
             case 'barcode':
                 return (
                     <div style={{ textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {getProductInfo(item.product_id).barcode || '-'}
+                        {item.product_barcode || getProductInfo(item.product_id).barcode || '-'}
                     </div>
                 )
             case 'unit':
                 return (
                     <div style={{ textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {getProductInfo(item.product_id).unit || '-'}
+                        {item.product_unit || getProductInfo(item.product_id).unit || '-'}
                     </div>
                 )
             case 'quantity':

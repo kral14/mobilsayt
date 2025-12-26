@@ -151,7 +151,7 @@ export default function ProductSelectCell({
                                 className="product-action-btn"
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    onOpenSelect()
+                                    onOpenDetails(productId, productName)
                                 }}
                                 style={{
                                     background: 'none',
@@ -163,7 +163,7 @@ export default function ProductSelectCell({
                                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                                 }}
                                 tabIndex={-1}
-                                title="Məhsul seçimi"
+                                title="Məhsul kartı"
                             >
                                 🔍
                             </button>
@@ -171,7 +171,7 @@ export default function ProductSelectCell({
                                 className="product-action-btn"
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    onOpenDetails(productId, productName)
+                                    onOpenSelect()
                                 }}
                                 style={{
                                     background: 'none',
@@ -184,7 +184,7 @@ export default function ProductSelectCell({
                                     fontWeight: 'bold'
                                 }}
                                 tabIndex={-1}
-                                title="Məhsulun yerinə get"
+                                title="Məhsul seçimi"
                             >
                                 ⋮
                             </button>

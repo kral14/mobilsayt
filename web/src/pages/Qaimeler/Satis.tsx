@@ -352,7 +352,10 @@ export function SatisQaimeleriContent() {
                     ${items.map((item: any, idx: number) => `
                       <tr>
                         <td>${idx + 1}</td>
-                        <td>${item.products?.name || 'Naməlum məhsul'}</td>
+                        <td>${item.product_code || item.products?.code || ''}</td>
+                        <td>${item.product_name || item.products?.name || 'Naməlum məhsul'}</td>
+                        <td>${item.product_barcode || item.products?.barcode || ''}</td>
+                        <td>${item.product_unit || item.products?.unit || 'ədəd'}</td>
                         <td class="text-right">${Number(item.quantity).toFixed(2)}</td>
                         <td class="text-right">${Number(item.unit_price).toFixed(2)} ₼</td>
                         <td class="text-right">${Number(item.total_price).toFixed(2)} ₼</td>
@@ -911,18 +914,29 @@ export function SatisQaimeleriContent() {
         invoiceDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
       }
 
+      // Payment date formatla
+      let paymentDateStr = ''
+      if (fullInvoice?.payment_date) {
+        const date = new Date(fullInvoice.payment_date)
+        paymentDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+      }
+
       // Invoice items formatla
       const invoiceItemsData = fullInvoice ? (fullInvoice.sale_invoice_items || []) : []
       const items: InvoiceItem[] = invoiceItemsData.map((item: any) => ({
         product_id: item.product_id,
-        product_name: item.products?.name || 'Naməlum məhsul',
+        product_name: item.product_name || item.products?.name || 'Naməlum məhsul',
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
         total_price: Number(item.total_price),
         discount_manual: Number(item.discount_manual || 0),
         discount_auto: Number(item.discount_auto || 0),
         vat_rate: Number(item.vat_rate || 0),
-        searchTerm: item.products?.name || 'Naməlum məhsul'
+        searchTerm: item.product_name || item.products?.name || 'Naməlum məhsul',
+        // Map flat fields
+        product_code: item.product_code || item.products?.code,
+        product_barcode: item.product_barcode || item.products?.barcode,
+        product_unit: item.product_unit || item.products?.unit
       }))
 
       const newZIndex = baseZIndex + 1
@@ -949,7 +963,8 @@ export function SatisQaimeleriContent() {
           invoiceItems: items,
           notes: fullInvoice?.notes || '',
           invoiceNumber: fullInvoice?.invoice_number || '',
-          invoiceDate: invoiceDateStr
+          invoiceDate: invoiceDateStr,
+          paymentDate: paymentDateStr
         }
       } as any // normalState type error-ını aradan qaldırmaq üçün
 
@@ -1311,8 +1326,8 @@ export function SatisQaimeleriContent() {
           customer_id: modalData.selectedSupplierId || undefined,
           items,
           notes: modalData.notes || undefined,
-          invoice_date: modalData.invoiceDate || undefined,
-          payment_date: modalData.paymentDate || undefined,
+          invoice_date: modalData.invoiceDate && modalData.invoiceDate !== '' ? new Date(modalData.invoiceDate).toISOString() : undefined,
+          payment_date: modalData.paymentDate && modalData.paymentDate !== '' ? new Date(modalData.paymentDate).toISOString() : undefined,
         })
 
         console.log('[Alis.tsx] API cavabı (update):', updateResult)
@@ -1357,8 +1372,8 @@ export function SatisQaimeleriContent() {
           customer_id: modalData.selectedCustomerId || undefined,
           items,
           notes: modalData.notes || undefined,
-          invoice_date: modalData.invoiceDate || undefined,
-          payment_date: modalData.paymentDate || undefined,
+          invoice_date: modalData.invoiceDate && modalData.invoiceDate !== '' ? new Date(modalData.invoiceDate).toISOString() : undefined,
+          payment_date: modalData.paymentDate && modalData.paymentDate !== '' ? new Date(modalData.paymentDate).toISOString() : undefined,
         })
 
         console.log('[Alis.tsx] API cavabı (create):', newInvoice)

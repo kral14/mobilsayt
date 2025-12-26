@@ -1,0 +1,1 @@
+QueryAs<'_, _, get_all_orders::{closure#0}::InvoiceWithCustomer, _>

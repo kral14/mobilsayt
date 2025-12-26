@@ -11,6 +11,10 @@ export interface InvoiceItem {
     vat_rate?: number
     unit?: string
     searchTerm?: string
+    // Flat fields from backend
+    product_code?: string
+    product_barcode?: string
+    product_unit?: string
 }
 
 export interface TableColumnConfig {
